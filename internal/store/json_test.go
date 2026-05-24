@@ -1,0 +1,478 @@
+package store_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/store"
+)
+
+// ── Test helpers ──────────────────────────────────────────────────────────────
+
+// must fails the test immediately when err is non-nil.
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// tempStore returns a JSONStore and its data file path. The file lives in a
+// per-test temp directory that is removed automatically when the test ends.
+func tempStore(t *testing.T) (*store.JSONStore, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "registry.json")
+	return store.NewJSONStore(path), path
+}
+
+// seedRegistry builds a populated registry for round-trip tests.
+//
+//	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
+//	Users:     alice@example.com / Alice, bob@example.com / Bob
+//	Sessions:  alice → claude (with LastQuestion + NextPromptAt)
+//	           bob   → chatgpt
+//	Projects:  "Alpha" (alice/claude, with Description+Instructions)
+//	           "Beta"  (alice/claude)
+//	           "Orphan" (unattached)
+func seedRegistry(t *testing.T) model.Registry {
+	t.Helper()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddProvider(model.NewProvider("chatgpt", false, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("claude"),
+	)))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("bob@example.com"),
+		reg.ProviderByName("chatgpt"),
+	)))
+	must(t, reg.AddProject(model.NewSessionProject("Alpha",
+		reg.SessionAt("alice@example.com", "claude"),
+	)))
+	must(t, reg.AddProject(model.NewSessionProject("Beta",
+		reg.SessionAt("alice@example.com", "claude"),
+	)))
+	must(t, reg.AddProject(model.NewProject("Orphan")))
+
+	// Enrich alice's session with a LastQuestion and a NextPromptAt.
+	ts, err := time.Parse(time.RFC3339, "2026-06-01T09:00:00Z")
+	if err != nil {
+		t.Fatalf("parse time: %v", err)
+	}
+	s := reg.SessionAt("alice@example.com", "claude")
+	s.NextPromptAt = &ts
+	lq := model.NewLastQuestion(reg.ProjectByName("Alpha"))
+	lq.Topic = "Architecture review"
+	lq.MidAnswer = true
+	lq.NextPrompt = "continue with the diagram"
+	s.LastQuestion = lq
+
+	// Enrich Alpha with description and instructions.
+	alpha := reg.ProjectByName("Alpha")
+	alpha.Description = "Backend rewrite"
+	alpha.Instructions = "Use Go interfaces"
+
+	return reg
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+
+func TestLoad_FileNotExist_ReturnsEmptyRegistry(t *testing.T) {
+	s, _ := tempStore(t)
+	reg, err := s.Load()
+	if err != nil {
+		t.Fatalf("expected no error for missing file, got: %v", err)
+	}
+	if n := len(reg.AllProviders()); n != 0 {
+		t.Errorf("expected empty registry, got %d providers", n)
+	}
+}
+
+func TestLoad_EmptyFile_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	if err := os.WriteFile(path, []byte{}, 0600); err != nil {
+		t.Fatalf("write empty file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for empty file")
+	}
+}
+
+func TestLoad_InvalidJSON_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	if err := os.WriteFile(path, []byte("not json {{{"), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestLoad_SessionReferencesUnknownUser_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	// Manually craft JSON with a session that references a non-existent user.
+	raw := `{
+		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+		"users": {},
+		"sessions": {"ghost@example.com": {"claude": {}}},
+		"projects": {}
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for session referencing unknown user")
+	}
+}
+
+func TestLoad_SessionReferencesUnknownProvider_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	raw := `{
+		"providers": {},
+		"users": {"alice@example.com": {"name": "Alice"}},
+		"sessions": {"alice@example.com": {"ghost": {}}},
+		"projects": {}
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for session referencing unknown provider")
+	}
+}
+
+func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	raw := `{
+		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+		"users": {"alice@example.com": {"name": "Alice"}},
+		"sessions": {},
+		"projects": {"Alpha": {"user_email": "alice@example.com", "provider": "claude"}}
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for project referencing unknown session")
+	}
+}
+
+func TestLoad_ProjectPartialSessionReference_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	// user_email set but provider missing.
+	raw := `{
+		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+		"users": {"alice@example.com": {"name": "Alice"}},
+		"sessions": {"alice@example.com": {"claude": {}}},
+		"projects": {"Alpha": {"user_email": "alice@example.com"}}
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for partial session reference in project")
+	}
+}
+
+func TestLoad_LastQuestionReferencesUnknownProject_ReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "registry.json")
+	raw := `{
+		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+		"users": {"alice@example.com": {"name": "Alice"}},
+		"sessions": {
+			"alice@example.com": {
+				"claude": {
+					"last_question": {"project_name": "ghost", "mid_answer": false}
+				}
+			}
+		},
+		"projects": {}
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	s := store.NewJSONStore(path)
+	if _, err := s.Load(); err == nil {
+		t.Error("expected error for last_question referencing unknown project")
+	}
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+func TestSave_CreatesFile(t *testing.T) {
+	s, path := tempStore(t)
+	must(t, s.Save(model.NewRegistry()))
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("file not created after Save: %v", err)
+	}
+}
+
+func TestSave_CreatesParentDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "dir")
+	s := store.NewJSONStore(filepath.Join(dir, "registry.json"))
+	must(t, s.Save(model.NewRegistry()))
+	if _, err := os.Stat(filepath.Join(dir, "registry.json")); err != nil {
+		t.Fatalf("file not created in new directory: %v", err)
+	}
+}
+
+func TestSave_NoTempFileLeft(t *testing.T) {
+	s, path := tempStore(t)
+	must(t, s.Save(model.NewRegistry()))
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Error("temp file should not exist after successful Save")
+	}
+}
+
+func TestSave_FileIsValidJSON(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	// A successful Load is the definitive JSON validity check.
+	if _, err := s.Load(); err != nil {
+		t.Fatalf("Load after Save failed: %v", err)
+	}
+}
+
+// ── Round-trip ────────────────────────────────────────────────────────────────
+
+func TestRoundTrip_Providers(t *testing.T) {
+	s, _ := tempStore(t)
+	original := seedRegistry(t)
+	must(t, s.Save(original))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if n := len(loaded.AllProviders()); n != 2 {
+		t.Errorf("providers: expected 2, got %d", n)
+	}
+	claude := loaded.ProviderByName("claude")
+	if claude == nil {
+		t.Fatal("provider 'claude' not found after round-trip")
+	}
+	if !claude.HasProjects {
+		t.Error("claude.HasProjects should be true")
+	}
+	chatgpt := loaded.ProviderByName("chatgpt")
+	if chatgpt == nil {
+		t.Fatal("provider 'chatgpt' not found after round-trip")
+	}
+	if chatgpt.HasProjects {
+		t.Error("chatgpt.HasProjects should be false")
+	}
+}
+
+func TestRoundTrip_Users(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	alice := loaded.UserByEmail("alice@example.com")
+	if alice == nil {
+		t.Fatal("user alice not found after round-trip")
+	}
+	if alice.Name != "Alice" {
+		t.Errorf("alice.Name: got %q, want %q", alice.Name, "Alice")
+	}
+}
+
+func TestRoundTrip_Sessions(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sess := loaded.SessionAt("alice@example.com", "claude")
+	if sess == nil {
+		t.Fatal("session alice/claude not found after round-trip")
+	}
+	if sess.User() == nil || sess.User().Email() != "alice@example.com" {
+		t.Error("session.User pointer not resolved correctly")
+	}
+	if sess.Provider() == nil || sess.Provider().Name() != "claude" {
+		t.Error("session.Provider pointer not resolved correctly")
+	}
+}
+
+func TestRoundTrip_NextPromptAt(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sess := loaded.SessionAt("alice@example.com", "claude")
+	if sess.NextPromptAt == nil {
+		t.Fatal("NextPromptAt should not be nil")
+	}
+	want := "2026-06-01T09:00:00Z"
+	got := sess.NextPromptAt.UTC().Format(time.RFC3339)
+	if got != want {
+		t.Errorf("NextPromptAt: got %q, want %q", got, want)
+	}
+}
+
+func TestRoundTrip_LastQuestion(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sess := loaded.SessionAt("alice@example.com", "claude")
+	lq := sess.LastQuestion
+	if lq == nil {
+		t.Fatal("LastQuestion should not be nil")
+	}
+	if lq.Topic != "Architecture review" {
+		t.Errorf("Topic: got %q, want %q", lq.Topic, "Architecture review")
+	}
+	if !lq.MidAnswer {
+		t.Error("MidAnswer: expected true")
+	}
+	if lq.NextPrompt != "continue with the diagram" {
+		t.Errorf("NextPrompt: got %q", lq.NextPrompt)
+	}
+}
+
+func TestRoundTrip_LastQuestion_ProjectPointer(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	sess := loaded.SessionAt("alice@example.com", "claude")
+	lq := sess.LastQuestion
+	if lq == nil {
+		t.Fatal("LastQuestion should not be nil")
+	}
+	if lq.Project() == nil {
+		t.Fatal("LastQuestion.Project should not be nil")
+	}
+	if lq.Project().Name() != "Alpha" {
+		t.Errorf("LastQuestion.Project.Name: got %q, want Alpha", lq.Project().Name())
+	}
+	// Pointer must be the same object as the one in the projects map.
+	if lq.Project() != loaded.ProjectByName("Alpha") {
+		t.Error("LastQuestion.Project is not the same pointer as the registry project")
+	}
+}
+
+func TestRoundTrip_Projects(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if n := len(loaded.AllProjects()); n != 3 {
+		t.Errorf("projects: expected 3, got %d", n)
+	}
+	alpha := loaded.ProjectByName("Alpha")
+	if alpha == nil {
+		t.Fatal("project Alpha not found after round-trip")
+	}
+	if alpha.Description != "Backend rewrite" {
+		t.Errorf("Alpha.Description: got %q", alpha.Description)
+	}
+	if alpha.Instructions != "Use Go interfaces" {
+		t.Errorf("Alpha.Instructions: got %q", alpha.Instructions)
+	}
+}
+
+func TestRoundTrip_Project_SessionPointer(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	alpha := loaded.ProjectByName("Alpha")
+	if alpha.Session() == nil {
+		t.Fatal("Alpha.Session should not be nil")
+	}
+	// Pointer must be the same object as the one in the sessions index.
+	if alpha.Session() != loaded.SessionAt("alice@example.com", "claude") {
+		t.Error("Alpha.Session is not the same pointer as the registry session")
+	}
+}
+
+func TestRoundTrip_UnattachedProject(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	orphan := loaded.ProjectByName("Orphan")
+	if orphan == nil {
+		t.Fatal("project Orphan not found after round-trip")
+	}
+	if !orphan.IsUnattached() {
+		t.Error("Orphan should be unattached after round-trip")
+	}
+}
+
+func TestRoundTrip_SessionWithNoLastQuestion(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// bob/chatgpt has no LastQuestion in seedRegistry.
+	sess := loaded.SessionAt("bob@example.com", "chatgpt")
+	if sess == nil {
+		t.Fatal("session bob/chatgpt not found")
+	}
+	if sess.LastQuestion != nil {
+		t.Error("bob/chatgpt LastQuestion should be nil")
+	}
+}
+
+func TestRoundTrip_EmptyRegistry(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(model.NewRegistry()))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if n := len(loaded.AllProviders()); n != 0 {
+		t.Errorf("expected 0 providers, got %d", n)
+	}
+}
+
+func TestRoundTrip_DualIndexIntact(t *testing.T) {
+	s, _ := tempStore(t)
+	must(t, s.Save(seedRegistry(t)))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Both indexes must return the same session pointer after Load.
+	byUser := loaded.SessionsByUser("alice@example.com")
+	byProvider := loaded.SessionsByProvider("claude")
+	if len(byUser) != 1 || len(byProvider) != 1 {
+		t.Fatalf("expected 1 session in each index, got byUser=%d byProvider=%d",
+			len(byUser), len(byProvider))
+	}
+	if byUser[0] != byProvider[0] {
+		t.Error("dual-index pointers diverge after round-trip")
+	}
+}
