@@ -42,7 +42,7 @@ func ValidateUser(u *User) []error {
 	case email == "":
 		errs = append(errs, &FieldError{Field: "email", Message: "required"})
 	case !isValidEmail(email):
-		errs = append(errs, &FieldError{Field: "email", Message: "must contain @ and a dot after it"})
+		errs = append(errs, &FieldError{Field: "email", Message: "must contain exactly one @ with a non-empty local part and a domain containing ."})
 	}
 	if strings.TrimSpace(u.Name) == "" {
 		errs = append(errs, &FieldError{Field: "name", Message: "required"})
@@ -126,12 +126,14 @@ func FormatErrors(errs []error) string {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-// isValidEmail returns true when s contains "@" with at least one "." after it.
+// isValidEmail returns true when s has exactly one "@", a non-empty local part
+// before it, and at least one "." in the domain after it.
 // Intentionally light-touch for a personal tool; not RFC 5321 compliant.
 func isValidEmail(s string) bool {
-	at := strings.Index(s, "@")
-	if at < 1 {
+	parts := strings.SplitN(s, "@", 3)
+	if len(parts) != 2 {
 		return false
 	}
-	return strings.Contains(s[at+1:], ".")
+	local, domain := parts[0], parts[1]
+	return len(local) > 0 && strings.Contains(domain, ".")
 }
