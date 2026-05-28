@@ -1,19 +1,21 @@
 # Keyboard map
 
-| Key      | Context                           | Action                      |
-| -------- | --------------------------------- | --------------------------- |
-| `↑↓`     | any list                          | navigate                    |
-| `Tab`    | anywhere                          | rotate focus between panels |
-| `Enter`  | session list                      | expand → focus projects     |
-| `n`      | sessions / projects / standalone  | new item form               |
-| `e`      | any selected item                 | edit form                   |
-| `d`      | any selected item                 | delete (confirm modal)      |
-| `m`      | project or last-question selected | toggle mid-answer           |
-| `Ctrl+S` | form                              | save                        |
-| `Esc`    | form / modal                      | cancel / close              |
-| `s`      | sessions panel                    | switch to standalone screen |
-| `?`      | anywhere                          | help overlay                |
-| `q`      | anywhere                          | quit (confirm if unsaved)   |
+| Key         | Context                           | Action                      |
+| ----------- | --------------------------------- | --------------------------- |
+| `↑↓`        | any list                          | navigate                    |
+| `Tab`       | anywhere                          | rotate focus forward        |
+| `Shift+Tab` | anywhere                          | rotate focus backward       |
+| `Enter`     | session list                      | expand → focus projects     |
+| `n`         | sessions / projects / unattached  | new item form               |
+| `e`         | any selected item                 | edit form                   |
+| `d`         | any selected item                 | delete (confirm modal)      |
+| `Space`     | project or last-question selected | toggle mid-answer           |
+| `Ctrl+S`    | form                              | save                        |
+| `Esc`       | form / modal                      | cancel / close              |
+| `p`         | sessions panel                    | switch to providers screen  |
+| `s`         | sessions panel                    | switch to unattached screen |
+| `?`         | anywhere                          | help overlay                |
+| `q`         | anywhere                          | quit                        |
 
 **Color semantics** (works in 16-color terminals):
 

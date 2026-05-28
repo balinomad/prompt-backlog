@@ -2,6 +2,7 @@ package views
 
 import (
 	"github.com/balinomad/llm-desk/internal/model"
+
 	"github.com/rivo/tview"
 )
 
@@ -34,15 +35,24 @@ type App interface {
 	// component that was active before ShowModal was called.
 	HideModal()
 
-	// SwitchToStandalone switches the main display to the unattached projects
+	// SwitchToProviders switches the display to the providers management screen.
+	SwitchToProviders()
+
+	// SwitchToUnattached switches the main display to the unattached projects
 	// screen.
-	SwitchToStandalone()
+	SwitchToUnattached()
 
 	// SwitchToMain switches the display back to the sessions + detail screen.
 	SwitchToMain()
 
 	// SetStatus displays msg in the status bar. An empty string clears it.
+	// Callers may include tview color tags (e.g. "[red]error[-]").
 	SetStatus(msg string)
+
+	// SetHints replaces the keyboard-hint line in the status bar.
+	// Views call this in their focus handler to show context-relevant bindings.
+	// Use the pre-defined Hints* constants from statusbar.go.
+	SetHints(hints string)
 
 	// Quit stops the application. Called by the quit confirmation modal after
 	// the operator confirms.
