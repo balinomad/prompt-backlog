@@ -6,4 +6,4 @@
 - [ ] Keymap should be rethought. `p`: project or provider? My preference is `p` for project. Then what is for provider?
 - [ ] I want to attach a boolean field to provider that indicates if it supports skills.
 - [ ] We can extend the model with skills, and connect them to sessions. We also need a mechanism to register which version of the skill was installed with which session.
-- [ ]
+- [ ] Unattached is questionable, projects should be used for both attached and unattached.
