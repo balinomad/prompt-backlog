@@ -13,22 +13,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-// ── centeredModal ─────────────────────────────────────────────────────────────
-
-// centeredModal wraps content in a transparent flex overlay so that it
-// appears centred on screen. width and height are the dimensions of the
-// inner content, not the overlay.
-func centeredModal(content tview.Primitive, width, height int) tview.Primitive {
-	return tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(content, height, 1, true).
-			AddItem(nil, 0, 1, false),
-			width, 1, true).
-		AddItem(nil, 0, 1, false)
-}
+// ── Form helper ───────────────────────────────────────────────────────────────
 
 // addCtrlS adds Ctrl+S as an additional save trigger to a form.
 // The form's own button handles the primary click path; this handles keyboard.
@@ -442,12 +427,4 @@ func NewLastQuestionForm(app App, session *model.Session, onClose func()) tview.
 	addCtrlS(form, save)
 
 	return centeredModal(form, 64, 14)
-}
-
-// ── Error modal ───────────────────────────────────────────────────────────────
-
-// errorModal returns a simple message modal for conditions where a form
-// cannot be shown (e.g. no providers configured).
-func errorModal(message string, onClose func()) tview.Primitive {
-	return NewConfirmModal(message, onClose, onClose)
 }

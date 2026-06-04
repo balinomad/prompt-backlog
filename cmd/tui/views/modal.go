@@ -77,6 +77,31 @@ func NewHelpOverlay(app App) tview.Primitive {
 		AddItem(nil, 0, 1, false)
 }
 
+// ── Error modal ───────────────────────────────────────────────────────────────
+
+// errorModal returns a simple message modal for conditions where a form
+// cannot be shown (e.g. no providers configured).
+func errorModal(message string, onClose func()) tview.Primitive {
+	return NewConfirmModal(message, onClose, onClose)
+}
+
+// ── centeredModal ─────────────────────────────────────────────────────────────
+
+// centeredModal wraps content in a transparent flex overlay so that it
+// appears centred on screen. width and height are the dimensions of the
+// inner content, not the overlay.
+func centeredModal(content tview.Primitive, width, height int) tview.Primitive {
+	return tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 1, false).
+			AddItem(content, height, 1, true).
+			AddItem(nil, 0, 1, false),
+			width, 1, true).
+		AddItem(nil, 0, 1, false)
+}
+
 // helpText is the content of the help overlay.
 // tview color tags format key names in bold.
 const helpText = `
