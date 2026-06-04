@@ -1,7 +1,7 @@
-package store
+package json
 
 import (
-	"encoding/json"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/store"
 )
 
-// Compile-time check that JSONStore implements Store.
-var _ Store = (*JSONStore)(nil)
+// Compile-time check that Store implements store.Store interface.
+var _ store.Store = (*Store)(nil)
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 // Private types that mirror the JSON structure exactly.
@@ -54,19 +55,19 @@ type projectDTO struct {
 	Instructions string `json:"instructions,omitempty"`
 }
 
-// ── JSONStore ─────────────────────────────────────────────────────────────────
+// ── Store ─────────────────────────────────────────────────────────────────
 
-// JSONStore persists the registry as a human-readable, indented JSON file.
+// Store persists the registry as a human-readable, indented JSON file.
 // All writes are atomic: data is written to a temporary file in the same
 // directory and renamed into place, so an interrupted write never corrupts
 // the existing file.
-type JSONStore struct {
+type Store struct {
 	path string
 }
 
-// NewJSONStore returns a JSONStore that reads from and writes to path.
-func NewJSONStore(path string) *JSONStore {
-	return &JSONStore{path: path}
+// New returns a Store that reads from and writes to path.
+func New(path string) *Store {
+	return &Store{path: path}
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ func NewJSONStore(path string) *JSONStore {
 // this is the expected first-run state.
 // A zero-byte file is treated as a failed write and returns an error.
 // All other I/O and parse failures are returned with context.
-func (s *JSONStore) Load() (model.Registry, error) {
+func (s *Store) Load() (model.Registry, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -89,7 +90,7 @@ func (s *JSONStore) Load() (model.Registry, error) {
 	}
 
 	var dto registryDTO
-	if err := json.Unmarshal(data, &dto); err != nil {
+	if err := stdjson.Unmarshal(data, &dto); err != nil {
 		return model.Registry{}, fmt.Errorf("store: parse %q: %w", s.path, err)
 	}
 
@@ -258,9 +259,9 @@ func resolveLastQuestions(
 // The data is written to a temporary file in the same directory and renamed
 // into place. An interrupted write therefore never corrupts the existing file.
 // The parent directory is created if it does not yet exist.
-func (s *JSONStore) Save(reg model.Registry) error {
+func (s *Store) Save(reg model.Registry) error {
 	dto := buildDTO(reg)
-	data, err := json.MarshalIndent(dto, "", "  ")
+	data, err := stdjson.MarshalIndent(dto, "", "  ")
 	if err != nil {
 		return fmt.Errorf("store: marshal: %w", err)
 	}

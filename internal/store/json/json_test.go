@@ -1,4 +1,4 @@
-package store_test
+package json_test
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/store"
+	"github.com/balinomad/llm-desk/internal/store/json"
 )
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
@@ -22,10 +22,10 @@ func must(t *testing.T, err error) {
 
 // tempStore returns a JSONStore and its data file path. The file lives in a
 // per-test temp directory that is removed automatically when the test ends.
-func tempStore(t *testing.T) (*store.JSONStore, string) {
+func tempStore(t *testing.T) (*json.Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "registry.json")
-	return store.NewJSONStore(path), path
+	return json.New(path), path
 }
 
 // seedRegistry builds a populated registry for round-trip tests.
@@ -99,7 +99,7 @@ func TestLoad_EmptyFile_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte{}, 0600); err != nil {
 		t.Fatalf("write empty file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for empty file")
 	}
@@ -110,7 +110,7 @@ func TestLoad_InvalidJSON_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json {{{"), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for invalid JSON")
 	}
@@ -128,7 +128,7 @@ func TestLoad_SessionReferencesUnknownUser_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for session referencing unknown user")
 	}
@@ -145,7 +145,7 @@ func TestLoad_SessionReferencesUnknownProvider_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for session referencing unknown provider")
 	}
@@ -162,7 +162,7 @@ func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for project referencing unknown session")
 	}
@@ -180,7 +180,7 @@ func TestLoad_ProjectPartialSessionReference_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for partial session reference in project")
 	}
@@ -203,7 +203,7 @@ func TestLoad_LastQuestionReferencesUnknownProject_ReturnsError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
-	s := store.NewJSONStore(path)
+	s := json.New(path)
 	if _, err := s.Load(); err == nil {
 		t.Error("expected error for last_question referencing unknown project")
 	}
@@ -221,7 +221,7 @@ func TestSave_CreatesFile(t *testing.T) {
 
 func TestSave_CreatesParentDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "dir")
-	s := store.NewJSONStore(filepath.Join(dir, "registry.json"))
+	s := json.New(filepath.Join(dir, "registry.json"))
 	must(t, s.Save(model.NewRegistry()))
 	if _, err := os.Stat(filepath.Join(dir, "registry.json")); err != nil {
 		t.Fatalf("file not created in new directory: %v", err)

@@ -5,13 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/balinomad/llm-desk/internal/store"
+	"github.com/balinomad/llm-desk/internal/store/json"
 )
 
 func main() {
 	dataPath := dataFilePath()
 
-	app, err := New(store.NewJSONStore(dataPath))
+	app, err := New(json.New(dataPath))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
 		os.Exit(1)
