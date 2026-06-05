@@ -1,17 +1,35 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/balinomad/llm-desk/internal/store"
 	"github.com/balinomad/llm-desk/internal/store/json"
 )
 
 func main() {
-	dataPath := dataFilePath()
+	var dataPath string
+	flag.StringVar(&dataPath, "data", "", "path to the data `file` (.json)")
+	flag.StringVar(&dataPath, "d", "", "shorthand for -data")
+	flag.Parse()
 
-	app, err := New(json.New(dataPath))
+	if dataPath == "" {
+		fmt.Fprintf(os.Stderr, "llm-desk: -data flag is required\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	s, err := openStore(dataPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
+		os.Exit(1)
+	}
+
+	app, err := New(s)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
 		os.Exit(1)
@@ -23,19 +41,15 @@ func main() {
 	}
 }
 
-// dataFilePath returns the path to the registry JSON file.
-// It follows the XDG Base Directory Specification:
-//   - $XDG_DATA_HOME/llm-desk/registry.json  (when XDG_DATA_HOME is set)
-//   - $HOME/.local/share/llm-desk/registry.json  (default fallback)
-func dataFilePath() string {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			// Extremely unlikely; fall back to current directory.
-			return filepath.Join(".", "registry.json")
-		}
-		base = filepath.Join(home, ".local", "share")
+// openStore returns a Store implementation for the given data file path.
+// The storage format is determined from the file extension.
+// Supported extensions: .json
+func openStore(path string) (store.Store, error) {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".json":
+		return json.New(path), nil
+	default:
+		return nil, fmt.Errorf("unsupported data file format %q", ext)
 	}
-	return filepath.Join(base, "llm-desk", "registry.json")
 }
