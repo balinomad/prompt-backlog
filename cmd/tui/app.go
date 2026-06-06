@@ -23,11 +23,10 @@ type App struct {
 	pages     *tview.Pages
 	prevFocus tview.Primitive // saved by ShowModal, restored by HideModal
 
-	statusBar  *views.StatusBar
-	sessions   *views.SessionsPanel
-	detail     *views.DetailPanel
-	providers  *views.ProvidersPanel
-	unattached *views.UnattachedPanel
+	statusBar *views.StatusBar
+	sessions  *views.SessionsPanel
+	detail    *views.DetailPanel
+	providers *views.ProvidersPanel
 }
 
 // New loads the registry from s and constructs the fully wired application.
@@ -97,13 +96,6 @@ func (a *App) SwitchToProviders() {
 	a.tv.SetFocus(a.providers)
 }
 
-// SwitchToUnattached refreshes and shows the unattached projects screen.
-func (a *App) SwitchToUnattached() {
-	a.unattached.Refresh()
-	a.pages.SwitchToPage("unattached")
-	a.tv.SetFocus(a.unattached)
-}
-
 // SwitchToMain shows the main sessions + detail screen and returns focus to
 // the sessions list.
 func (a *App) SwitchToMain() {
@@ -137,7 +129,6 @@ func (a *App) build() {
 	a.sessions = views.NewSessionsPanel(a)
 	a.detail = views.NewDetailPanel(a)
 	a.providers = views.NewProvidersPanel(a)
-	a.unattached = views.NewUnattachedPanel(a)
 
 	// Wire session-list selection changes to the detail panel.
 	a.sessions.SetOnSelect(a.detail.SetSession)
@@ -151,8 +142,7 @@ func (a *App) build() {
 	// The "modal" page is added/removed dynamically by ShowModal/HideModal.
 	a.pages = tview.NewPages().
 		AddPage("main", mainFlex, true, true).
-		AddPage("providers", a.providers, true, false).
-		AddPage("unattached", a.unattached, true, false)
+		AddPage("providers", a.providers, true, false)
 
 	// Root layout: content area above, status bar pinned to the bottom.
 	root := tview.NewFlex().
@@ -181,5 +171,4 @@ func (a *App) refreshAll() {
 	a.sessions.Refresh()
 	a.detail.Refresh()
 	a.providers.Refresh()
-	a.unattached.Refresh()
 }

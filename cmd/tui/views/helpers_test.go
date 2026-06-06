@@ -24,7 +24,7 @@ type mockApp struct {
 	registry   model.Registry
 	mutateErr  error
 	modal      tview.Primitive
-	switchedTo string // "main" | "unattached" | "providers"
+	switchedTo string // "main" | "providers"
 	status     string
 	hints      string
 	quitted    bool
@@ -42,7 +42,6 @@ func (m *mockApp) Mutate(fn func(*model.Registry) error) error {
 func (m *mockApp) ShowModal(p tview.Primitive) { m.modal = p }
 func (m *mockApp) HideModal()                  { m.modal = nil }
 func (m *mockApp) SwitchToMain()               { m.switchedTo = "main" }
-func (m *mockApp) SwitchToUnattached()         { m.switchedTo = "unattached" }
 func (m *mockApp) SwitchToProviders()          { m.switchedTo = "providers" }
 func (m *mockApp) SetStatus(msg string)        { m.status = msg }
 func (m *mockApp) SetHints(hints string)       { m.hints = hints }

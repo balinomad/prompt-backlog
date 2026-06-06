@@ -120,7 +120,6 @@ func TestSessionsPanel_Keys_SwitchScreens(t *testing.T) {
 		wantSwitch string
 	}{
 		{"providers", KeyProviders, "providers"},
-		{"unattached", KeyUnattached, "unattached"},
 	}
 	for _, tc := range cases {
 		tc := tc

@@ -118,7 +118,7 @@ const helpText = `
   [::b]Space[-::-]             Toggle mid-answer flag
 
 [::b]Screens[-::-]
-  [::b]s[-::-]                 Unattached projects screen
+  [::b]p[-::-]                 Providers screen
 
 [::b]Forms[-::-]
   [::b]Ctrl+S[-::-]            Save

@@ -34,7 +34,6 @@ func TestStatusBar_SetHints(t *testing.T) {
 	}{
 		{"sessions panel", HintsSessionsPanel},
 		{"projects panel", HintsProjectsPanel},
-		{"unattached panel", HintsUnattachedPanel},
 		{"providers panel", HintsProvidersPanel},
 		{"form", HintsForm},
 		{"confirm modal", HintsConfirmModal},
@@ -61,7 +60,6 @@ func TestStatusBar_AllHintsConstantsNonEmpty(t *testing.T) {
 	}{
 		{"HintsSessionsPanel", HintsSessionsPanel},
 		{"HintsProjectsPanel", HintsProjectsPanel},
-		{"HintsUnattachedPanel", HintsUnattachedPanel},
 		{"HintsProvidersPanel", HintsProvidersPanel},
 		{"HintsForm", HintsForm},
 		{"HintsConfirmModal", HintsConfirmModal},

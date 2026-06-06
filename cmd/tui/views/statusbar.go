@@ -11,7 +11,7 @@ import (
 const (
 	// HintsSessionsPanel is shown when the sessions list has focus.
 	HintsSessionsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]p[-::-] providers  [::b]s[-::-] unattached  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+		"  [::b]p[-::-] providers  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
 
 	// HintsProjectsPanel is shown when the projects list has focus.
 	HintsProjectsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
@@ -19,10 +19,6 @@ const (
 
 	// HintsProvidersPanel is shown when the providers screen has focus.
 	HintsProvidersPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
-
-	// HintsUnattachedPanel is shown when the unattached projects screen has focus.
-	HintsUnattachedPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
 		"  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
 
 	// HintsForm is shown when a form modal is open.

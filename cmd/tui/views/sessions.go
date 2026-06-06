@@ -165,10 +165,6 @@ func (p *SessionsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			p.app.SwitchToProviders()
 			return nil
 
-		case KeyUnattached:
-			p.app.SwitchToUnattached()
-			return nil
-
 		case KeyHelp:
 			p.app.SetHints(HintsHelpOverlay)
 			p.app.ShowModal(NewHelpOverlay(p.app))

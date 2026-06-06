@@ -26,9 +26,6 @@ const (
 
 	// KeyProviders switches to the providers management screen.
 	KeyProviders rune = 'p'
-
-	// KeyUnattached switches the sessions panel to the unattached projects screen.
-	KeyUnattached rune = 's'
 )
 
 // ── Special keys (checked via event.Key()) ───────────────────────────────────

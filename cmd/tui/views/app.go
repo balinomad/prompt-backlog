@@ -38,10 +38,6 @@ type App interface {
 	// SwitchToProviders switches the display to the providers management screen.
 	SwitchToProviders()
 
-	// SwitchToUnattached switches the main display to the unattached projects
-	// screen.
-	SwitchToUnattached()
-
 	// SwitchToMain switches the display back to the sessions + detail screen.
 	SwitchToMain()
 
