@@ -215,7 +215,7 @@ func TestValidateLastQuestion_AllCombinationsValid(t *testing.T) {
 // ── ValidateProjectAssignment ─────────────────────────────────────────────────
 
 func TestValidateProjectAssignment_NilSession(t *testing.T) {
-	// nil session means unattached project — always valid.
+	// nil session — no session association to validate, always valid.
 	if errs := model.ValidateProjectAssignment(nil); len(errs) != 0 {
 		t.Errorf("expected no errors for nil session, got: %v", errs)
 	}
@@ -269,7 +269,7 @@ func TestFormatErrors_Single(t *testing.T) {
 }
 
 func TestFormatErrors_Multiple(t *testing.T) {
-	errs := model.ValidateUser(model.NewUser("", "")) // 2 errors
+	errs := model.ValidateUser(model.NewUser("", ""))
 	s := model.FormatErrors(errs)
 	if !strings.Contains(s, "; ") {
 		t.Errorf("expected semicolon separator in %q", s)

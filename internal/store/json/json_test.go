@@ -20,7 +20,7 @@ func must(t *testing.T, err error) {
 	}
 }
 
-// tempStore returns a JSONStore and its data file path. The file lives in a
+// tempStore returns a Store and its data file path. The file lives in a
 // per-test temp directory that is removed automatically when the test ends.
 func tempStore(t *testing.T) (*json.Store, string) {
 	t.Helper()
@@ -34,9 +34,9 @@ func tempStore(t *testing.T) (*json.Store, string) {
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
 //	Sessions:  alice → claude (with LastQuestion + NextPromptAt)
 //	           bob   → chatgpt
-//	Projects:  "Alpha" (alice/claude, with Description+Instructions)
-//	           "Beta"  (alice/claude)
-//	           "Orphan" (unattached)
+//	Projects:  "Alpha" (attached: alice/claude, with Description+Instructions)
+//	           "Beta"  (attached: alice/claude)
+//	           "Orphan" (no sessions)
 func seedRegistry(t *testing.T) model.Registry {
 	t.Helper()
 	reg := model.NewRegistry()
@@ -52,12 +52,10 @@ func seedRegistry(t *testing.T) model.Registry {
 		reg.UserByEmail("bob@example.com"),
 		reg.ProviderByName("chatgpt"),
 	)))
-	must(t, reg.AddProject(model.NewSessionProject("Alpha",
-		reg.SessionAt("alice@example.com", "claude"),
-	)))
-	must(t, reg.AddProject(model.NewSessionProject("Beta",
-		reg.SessionAt("alice@example.com", "claude"),
-	)))
+	must(t, reg.AddProject(model.NewProject("Alpha")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
+	must(t, reg.AddProject(model.NewProject("Beta")))
+	must(t, reg.AttachProject("Beta", reg.SessionAt("alice@example.com", "claude")))
 	must(t, reg.AddProject(model.NewProject("Orphan")))
 
 	// Enrich alice's session with a LastQuestion and a NextPromptAt.
@@ -157,7 +155,11 @@ func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
 		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
 		"users": {"alice@example.com": {"name": "Alice"}},
 		"sessions": {},
-		"projects": {"Alpha": {"user_email": "alice@example.com", "provider": "claude"}}
+		"projects": {
+			"Alpha": {
+				"sessions": [{"user_email": "alice@example.com", "provider": "claude"}]
+			}
+		}
 	}`
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -170,12 +172,16 @@ func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
 
 func TestLoad_ProjectPartialSessionReference_ReturnsError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "registry.json")
-	// user_email set but provider missing.
+	// user_email set but provider empty in the session reference.
 	raw := `{
 		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
 		"users": {"alice@example.com": {"name": "Alice"}},
 		"sessions": {"alice@example.com": {"claude": {}}},
-		"projects": {"Alpha": {"user_email": "alice@example.com"}}
+		"projects": {
+			"Alpha": {
+				"sessions": [{"user_email": "alice@example.com"}]
+			}
+		}
 	}`
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -249,8 +255,7 @@ func TestSave_FileIsValidJSON(t *testing.T) {
 
 func TestRoundTrip_Providers(t *testing.T) {
 	s, _ := tempStore(t)
-	original := seedRegistry(t)
-	must(t, s.Save(original))
+	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -396,20 +401,56 @@ func TestRoundTrip_Projects(t *testing.T) {
 	}
 }
 
-func TestRoundTrip_Project_SessionPointer(t *testing.T) {
+func TestRoundTrip_Project_SessionPointers(t *testing.T) {
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	alpha := loaded.ProjectByName("Alpha")
-	if alpha.Session() == nil {
-		t.Fatal("Alpha.Session should not be nil")
+	sessions := loaded.SessionsByProject("Alpha")
+	if len(sessions) != 1 {
+		t.Fatalf("Alpha should have 1 session after round-trip, got %d", len(sessions))
 	}
-	// Pointer must be the same object as the one in the sessions index.
-	if alpha.Session() != loaded.SessionAt("alice@example.com", "claude") {
-		t.Error("Alpha.Session is not the same pointer as the registry session")
+	if sessions[0] != loaded.SessionAt("alice@example.com", "claude") {
+		t.Error("Alpha session is not the same pointer as the registry session")
+	}
+}
+
+func TestRoundTrip_Project_MultiSession(t *testing.T) {
+	// A project attached to two sessions round-trips with both associations intact.
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("claude"),
+	)))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("gemini"),
+	)))
+	must(t, reg.AddProject(model.NewProject("Alpha")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "gemini")))
+
+	s, _ := tempStore(t)
+	must(t, s.Save(reg))
+	loaded, err := s.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if n := len(loaded.SessionsByProject("Alpha")); n != 2 {
+		t.Errorf("Alpha should have 2 sessions after round-trip, got %d", n)
+	}
+	for _, providerName := range []string{"claude", "gemini"} {
+		sess := loaded.SessionAt("alice@example.com", providerName)
+		projects := loaded.ProjectsBySession(sess)
+		if len(projects) != 1 || projects[0].Name() != "Alpha" {
+			t.Errorf("Alpha not found in ProjectsBySession for alice/%s after round-trip",
+				providerName)
+		}
 	}
 }
 
@@ -424,8 +465,8 @@ func TestRoundTrip_UnattachedProject(t *testing.T) {
 	if orphan == nil {
 		t.Fatal("project Orphan not found after round-trip")
 	}
-	if !orphan.IsUnattached() {
-		t.Error("Orphan should be unattached after round-trip")
+	if sessions := loaded.SessionsByProject("Orphan"); len(sessions) != 0 {
+		t.Errorf("Orphan should have no sessions after round-trip, got %d", len(sessions))
 	}
 }
 

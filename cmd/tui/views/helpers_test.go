@@ -52,7 +52,7 @@ func (m *mockApp) Quit()                       { m.quitted = true }
 //	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
 //	Sessions:  alice → claude, bob → chatgpt
-//	Projects:  "Alpha" and "Beta" (alice/claude), "Orphan" (unattached)
+//	Projects:  "Alpha" and "Beta" (attached: alice/claude), "Orphan" (no sessions)
 func newMockApp(t *testing.T) *mockApp {
 	t.Helper()
 	reg := model.NewRegistry()
@@ -68,12 +68,10 @@ func newMockApp(t *testing.T) *mockApp {
 		reg.UserByEmail("bob@example.com"),
 		reg.ProviderByName("chatgpt"),
 	)))
-	must(t, reg.AddProject(model.NewSessionProject("Alpha",
-		reg.SessionAt("alice@example.com", "claude"),
-	)))
-	must(t, reg.AddProject(model.NewSessionProject("Beta",
-		reg.SessionAt("alice@example.com", "claude"),
-	)))
+	must(t, reg.AddProject(model.NewProject("Alpha")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
+	must(t, reg.AddProject(model.NewProject("Beta")))
+	must(t, reg.AttachProject("Beta", reg.SessionAt("alice@example.com", "claude")))
 	must(t, reg.AddProject(model.NewProject("Orphan")))
 	return &mockApp{registry: reg}
 }

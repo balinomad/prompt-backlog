@@ -142,32 +142,10 @@ func TestSession_LastQuestion_Mutable(t *testing.T) {
 
 // ── Project ───────────────────────────────────────────────────────────────────
 
-func TestNewProject_Unattached(t *testing.T) {
+func TestNewProject_Fields(t *testing.T) {
 	p := model.NewProject("Alpha")
 	if p.Name() != "Alpha" {
 		t.Errorf("Name: got %q, want %q", p.Name(), "Alpha")
-	}
-	if p.Session() != nil {
-		t.Error("Session: expected nil for unattached project")
-	}
-	if !p.IsUnattached() {
-		t.Error("IsUnattached: expected true")
-	}
-}
-
-func TestNewSessionProject_Attached(t *testing.T) {
-	u := model.NewUser("alice@example.com", "Alice")
-	prov := model.NewProvider("claude", true, false)
-	s := model.NewSession(u, prov)
-	p := model.NewSessionProject("Alpha", s)
-	if p.Name() != "Alpha" {
-		t.Errorf("Name: got %q, want %q", p.Name(), "Alpha")
-	}
-	if p.Session() != s {
-		t.Error("Session: pointer mismatch")
-	}
-	if p.IsUnattached() {
-		t.Error("IsUnattached: expected false for attached project")
 	}
 }
 

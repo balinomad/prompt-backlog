@@ -21,7 +21,8 @@ func must(t *testing.T, err error) {
 //	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
 //	Sessions:  alice → claude, bob → chatgpt
-//	Projects:  "Alpha" (alice/claude), "Beta" (alice/claude), "Orphan" (unattached)
+//	Projects:  "Alpha" (attached: alice/claude), "Beta" (attached: alice/claude),
+//	           "Orphan" (no sessions)
 func seedRegistry(t *testing.T) model.Registry {
 	t.Helper()
 	reg := model.NewRegistry()
@@ -37,12 +38,10 @@ func seedRegistry(t *testing.T) model.Registry {
 		reg.UserByEmail("bob@example.com"),
 		reg.ProviderByName("chatgpt"),
 	)))
-	must(t, reg.AddProject(model.NewSessionProject("Alpha",
-		reg.SessionAt("alice@example.com", "claude"),
-	)))
-	must(t, reg.AddProject(model.NewSessionProject("Beta",
-		reg.SessionAt("alice@example.com", "claude"),
-	)))
+	must(t, reg.AddProject(model.NewProject("Alpha")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
+	must(t, reg.AddProject(model.NewProject("Beta")))
+	must(t, reg.AttachProject("Beta", reg.SessionAt("alice@example.com", "claude")))
 	must(t, reg.AddProject(model.NewProject("Orphan")))
 	return reg
 }
@@ -368,14 +367,14 @@ func TestRemoveSession_CleansProviderIndex(t *testing.T) {
 func TestRemoveSession_DetachesProjects(t *testing.T) {
 	reg := seedRegistry(t)
 	must(t, reg.RemoveSession("alice@example.com", "claude"))
-	// Alpha and Beta were attached to alice/claude; they must now be unattached.
+	// Alpha and Beta were attached to alice/claude; they must now have no sessions.
 	for _, name := range []string{"Alpha", "Beta"} {
-		p := reg.ProjectByName(name)
-		if p == nil {
+		if reg.ProjectByName(name) == nil {
 			t.Fatalf("project %q should still exist after session removal", name)
 		}
-		if !p.IsUnattached() {
-			t.Errorf("project %q should be unattached after session removal", name)
+		if sessions := reg.SessionsByProject(name); len(sessions) != 0 {
+			t.Errorf("project %q should have no sessions after removal, got %d",
+				name, len(sessions))
 		}
 	}
 }
@@ -398,19 +397,10 @@ func TestRemoveSession_NotFound(t *testing.T) {
 
 // ── Project CRUD ──────────────────────────────────────────────────────────────
 
-func TestAddProject_StandaloneSuccess(t *testing.T) {
+func TestAddProject_Success(t *testing.T) {
 	reg := model.NewRegistry()
 	must(t, reg.AddProject(model.NewProject("Orphan")))
 	if reg.ProjectByName("Orphan") == nil {
-		t.Error("project not found after add")
-	}
-}
-
-func TestAddProject_SessionSuccess(t *testing.T) {
-	reg := seedRegistry(t)
-	s := reg.SessionAt("alice@example.com", "claude")
-	must(t, reg.AddProject(model.NewSessionProject("Gamma", s)))
-	if reg.ProjectByName("Gamma") == nil {
 		t.Error("project not found after add")
 	}
 }
@@ -434,16 +424,6 @@ func TestAddProject_Duplicate(t *testing.T) {
 	must(t, reg.AddProject(model.NewProject("Alpha")))
 	if err := reg.AddProject(model.NewProject("Alpha")); err == nil {
 		t.Error("expected error for duplicate name")
-	}
-}
-
-func TestAddProject_ProviderDoesNotSupportProjects(t *testing.T) {
-	reg := seedRegistry(t)
-	// bob uses chatgpt which has HasProjects=false.
-	s := reg.SessionAt("bob@example.com", "chatgpt")
-	p := model.NewSessionProject("X", s)
-	if err := reg.AddProject(p); err == nil {
-		t.Error("expected error: provider does not support projects")
 	}
 }
 
@@ -512,11 +492,73 @@ func TestProjectsBySession_NeverNil(t *testing.T) {
 	}
 }
 
+// ── SessionsByProject ─────────────────────────────────────────────────────────
+
+func TestSessionsByProject_ReturnsAttachedSessions(t *testing.T) {
+	reg := seedRegistry(t)
+	sessions := reg.SessionsByProject("Alpha")
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session for Alpha, got %d", len(sessions))
+	}
+	if sessions[0] != reg.SessionAt("alice@example.com", "claude") {
+		t.Error("SessionsByProject: unexpected session pointer")
+	}
+}
+
+func TestSessionsByProject_UnattachedReturnsEmpty(t *testing.T) {
+	reg := seedRegistry(t)
+	sessions := reg.SessionsByProject("Orphan")
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions for Orphan, got %d", len(sessions))
+	}
+}
+
+func TestSessionsByProject_NeverNil(t *testing.T) {
+	reg := model.NewRegistry()
+	if reg.SessionsByProject("ghost") == nil {
+		t.Error("SessionsByProject: expected non-nil empty slice")
+	}
+}
+
+func TestSessionsByProject_MultiSession(t *testing.T) {
+	// A project attached to two sessions from different providers must appear
+	// in both SessionsByProject and both ProjectsBySession lookups.
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("claude"),
+	)))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("gemini"),
+	)))
+	must(t, reg.AddProject(model.NewProject("Alpha")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "gemini")))
+
+	if n := len(reg.SessionsByProject("Alpha")); n != 2 {
+		t.Errorf("expected 2 sessions for Alpha, got %d", n)
+	}
+	for _, providerName := range []string{"claude", "gemini"} {
+		s := reg.SessionAt("alice@example.com", providerName)
+		projects := reg.ProjectsBySession(s)
+		if len(projects) != 1 || projects[0].Name() != "Alpha" {
+			t.Errorf("Alpha not found in ProjectsBySession for alice/%s", providerName)
+		}
+	}
+}
+
+// ── AttachProject ─────────────────────────────────────────────────────────────
+
 func TestAttachProject_Success(t *testing.T) {
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
 	must(t, reg.AttachProject("Orphan", s))
-	if reg.ProjectByName("Orphan").Session() != s {
+	sessions := reg.SessionsByProject("Orphan")
+	if len(sessions) != 1 || sessions[0] != s {
 		t.Error("Orphan should be attached to alice/claude after attach")
 	}
 }
@@ -536,29 +578,92 @@ func TestAttachProject_NilSession(t *testing.T) {
 	}
 }
 
+func TestAttachProject_SessionNotInRegistry(t *testing.T) {
+	reg := seedRegistry(t)
+	outsideSession := model.NewSession(
+		model.NewUser("x@example.com", "X"),
+		model.NewProvider("claude", true, false),
+	)
+	if err := reg.AttachProject("Orphan", outsideSession); err == nil {
+		t.Error("expected error: session not registered in this registry")
+	}
+}
+
 func TestAttachProject_ProviderDoesNotSupportProjects(t *testing.T) {
 	reg := seedRegistry(t)
-	// bob/chatgpt does not support projects.
+	must(t, reg.AddProject(model.NewProject("X")))
 	s := reg.SessionAt("bob@example.com", "chatgpt")
-	if err := reg.AttachProject("Orphan", s); err == nil {
+	if err := reg.AttachProject("X", s); err == nil {
 		t.Error("expected error: provider does not support projects")
 	}
 }
 
+func TestAttachProject_Duplicate(t *testing.T) {
+	reg := seedRegistry(t)
+	// Alpha is already attached to alice/claude in seedRegistry.
+	s := reg.SessionAt("alice@example.com", "claude")
+	if err := reg.AttachProject("Alpha", s); err == nil {
+		t.Error("expected error for duplicate attachment")
+	}
+}
+
+func TestAttachProject_PopulatesBothIndexes(t *testing.T) {
+	reg := seedRegistry(t)
+	s := reg.SessionAt("alice@example.com", "claude")
+	// Verify both indexes agree for Alpha (attached in seedRegistry).
+	projectsForSession := reg.ProjectsBySession(s)
+	var foundViaSession bool
+	for _, p := range projectsForSession {
+		if p.Name() == "Alpha" {
+			foundViaSession = true
+			break
+		}
+	}
+	if !foundViaSession {
+		t.Error("Alpha not found via ProjectsBySession")
+	}
+	sessionsForProject := reg.SessionsByProject("Alpha")
+	if len(sessionsForProject) == 0 || sessionsForProject[0] != s {
+		t.Error("SessionsByProject returned wrong result for Alpha")
+	}
+}
+
+// ── DetachProject ─────────────────────────────────────────────────────────────
+
 func TestDetachProject_Success(t *testing.T) {
 	reg := seedRegistry(t)
-	must(t, reg.DetachProject("Alpha"))
-	if !reg.ProjectByName("Alpha").IsUnattached() {
-		t.Error("Alpha should be unattached after detach")
+	s := reg.SessionAt("alice@example.com", "claude")
+	must(t, reg.DetachProject("Alpha", s))
+	if sessions := reg.SessionsByProject("Alpha"); len(sessions) != 0 {
+		t.Errorf("Alpha should have no sessions after detach, got %d", len(sessions))
 	}
 }
 
 func TestDetachProject_NotFound(t *testing.T) {
-	reg := model.NewRegistry()
-	if err := reg.DetachProject("ghost"); err == nil {
+	reg := seedRegistry(t)
+	s := reg.SessionAt("alice@example.com", "claude")
+	if err := reg.DetachProject("ghost", s); err == nil {
 		t.Error("expected error for unknown project")
 	}
 }
+
+func TestDetachProject_NilSession(t *testing.T) {
+	reg := seedRegistry(t)
+	if err := reg.DetachProject("Alpha", nil); err == nil {
+		t.Error("expected error for nil session")
+	}
+}
+
+func TestDetachProject_NotAttached(t *testing.T) {
+	reg := seedRegistry(t)
+	// Orphan has no sessions; detach must fail.
+	s := reg.SessionAt("alice@example.com", "claude")
+	if err := reg.DetachProject("Orphan", s); err == nil {
+		t.Error("expected error: project not attached to session")
+	}
+}
+
+// ── RemoveProject ─────────────────────────────────────────────────────────────
 
 func TestRemoveProject_Success(t *testing.T) {
 	reg := seedRegistry(t)
@@ -572,6 +677,22 @@ func TestRemoveProject_NotFound(t *testing.T) {
 	reg := model.NewRegistry()
 	if err := reg.RemoveProject("ghost"); err == nil {
 		t.Error("expected error for unknown project")
+	}
+}
+
+func TestRemoveProject_CleansIndexes(t *testing.T) {
+	reg := seedRegistry(t)
+	must(t, reg.RemoveProject("Alpha"))
+	// Alpha must no longer appear in ProjectsBySession for alice/claude.
+	s := reg.SessionAt("alice@example.com", "claude")
+	for _, p := range reg.ProjectsBySession(s) {
+		if p.Name() == "Alpha" {
+			t.Error("Alpha still visible via ProjectsBySession after removal")
+		}
+	}
+	// SessionsByProject must return empty for the removed project.
+	if sessions := reg.SessionsByProject("Alpha"); len(sessions) != 0 {
+		t.Errorf("SessionsByProject should be empty after removal, got %d", len(sessions))
 	}
 }
 

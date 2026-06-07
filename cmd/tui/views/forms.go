@@ -182,8 +182,8 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 // ── Project form ──────────────────────────────────────────────────────────────
 
 // NewProjectForm returns a form for creating or editing a project.
-// When project is nil a new project is created attached to session (or
-// unattached when session is also nil); otherwise the project is edited.
+// When project is nil a new project is created and, if session is non-nil,
+// immediately attached to that session. Otherwise the project is edited.
 func NewProjectForm(app App, project *model.Project, session *model.Session, onClose func()) tview.Primitive {
 	isEdit := project != nil
 
@@ -236,19 +236,20 @@ func NewProjectForm(app App, project *model.Project, session *model.Session, onC
 				return
 			}
 			if err := app.Mutate(func(r *model.Registry) error {
-				var p *model.Project
+				p := model.NewProject(nameVal)
+				p.Description = descVal
+				p.Instructions = instrVal
+				if err := r.AddProject(p); err != nil {
+					return err
+				}
 				if session != nil {
 					s := r.SessionAt(session.User().Email(), session.Provider().Name())
 					if s == nil {
 						return fmt.Errorf("session not found")
 					}
-					p = model.NewSessionProject(nameVal, s)
-				} else {
-					p = model.NewProject(nameVal)
+					return r.AttachProject(nameVal, s)
 				}
-				p.Description = descVal
-				p.Instructions = instrVal
-				return r.AddProject(p)
+				return nil
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return

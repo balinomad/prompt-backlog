@@ -179,19 +179,28 @@ func (r *Registry) SessionsByProvider(providerName string) []*Session {
 	return result
 }
 
-// RemoveSession removes a session from both indexes.
-// Projects attached to this session are detached rather than deleted;
-// they become unattached projects.
+// RemoveSession removes a session from both session indexes and detaches it
+// from all projects that referenced it.
 func (r *Registry) RemoveSession(userEmail, providerName string) error {
 	s := r.SessionAt(userEmail, providerName)
 	if s == nil {
 		return fmt.Errorf("remove session: no session for %q/%q", userEmail, providerName)
 	}
-	for _, p := range r.projects {
-		if p.session == s {
-			p.session = nil // in-place mutation: project becomes unattached
+	// Detach this session from every project that referenced it.
+	for projectName := range r.projectsBySession[userEmail][providerName] {
+		delete(r.sessionsByProject[projectName][userEmail], providerName)
+		if len(r.sessionsByProject[projectName][userEmail]) == 0 {
+			delete(r.sessionsByProject[projectName], userEmail)
+		}
+		if len(r.sessionsByProject[projectName]) == 0 {
+			delete(r.sessionsByProject, projectName)
 		}
 	}
+	delete(r.projectsBySession[userEmail], providerName)
+	if len(r.projectsBySession[userEmail]) == 0 {
+		delete(r.projectsBySession, userEmail)
+	}
+	// Remove from session indexes.
 	delete(r.sessionsByUser[userEmail], providerName)
 	if len(r.sessionsByUser[userEmail]) == 0 {
 		delete(r.sessionsByUser, userEmail)
@@ -206,9 +215,10 @@ func (r *Registry) RemoveSession(userEmail, providerName string) error {
 // ── Project ───────────────────────────────────────────────────────────────────
 
 // AddProject inserts a project into the registry.
-// Returns an error when the project is nil, has an empty name, a project with
-// the same name already exists, or the session's provider does not support
-// projects.
+// Returns an error when the project is nil, has an empty name, or a project
+// with the same name already exists.
+// The project starts with no session associations; use AttachProject to
+// associate it with one or more sessions.
 func (r *Registry) AddProject(p *Project) error {
 	if p == nil {
 		return fmt.Errorf("add project: nil pointer")
@@ -218,10 +228,6 @@ func (r *Registry) AddProject(p *Project) error {
 	}
 	if _, exists := r.projects[p.name]; exists {
 		return fmt.Errorf("add project: %q already exists", p.name)
-	}
-	if p.session != nil && !p.session.provider.HasProjects {
-		return fmt.Errorf("add project: provider %q does not support projects",
-			p.session.provider.name)
 	}
 	r.projects[p.name] = p
 	return nil
@@ -242,62 +248,119 @@ func (r *Registry) AllProjects() []*Project {
 	return result
 }
 
-// UnattachedProjects returns all projects not attached to any session.
+// UnattachedProjects returns all projects not associated with any session.
 // Returns a non-nil empty slice when none are found.
 func (r *Registry) UnattachedProjects() []*Project {
 	result := make([]*Project, 0)
-	for _, p := range r.projects {
-		if p.session == nil {
+	for name, p := range r.projects {
+		if len(r.sessionsByProject[name]) == 0 {
 			result = append(result, p)
 		}
 	}
 	return result
 }
 
-// ProjectsBySession returns all projects attached to the given session.
-// Returns a non-nil empty slice when none are found.
+// ProjectsBySession returns all projects associated with the given session.
+// Returns a non-nil empty slice when none are found or s is nil.
 func (r *Registry) ProjectsBySession(s *Session) []*Project {
 	result := make([]*Project, 0)
-	for _, p := range r.projects {
-		if p.session == s {
-			result = append(result, p)
+	if s == nil {
+		return result
+	}
+	for _, p := range r.projectsBySession[s.user.email][s.provider.name] {
+		result = append(result, p)
+	}
+	return result
+}
+
+// SessionsByProject returns all sessions associated with the given project.
+// Returns a non-nil empty slice when none are found or the project is unknown.
+func (r *Registry) SessionsByProject(projectName string) []*Session {
+	result := make([]*Session, 0)
+	for _, providers := range r.sessionsByProject[projectName] {
+		for _, s := range providers {
+			result = append(result, s)
 		}
 	}
 	return result
 }
 
-// AttachProject sets the session for an existing project.
-// Returns an error when the project is not found, the session is nil, or
-// the session's provider does not support projects.
-// To make a project unattached, use DetachProject.
+// AttachProject associates a project with a session.
+// Returns an error when the project is not found, the session is nil or not
+// registered in this registry, the session's provider does not support
+// projects, or the project is already associated with this session.
 func (r *Registry) AttachProject(projectName string, session *Session) error {
-	p := r.projects[projectName]
-	if p == nil {
+	if r.projects[projectName] == nil {
 		return fmt.Errorf("attach project: %q not found", projectName)
 	}
 	if session == nil {
-		return fmt.Errorf("attach project: session is nil — use DetachProject to make a project unattached")
+		return fmt.Errorf("attach project: session is nil")
+	}
+	if r.SessionAt(session.user.email, session.provider.name) != session {
+		return fmt.Errorf("attach project: session %q/%q is not registered in this registry",
+			session.user.email, session.provider.name)
 	}
 	if !session.provider.HasProjects {
 		return fmt.Errorf("attach project: provider %q does not support projects",
 			session.provider.name)
 	}
-	p.session = session // in-place mutation
+	if r.sessionsByProject[projectName][session.user.email][session.provider.name] != nil {
+		return fmt.Errorf("attach project: %q is already attached to session %q/%q",
+			projectName, session.user.email, session.provider.name)
+	}
+	// Update sessionsByProject index.
+	if r.sessionsByProject[projectName] == nil {
+		r.sessionsByProject[projectName] = make(map[string]map[string]*Session)
+	}
+	if r.sessionsByProject[projectName][session.user.email] == nil {
+		r.sessionsByProject[projectName][session.user.email] = make(map[string]*Session)
+	}
+	r.sessionsByProject[projectName][session.user.email][session.provider.name] = session
+	// Update projectsBySession index.
+	if r.projectsBySession[session.user.email] == nil {
+		r.projectsBySession[session.user.email] = make(map[string]map[string]*Project)
+	}
+	if r.projectsBySession[session.user.email][session.provider.name] == nil {
+		r.projectsBySession[session.user.email][session.provider.name] = make(map[string]*Project)
+	}
+	r.projectsBySession[session.user.email][session.provider.name][projectName] = r.projects[projectName]
 	return nil
 }
 
-// DetachProject makes an existing project unattached by clearing its session.
-// The project remains in the registry.
-func (r *Registry) DetachProject(projectName string) error {
-	p := r.projects[projectName]
-	if p == nil {
+// DetachProject removes the association between a project and a specific session.
+// Returns an error when the project is not found, the session is nil, or the
+// project is not currently associated with that session.
+func (r *Registry) DetachProject(projectName string, session *Session) error {
+	if r.projects[projectName] == nil {
 		return fmt.Errorf("detach project: %q not found", projectName)
 	}
-	p.session = nil // in-place mutation
+	if session == nil {
+		return fmt.Errorf("detach project: session is nil")
+	}
+	if r.sessionsByProject[projectName][session.user.email][session.provider.name] == nil {
+		return fmt.Errorf("detach project: %q is not attached to session %q/%q",
+			projectName, session.user.email, session.provider.name)
+	}
+	// Remove from sessionsByProject index.
+	delete(r.sessionsByProject[projectName][session.user.email], session.provider.name)
+	if len(r.sessionsByProject[projectName][session.user.email]) == 0 {
+		delete(r.sessionsByProject[projectName], session.user.email)
+	}
+	if len(r.sessionsByProject[projectName]) == 0 {
+		delete(r.sessionsByProject, projectName)
+	}
+	// Remove from projectsBySession index.
+	delete(r.projectsBySession[session.user.email][session.provider.name], projectName)
+	if len(r.projectsBySession[session.user.email][session.provider.name]) == 0 {
+		delete(r.projectsBySession[session.user.email], session.provider.name)
+	}
+	if len(r.projectsBySession[session.user.email]) == 0 {
+		delete(r.projectsBySession, session.user.email)
+	}
 	return nil
 }
 
-// RemoveProject removes a project from the registry.
+// RemoveProject removes a project from the registry and cleans up all indexes.
 // Any session whose LastQuestion references this project has its project
 // pointer cleared to prevent a dangling reference.
 func (r *Registry) RemoveProject(name string) error {
@@ -305,13 +368,27 @@ func (r *Registry) RemoveProject(name string) error {
 	if !exists {
 		return fmt.Errorf("remove project: %q not found", name)
 	}
+	// Clear LastQuestion pointers in all sessions that reference this project.
 	for _, providers := range r.sessionsByUser {
 		for _, s := range providers {
 			if s.LastQuestion != nil && s.LastQuestion.project == p {
-				s.LastQuestion.project = nil // in-place mutation
+				s.LastQuestion.project = nil
 			}
 		}
 	}
+	// Remove from both project-session indexes.
+	for userEmail, providers := range r.sessionsByProject[name] {
+		for providerName := range providers {
+			delete(r.projectsBySession[userEmail][providerName], name)
+			if len(r.projectsBySession[userEmail][providerName]) == 0 {
+				delete(r.projectsBySession[userEmail], providerName)
+			}
+			if len(r.projectsBySession[userEmail]) == 0 {
+				delete(r.projectsBySession, userEmail)
+			}
+		}
+	}
+	delete(r.sessionsByProject, name)
 	delete(r.projects, name)
 	return nil
 }

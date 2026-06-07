@@ -87,9 +87,9 @@ func ValidateLastQuestion(_ *LastQuestion) []error {
 // ── Context-aware validators ──────────────────────────────────────────────────
 
 // ValidateProjectAssignment verifies that the given session supports projects.
-// Call this before constructing a NewSessionProject or calling AttachProject
-// to surface a user-friendly error before the operation is attempted.
-// Passing a nil session is valid — it means the project will be unattached.
+// Call this before AttachProject to surface a user-friendly error before the
+// operation is attempted. Passing a nil session is valid — there is no session
+// association to validate.
 func ValidateProjectAssignment(s *Session) []error {
 	if s == nil {
 		return nil // unattached project — always valid

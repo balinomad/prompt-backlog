@@ -48,14 +48,21 @@ type lastQuestionDTO struct {
 	NextPrompt  string `json:"next_prompt,omitempty"`
 }
 
-type projectDTO struct {
-	UserEmail    string `json:"user_email,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Description  string `json:"description,omitempty"`
-	Instructions string `json:"instructions,omitempty"`
+// sessionRefDTO is a lightweight reference to a session by its natural keys.
+type sessionRefDTO struct {
+	UserEmail string `json:"user_email"`
+	Provider  string `json:"provider"`
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────
+// projectDTO stores a project with an optional list of session associations.
+// An empty or absent Sessions slice means the project is unattached.
+type projectDTO struct {
+	Sessions     []sessionRefDTO `json:"sessions,omitempty"`
+	Description  string          `json:"description,omitempty"`
+	Instructions string          `json:"instructions,omitempty"`
+}
+
+// ── Store ─────────────────────────────────────────────────────────────────────
 
 // Store persists the registry as a human-readable, indented JSON file.
 // All writes are atomic: data is written to a temporary file in the same
@@ -103,7 +110,7 @@ func (s *Store) Load() (model.Registry, error) {
 //  1. Providers       — no dependencies
 //  2. Users           — no dependencies
 //  3. Sessions        — depend on Providers and Users
-//  4. Projects        — depend on Sessions
+//  4. Projects        — depend on Sessions (for attachment)
 //  5. LastQuestions   — depend on Projects; second pass over sessions
 func buildRegistry(dto registryDTO) (model.Registry, error) {
 	reg := model.NewRegistry()
@@ -186,6 +193,8 @@ func resolveSessions(
 	return index, nil
 }
 
+// resolveProjects adds each project to the registry and attaches it to every
+// session listed in its Sessions slice.
 func resolveProjects(
 	dto registryDTO,
 	reg *model.Registry,
@@ -193,27 +202,28 @@ func resolveProjects(
 ) (map[string]*model.Project, error) {
 	index := make(map[string]*model.Project, len(dto.Projects))
 	for name, pdto := range dto.Projects {
-		var p *model.Project
-		if pdto.UserEmail != "" || pdto.Provider != "" {
-			if pdto.UserEmail == "" || pdto.Provider == "" {
-				return nil, fmt.Errorf(
-					"store: project %q has partial session reference"+
-						" (user_email and provider must both be set or both be empty)", name)
-			}
-			session := sessions[pdto.UserEmail][pdto.Provider]
-			if session == nil {
-				return nil, fmt.Errorf(
-					"store: project %q references unknown session %q/%q",
-					name, pdto.UserEmail, pdto.Provider)
-			}
-			p = model.NewSessionProject(name, session)
-		} else {
-			p = model.NewProject(name)
-		}
+		p := model.NewProject(name)
 		p.Description = pdto.Description
 		p.Instructions = pdto.Instructions
 		if err := reg.AddProject(p); err != nil {
 			return nil, fmt.Errorf("store: load projects: %w", err)
+		}
+		for _, ref := range pdto.Sessions {
+			if ref.UserEmail == "" || ref.Provider == "" {
+				return nil, fmt.Errorf(
+					"store: project %q has session reference with empty user_email or provider",
+					name)
+			}
+			session := sessions[ref.UserEmail][ref.Provider]
+			if session == nil {
+				return nil, fmt.Errorf(
+					"store: project %q references unknown session %q/%q",
+					name, ref.UserEmail, ref.Provider)
+			}
+			if err := reg.AttachProject(name, session); err != nil {
+				return nil, fmt.Errorf("store: attach project %q to %q/%q: %w",
+					name, ref.UserEmail, ref.Provider, err)
+			}
 		}
 		index[name] = p
 	}
@@ -343,13 +353,20 @@ func buildProjectsDTO(reg model.Registry) map[string]projectDTO {
 	projects := reg.AllProjects()
 	out := make(map[string]projectDTO, len(projects))
 	for _, p := range projects {
+		sessions := reg.SessionsByProject(p.Name())
+		refs := make([]sessionRefDTO, 0, len(sessions))
+		for _, s := range sessions {
+			refs = append(refs, sessionRefDTO{
+				UserEmail: s.User().Email(),
+				Provider:  s.Provider().Name(),
+			})
+		}
 		pdto := projectDTO{
 			Description:  p.Description,
 			Instructions: p.Instructions,
 		}
-		if sess := p.Session(); sess != nil {
-			pdto.UserEmail = sess.User().Email()
-			pdto.Provider = sess.Provider().Name()
+		if len(refs) > 0 {
+			pdto.Sessions = refs
 		}
 		out[p.Name()] = pdto
 	}
