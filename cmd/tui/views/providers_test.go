@@ -26,7 +26,6 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 		}, 0},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -82,7 +81,6 @@ func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
 		{"p key", func(p *ProvidersPanel) { p.handleKey(runeKey(KeyProviders)) }},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -110,7 +108,6 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 		{"quit", KeyQuit, HintsConfirmModal},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -141,7 +138,6 @@ func TestProviderItemText(t *testing.T) {
 		{"all capabilities appends tags", true, true, false},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			p := model.NewProvider("test", tc.hasProjects, tc.hasDeepResearch)
@@ -166,7 +162,6 @@ func TestBoolTag(t *testing.T) {
 		{"false produces non-empty tag", false},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got := boolTag(tc.input); got == "" {

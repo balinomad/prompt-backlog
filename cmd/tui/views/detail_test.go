@@ -71,7 +71,6 @@ func TestDetailPanel_SelectedEntry(t *testing.T) {
 		{"last row is last question", last, false, true},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			p := NewDetailPanel(app)
@@ -103,7 +102,6 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 		{"delete project", KeyDelete, HintsConfirmModal},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -150,7 +148,6 @@ func TestDetailPanel_Toggle_MidAnswer(t *testing.T) {
 		{"false flips to true", false, false, true},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -194,7 +191,6 @@ func TestProjectItemText(t *testing.T) {
 		{"description appended", "Backend rewrite", "", "Alpha"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			p := model.NewProject("Alpha")
@@ -225,7 +221,6 @@ func TestLastQuestionItemText(t *testing.T) {
 		}(), false},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := lastQuestionItemText(tc.lq)
@@ -252,7 +247,6 @@ func TestTruncate(t *testing.T) {
 		{"longer truncated to max runes", "hello world", 6, "hello…"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := truncate(tc.input, tc.max)

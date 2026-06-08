@@ -40,7 +40,6 @@ func TestStatusBar_SetHints(t *testing.T) {
 		{"help overlay", HintsHelpOverlay},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			sb := NewStatusBar()
@@ -66,7 +65,6 @@ func TestStatusBar_AllHintsConstantsNonEmpty(t *testing.T) {
 		{"HintsHelpOverlay", HintsHelpOverlay},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if tc.value == "" {

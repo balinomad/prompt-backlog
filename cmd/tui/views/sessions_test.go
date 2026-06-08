@@ -48,7 +48,6 @@ func TestSessionsPanel_Refresh(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -122,7 +121,6 @@ func TestSessionsPanel_Keys_SwitchScreens(t *testing.T) {
 		{"providers", KeyProviders, "providers"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -150,7 +148,6 @@ func TestSessionsPanel_Keys_ShowModal(t *testing.T) {
 		{"quit", KeyQuit, HintsConfirmModal},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
@@ -212,7 +209,6 @@ func TestSortSessionsByAvailability(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			sessions := make([]*model.Session, len(tc.input))
@@ -260,7 +256,6 @@ func TestFormatNextPromptAt(t *testing.T) {
 		{"future not past", future, future.Format("15:04"), false},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			gotText, gotIsPast := formatNextPromptAt(&tc.t)
