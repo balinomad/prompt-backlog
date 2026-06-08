@@ -50,8 +50,8 @@ func NewRegistry() Registry {
 // HasProjects and HasDeepResearch are in-place mutable via direct field access.
 type Provider struct {
 	name            string
-	HasProjects     bool `json:"has_projects"`
-	HasDeepResearch bool `json:"has_deep_research"`
+	HasProjects     bool
+	HasDeepResearch bool
 }
 
 // NewProvider constructs a Provider. name is permanent.
@@ -74,7 +74,7 @@ func (p *Provider) Name() string { return p.name }
 // Name is in-place mutable via direct field access.
 type User struct {
 	email string
-	Name  string `json:"name"`
+	Name  string
 }
 
 // NewUser constructs a User. email is permanent.
@@ -95,8 +95,8 @@ func (u *User) Email() string { return u.email }
 type Session struct {
 	user         *User
 	provider     *Provider
-	LastQuestion *LastQuestion `json:"last_question,omitempty"`
-	NextPromptAt *time.Time    `json:"next_prompt_at,omitempty"`
+	LastQuestion *LastQuestion
+	NextPromptAt *time.Time
 }
 
 // NewSession constructs a Session. Both user and provider must be non-nil.
@@ -120,8 +120,8 @@ func (s *Session) Provider() *Provider { return s.provider }
 // Description and Instructions are in-place mutable via direct field access.
 type Project struct {
 	name         string
-	Description  string `json:"description,omitempty"`
-	Instructions string `json:"instructions,omitempty"`
+	Description  string
+	Instructions string
 }
 
 // NewProject constructs a Project with no session associations.
@@ -148,9 +148,9 @@ func (p *Project) Name() string { return p.name }
 //   - project non-nil: exchange was in the context of that Project.
 type LastQuestion struct {
 	project    *Project
-	Topic      string `json:"topic,omitempty"`
-	MidAnswer  bool   `json:"mid_answer"`
-	NextPrompt string `json:"next_prompt,omitempty"`
+	Topic      string
+	MidAnswer  bool
+	NextPrompt string
 }
 
 // NewLastQuestion constructs a LastQuestion. project may be nil.
