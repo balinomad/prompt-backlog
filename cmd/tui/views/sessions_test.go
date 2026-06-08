@@ -187,6 +187,8 @@ func TestSortSessionsByAvailability(t *testing.T) {
 	now := time.Now()
 	future := now.Add(2 * time.Hour)
 	past := now.Add(-1 * time.Hour)
+	nearFuture := now.Add(1 * time.Hour)
+	farFuture := now.Add(3 * time.Hour)
 
 	cases := []struct {
 		name      string
@@ -204,9 +206,9 @@ func TestSortSessionsByAvailability(t *testing.T) {
 			wantFirst: &past,
 		},
 		{
-			name:      "sooner future before later future",
-			input:     []*time.Time{&future, &past},
-			wantFirst: &past,
+			name:      "near future before far future",
+			input:     []*time.Time{&farFuture, &nearFuture},
+			wantFirst: &nearFuture,
 		},
 	}
 	for _, tc := range cases {
