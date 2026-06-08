@@ -30,6 +30,8 @@ type mockApp struct {
 	quitted    bool
 }
 
+var _ App = (*mockApp)(nil)
+
 func (m *mockApp) Registry() model.Registry { return m.registry }
 
 func (m *mockApp) Mutate(fn func(*model.Registry) error) error {
