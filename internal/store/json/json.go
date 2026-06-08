@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
@@ -354,6 +355,7 @@ func buildProjectsDTO(reg model.Registry) map[string]projectDTO {
 	out := make(map[string]projectDTO, len(projects))
 	for _, p := range projects {
 		sessions := reg.SessionsByProject(p.Name())
+
 		refs := make([]sessionRefDTO, 0, len(sessions))
 		for _, s := range sessions {
 			refs = append(refs, sessionRefDTO{
@@ -361,6 +363,14 @@ func buildProjectsDTO(reg model.Registry) map[string]projectDTO {
 				Provider:  s.Provider().Name(),
 			})
 		}
+
+		sort.Slice(refs, func(i, j int) bool {
+			if refs[i].UserEmail != refs[j].UserEmail {
+				return refs[i].UserEmail < refs[j].UserEmail
+			}
+			return refs[i].Provider < refs[j].Provider
+		})
+
 		pdto := projectDTO{
 			Description:  p.Description,
 			Instructions: p.Instructions,
