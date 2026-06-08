@@ -67,7 +67,6 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 			initNext = model.FormatTime(*session.NextPromptAt)
 		}
 	}
-	_ = initProvider // used via initProviderIdx
 
 	form := tview.NewForm()
 	form.SetBorder(true)
