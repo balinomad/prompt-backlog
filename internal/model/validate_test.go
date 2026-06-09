@@ -106,46 +106,6 @@ func TestValidateUser_BothInvalid(t *testing.T) {
 	}
 }
 
-// ── ValidateSession ───────────────────────────────────────────────────────────
-
-func TestValidateSession_Valid(t *testing.T) {
-	u := model.NewUser("alice@example.com", "Alice")
-	p := model.NewProvider("claude", true, false)
-	s := model.NewSession(u, p)
-	if errs := model.ValidateSession(s); len(errs) != 0 {
-		t.Errorf("expected no errors, got: %v", errs)
-	}
-}
-
-func TestValidateSession_Nil(t *testing.T) {
-	if errs := model.ValidateSession(nil); len(errs) == 0 {
-		t.Error("expected error for nil session")
-	}
-}
-
-func TestValidateSession_NilUser(t *testing.T) {
-	p := model.NewProvider("claude", true, false)
-	s := model.NewSession(nil, p)
-	if errs := model.ValidateSession(s); len(errs) == 0 {
-		t.Error("expected error for nil user")
-	}
-}
-
-func TestValidateSession_NilProvider(t *testing.T) {
-	u := model.NewUser("alice@example.com", "Alice")
-	s := model.NewSession(u, nil)
-	if errs := model.ValidateSession(s); len(errs) == 0 {
-		t.Error("expected error for nil provider")
-	}
-}
-
-func TestValidateSession_BothNil(t *testing.T) {
-	s := model.NewSession(nil, nil)
-	if errs := model.ValidateSession(s); len(errs) != 2 {
-		t.Errorf("expected 2 errors, got %d", len(errs))
-	}
-}
-
 // ── ValidateProject ───────────────────────────────────────────────────────────
 
 func TestValidateProject_Valid(t *testing.T) {

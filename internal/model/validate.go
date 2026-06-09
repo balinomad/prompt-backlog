@@ -50,21 +50,6 @@ func ValidateUser(u *User) []error {
 	return errs
 }
 
-// ValidateSession returns all validation errors for a session.
-func ValidateSession(s *Session) []error {
-	if s == nil {
-		return []error{fmt.Errorf("session is nil")}
-	}
-	var errs []error
-	if s.user == nil {
-		errs = append(errs, &FieldError{Field: "user", Message: "required"})
-	}
-	if s.provider == nil {
-		errs = append(errs, &FieldError{Field: "provider", Message: "required"})
-	}
-	return errs
-}
-
 // ValidateProject returns all validation errors for a project.
 func ValidateProject(p *Project) []error {
 	if p == nil {
