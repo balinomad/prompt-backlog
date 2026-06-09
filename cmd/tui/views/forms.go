@@ -57,12 +57,7 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 		initEmail = session.User().Email()
 		initName = session.User().Name
 		initProvider = session.Provider().Name()
-		for i, n := range providerNames {
-			if n == initProvider {
-				initProviderIdx = i
-				break
-			}
-		}
+		initProviderIdx = sort.SearchStrings(providerNames, initProvider)
 		if session.NextPromptAt != nil {
 			initNext = model.FormatTime(*session.NextPromptAt)
 		}
