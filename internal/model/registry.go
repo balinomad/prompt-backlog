@@ -1,6 +1,9 @@
 package model
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -11,7 +14,7 @@ func (r *Registry) AddProvider(p *Provider) error {
 	if p == nil {
 		return fmt.Errorf("add provider: nil pointer")
 	}
-	if p.name == "" {
+	if strings.TrimSpace(p.name) == "" {
 		return fmt.Errorf("add provider: name required")
 	}
 	if _, exists := r.providers[p.name]; exists {
@@ -59,7 +62,7 @@ func (r *Registry) AddUser(u *User) error {
 	if u == nil {
 		return fmt.Errorf("add user: nil pointer")
 	}
-	if u.email == "" {
+	if strings.TrimSpace(u.email) == "" {
 		return fmt.Errorf("add user: email required")
 	}
 	if _, exists := r.users[u.email]; exists {
@@ -223,7 +226,7 @@ func (r *Registry) AddProject(p *Project) error {
 	if p == nil {
 		return fmt.Errorf("add project: nil pointer")
 	}
-	if p.name == "" {
+	if strings.TrimSpace(p.name) == "" {
 		return fmt.Errorf("add project: name required")
 	}
 	if _, exists := r.projects[p.name]; exists {
