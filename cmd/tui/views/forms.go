@@ -181,6 +181,14 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 func NewProjectForm(app App, project *model.Project, session *model.Session, onClose func()) tview.Primitive {
 	isEdit := project != nil
 
+	// Pre-flight: for a new project attached to a session, reject immediately
+	// if the provider does not support projects rather than letting the form fail on save
+	if !isEdit && session != nil {
+		if errs := model.ValidateProjectAssignment(session); len(errs) != 0 {
+			return errorModal(model.FormatErrors(errs), onClose)
+		}
+	}
+
 	initName, initDesc, initInstr := "", "", ""
 	if isEdit {
 		initName = project.Name()
