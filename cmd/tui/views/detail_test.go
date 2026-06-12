@@ -99,6 +99,7 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 		{"help", KeyHelp, HintsHelpOverlay},
 		{"quit", KeyQuit, HintsConfirmModal},
 		{"new project", KeyNew, HintsForm},
+		{"edit project", KeyEdit, HintsForm},
 		{"delete project", KeyDelete, HintsConfirmModal},
 	}
 	for _, tc := range cases {
@@ -116,6 +117,22 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
 			}
 		})
+	}
+}
+
+func TestDetailPanel_Edit_LastQuestion_ShowsForm(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := NewDetailPanel(app)
+	p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
+	last := p.projectsList.GetItemCount() - 1
+	p.projectsList.SetCurrentItem(last)
+	p.handleKey(runeKey(KeyEdit))
+	if app.modal == nil {
+		t.Error("expected modal for edit last question")
+	}
+	if app.hints != HintsForm {
+		t.Errorf("hints: got %q, want %q", app.hints, HintsForm)
 	}
 }
 

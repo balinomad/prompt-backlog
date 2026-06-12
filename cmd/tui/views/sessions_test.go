@@ -177,12 +177,24 @@ func TestSessionsPanel_Delete_EmptyList_NoModal(t *testing.T) {
 	}
 }
 
+func TestSessionsPanel_Edit_EmptyList_NoModal(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	app.registry = model.NewRegistry()
+	must(t, app.registry.AddProvider(model.NewProvider("claude", true, false)))
+	p := NewSessionsPanel(app)
+	p.Refresh()
+	p.handleKey(runeKey(KeyEdit))
+	if app.modal != nil {
+		t.Error("edit with empty list should not open a modal")
+	}
+}
+
 // ── sortSessionsByAvailability ────────────────────────────────────────────────
 
 func TestSortSessionsByAvailability(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	future := now.Add(2 * time.Hour)
 	past := now.Add(-1 * time.Hour)
 	nearFuture := now.Add(1 * time.Hour)
 	farFuture := now.Add(3 * time.Hour)
@@ -190,20 +202,20 @@ func TestSortSessionsByAvailability(t *testing.T) {
 	cases := []struct {
 		name      string
 		input     []*time.Time
-		wantFirst *time.Time // nil means "should have nil NextPromptAt"
+		wantFirst *time.Time // nil means first session should have nil NextPromptAt
 	}{
 		{
 			name:      "nil before future",
-			input:     []*time.Time{&future, nil},
+			input:     []*time.Time{&farFuture, nil},
 			wantFirst: nil,
 		},
 		{
 			name:      "past before future",
-			input:     []*time.Time{&future, &past},
+			input:     []*time.Time{&farFuture, &past},
 			wantFirst: &past,
 		},
 		{
-			name:      "near future before far future",
+			name:      "sooner future before later future",
 			input:     []*time.Time{&farFuture, &nearFuture},
 			wantFirst: &nearFuture,
 		},

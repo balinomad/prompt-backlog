@@ -124,13 +124,37 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 	}
 }
 
+func TestProvidersPanel_Edit_EmptyList_NoModal(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	app.registry = model.NewRegistry()
+	p := NewProvidersPanel(app)
+	p.Refresh()
+	p.handleKey(runeKey(KeyEdit))
+	if app.modal != nil {
+		t.Error("edit with empty list should not open a modal")
+	}
+}
+
+func TestProvidersPanel_Delete_EmptyList_NoModal(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	app.registry = model.NewRegistry()
+	p := NewProvidersPanel(app)
+	p.Refresh()
+	p.handleKey(runeKey(KeyDelete))
+	if app.modal != nil {
+		t.Error("delete with empty list should not open a modal")
+	}
+}
+
 func TestProviderItemText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name            string
 		hasProjects     bool
 		hasDeepResearch bool
-		wantEqualName   bool // true = text should equal plain name
+		wantEqualName   bool
 	}{
 		{"no capabilities returns name only", false, false, true},
 		{"has projects appends tag", true, false, false},

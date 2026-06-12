@@ -49,6 +49,7 @@ func seedRegistry(t *testing.T) model.Registry {
 // ── Provider CRUD ─────────────────────────────────────────────────────────────
 
 func TestAddProvider_Success(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
 	if reg.ProviderByName("claude") == nil {
@@ -57,6 +58,7 @@ func TestAddProvider_Success(t *testing.T) {
 }
 
 func TestAddProvider_NilPointer(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddProvider(nil); err == nil {
 		t.Error("expected error for nil provider")
@@ -64,13 +66,23 @@ func TestAddProvider_NilPointer(t *testing.T) {
 }
 
 func TestAddProvider_EmptyName(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddProvider(model.NewProvider("", false, false)); err == nil {
 		t.Error("expected error for empty name")
 	}
 }
 
+func TestAddProvider_WhitespaceName(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	if err := reg.AddProvider(model.NewProvider("   ", false, false)); err == nil {
+		t.Error("expected error for whitespace-only name")
+	}
+}
+
 func TestAddProvider_Duplicate(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
 	if err := reg.AddProvider(model.NewProvider("claude", true, false)); err == nil {
@@ -79,6 +91,7 @@ func TestAddProvider_Duplicate(t *testing.T) {
 }
 
 func TestProviderByName_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.ProviderByName("ghost") != nil {
 		t.Error("expected nil for unknown provider")
@@ -86,6 +99,7 @@ func TestProviderByName_NotFound(t *testing.T) {
 }
 
 func TestAllProviders_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.AllProviders() == nil {
 		t.Error("AllProviders: expected non-nil empty slice")
@@ -93,6 +107,7 @@ func TestAllProviders_NeverNil(t *testing.T) {
 }
 
 func TestAllProviders_ReturnsAll(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	if n := len(reg.AllProviders()); n != 2 {
 		t.Errorf("AllProviders: expected 2, got %d", n)
@@ -100,6 +115,7 @@ func TestAllProviders_ReturnsAll(t *testing.T) {
 }
 
 func TestRemoveProvider_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Remove sessions for chatgpt first so provider can be removed.
 	must(t, reg.RemoveSession("bob@example.com", "chatgpt"))
@@ -110,6 +126,7 @@ func TestRemoveProvider_Success(t *testing.T) {
 }
 
 func TestRemoveProvider_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.RemoveProvider("ghost"); err == nil {
 		t.Error("expected error for unknown provider")
@@ -117,6 +134,7 @@ func TestRemoveProvider_NotFound(t *testing.T) {
 }
 
 func TestRemoveProvider_HasActiveSessions(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// "claude" has alice's session; removal must be blocked.
 	if err := reg.RemoveProvider("claude"); err == nil {
@@ -127,6 +145,7 @@ func TestRemoveProvider_HasActiveSessions(t *testing.T) {
 // ── User CRUD ─────────────────────────────────────────────────────────────────
 
 func TestAddUser_Success(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	if reg.UserByEmail("alice@example.com") == nil {
@@ -135,6 +154,7 @@ func TestAddUser_Success(t *testing.T) {
 }
 
 func TestAddUser_NilPointer(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddUser(nil); err == nil {
 		t.Error("expected error for nil user")
@@ -142,13 +162,23 @@ func TestAddUser_NilPointer(t *testing.T) {
 }
 
 func TestAddUser_EmptyEmail(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddUser(model.NewUser("", "Alice")); err == nil {
 		t.Error("expected error for empty email")
 	}
 }
 
+func TestAddUser_WhitespaceEmail(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	if err := reg.AddUser(model.NewUser("   ", "Alice")); err == nil {
+		t.Error("expected error for whitespace-only email")
+	}
+}
+
 func TestAddUser_Duplicate(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	if err := reg.AddUser(model.NewUser("alice@example.com", "Alice2")); err == nil {
@@ -157,6 +187,7 @@ func TestAddUser_Duplicate(t *testing.T) {
 }
 
 func TestUserByEmail_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.UserByEmail("ghost@example.com") != nil {
 		t.Error("expected nil for unknown user")
@@ -164,6 +195,7 @@ func TestUserByEmail_NotFound(t *testing.T) {
 }
 
 func TestAllUsers_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.AllUsers() == nil {
 		t.Error("AllUsers: expected non-nil empty slice")
@@ -171,6 +203,7 @@ func TestAllUsers_NeverNil(t *testing.T) {
 }
 
 func TestAllUsers_ReturnsAll(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	if n := len(reg.AllUsers()); n != 2 {
 		t.Errorf("AllUsers: expected 2, got %d", n)
@@ -178,6 +211,7 @@ func TestAllUsers_ReturnsAll(t *testing.T) {
 }
 
 func TestRemoveUser_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Remove bob's session first.
 	must(t, reg.RemoveSession("bob@example.com", "chatgpt"))
@@ -188,6 +222,7 @@ func TestRemoveUser_Success(t *testing.T) {
 }
 
 func TestRemoveUser_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.RemoveUser("ghost@example.com"); err == nil {
 		t.Error("expected error for unknown user")
@@ -195,6 +230,7 @@ func TestRemoveUser_NotFound(t *testing.T) {
 }
 
 func TestRemoveUser_HasActiveSessions(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// alice has an active session; removal must be blocked.
 	if err := reg.RemoveUser("alice@example.com"); err == nil {
@@ -205,14 +241,15 @@ func TestRemoveUser_HasActiveSessions(t *testing.T) {
 // ── Session CRUD ──────────────────────────────────────────────────────────────
 
 func TestAddSession_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
-	s := reg.SessionAt("alice@example.com", "claude")
-	if s == nil {
+	if s := reg.SessionAt("alice@example.com", "claude"); s == nil {
 		t.Error("session not found after add")
 	}
 }
 
 func TestAddSession_NilPointer(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddSession(nil); err == nil {
 		t.Error("expected error for nil session")
@@ -220,6 +257,7 @@ func TestAddSession_NilPointer(t *testing.T) {
 }
 
 func TestAddSession_NilUser(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
 	s := model.NewSession(nil, reg.ProviderByName("claude"))
@@ -229,6 +267,7 @@ func TestAddSession_NilUser(t *testing.T) {
 }
 
 func TestAddSession_NilProvider(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	s := model.NewSession(reg.UserByEmail("alice@example.com"), nil)
@@ -238,6 +277,7 @@ func TestAddSession_NilProvider(t *testing.T) {
 }
 
 func TestAddSession_UserNotInRegistry(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
 	// User constructed but never added to registry.
@@ -249,6 +289,7 @@ func TestAddSession_UserNotInRegistry(t *testing.T) {
 }
 
 func TestAddSession_ProviderNotInRegistry(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	// Provider constructed but never added to registry.
@@ -260,6 +301,7 @@ func TestAddSession_ProviderNotInRegistry(t *testing.T) {
 }
 
 func TestAddSession_Duplicate(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// alice/claude already exists.
 	s := model.NewSession(
@@ -272,6 +314,7 @@ func TestAddSession_Duplicate(t *testing.T) {
 }
 
 func TestAddSession_PopulatesBothIndexes(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Verify session is reachable via both SessionsByUser and SessionsByProvider.
 	byUser := reg.SessionsByUser("alice@example.com")
@@ -289,6 +332,7 @@ func TestAddSession_PopulatesBothIndexes(t *testing.T) {
 }
 
 func TestSessionAt_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.SessionAt("ghost@example.com", "claude") != nil {
 		t.Error("expected nil for unknown session")
@@ -296,6 +340,7 @@ func TestSessionAt_NotFound(t *testing.T) {
 }
 
 func TestAllSessions_NoDuplicates(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Dual-index must not cause duplicates in AllSessions.
 	if n := len(reg.AllSessions()); n != 2 {
@@ -304,6 +349,7 @@ func TestAllSessions_NoDuplicates(t *testing.T) {
 }
 
 func TestAllSessions_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.AllSessions() == nil {
 		t.Error("AllSessions: expected non-nil empty slice")
@@ -311,14 +357,15 @@ func TestAllSessions_NeverNil(t *testing.T) {
 }
 
 func TestSessionsByUser_ReturnsOnlyUserSessions(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
-	aliceSessions := reg.SessionsByUser("alice@example.com")
-	if len(aliceSessions) != 1 {
-		t.Errorf("expected 1 session for alice, got %d", len(aliceSessions))
+	if n := len(reg.SessionsByUser("alice@example.com")); n != 1 {
+		t.Errorf("expected 1 session for alice, got %d", n)
 	}
 }
 
 func TestSessionsByUser_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.SessionsByUser("nobody@example.com") == nil {
 		t.Error("SessionsByUser: expected non-nil empty slice")
@@ -326,14 +373,15 @@ func TestSessionsByUser_NeverNil(t *testing.T) {
 }
 
 func TestSessionsByProvider_ReturnsOnlyProviderSessions(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
-	claudeSessions := reg.SessionsByProvider("claude")
-	if len(claudeSessions) != 1 {
-		t.Errorf("expected 1 session for claude, got %d", len(claudeSessions))
+	if n := len(reg.SessionsByProvider("claude")); n != 1 {
+		t.Errorf("expected 1 session for claude, got %d", n)
 	}
 }
 
 func TestSessionsByProvider_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.SessionsByProvider("nobody") == nil {
 		t.Error("SessionsByProvider: expected non-nil empty slice")
@@ -341,6 +389,7 @@ func TestSessionsByProvider_NeverNil(t *testing.T) {
 }
 
 func TestRemoveSession_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveSession("alice@example.com", "claude"))
 	if reg.SessionAt("alice@example.com", "claude") != nil {
@@ -349,6 +398,7 @@ func TestRemoveSession_Success(t *testing.T) {
 }
 
 func TestRemoveSession_CleansUserIndex(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveSession("alice@example.com", "claude"))
 	if n := len(reg.SessionsByUser("alice@example.com")); n != 0 {
@@ -357,6 +407,7 @@ func TestRemoveSession_CleansUserIndex(t *testing.T) {
 }
 
 func TestRemoveSession_CleansProviderIndex(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveSession("alice@example.com", "claude"))
 	if n := len(reg.SessionsByProvider("claude")); n != 0 {
@@ -365,6 +416,7 @@ func TestRemoveSession_CleansProviderIndex(t *testing.T) {
 }
 
 func TestRemoveSession_DetachesProjects(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveSession("alice@example.com", "claude"))
 	// Alpha and Beta were attached to alice/claude; they must now have no sessions.
@@ -372,14 +424,14 @@ func TestRemoveSession_DetachesProjects(t *testing.T) {
 		if reg.ProjectByName(name) == nil {
 			t.Fatalf("project %q should still exist after session removal", name)
 		}
-		if sessions := reg.SessionsByProject(name); len(sessions) != 0 {
-			t.Errorf("project %q should have no sessions after removal, got %d",
-				name, len(sessions))
+		if n := len(reg.SessionsByProject(name)); n != 0 {
+			t.Errorf("project %q should have no sessions after removal, got %d", name, n)
 		}
 	}
 }
 
 func TestRemoveSession_PreservesUnrelatedProjects(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveSession("alice@example.com", "claude"))
 	// Orphan was already unattached and must be unaffected.
@@ -389,6 +441,7 @@ func TestRemoveSession_PreservesUnrelatedProjects(t *testing.T) {
 }
 
 func TestRemoveSession_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.RemoveSession("ghost@example.com", "claude"); err == nil {
 		t.Error("expected error for unknown session")
@@ -398,6 +451,7 @@ func TestRemoveSession_NotFound(t *testing.T) {
 // ── Project CRUD ──────────────────────────────────────────────────────────────
 
 func TestAddProject_Success(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProject(model.NewProject("Orphan")))
 	if reg.ProjectByName("Orphan") == nil {
@@ -406,6 +460,7 @@ func TestAddProject_Success(t *testing.T) {
 }
 
 func TestAddProject_NilPointer(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddProject(nil); err == nil {
 		t.Error("expected error for nil project")
@@ -413,13 +468,23 @@ func TestAddProject_NilPointer(t *testing.T) {
 }
 
 func TestAddProject_EmptyName(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.AddProject(model.NewProject("")); err == nil {
 		t.Error("expected error for empty name")
 	}
 }
 
+func TestAddProject_WhitespaceName(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	if err := reg.AddProject(model.NewProject("   ")); err == nil {
+		t.Error("expected error for whitespace-only name")
+	}
+}
+
 func TestAddProject_Duplicate(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProject(model.NewProject("Alpha")))
 	if err := reg.AddProject(model.NewProject("Alpha")); err == nil {
@@ -428,6 +493,7 @@ func TestAddProject_Duplicate(t *testing.T) {
 }
 
 func TestProjectByName_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.ProjectByName("ghost") != nil {
 		t.Error("expected nil for unknown project")
@@ -435,6 +501,7 @@ func TestProjectByName_NotFound(t *testing.T) {
 }
 
 func TestAllProjects_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.AllProjects() == nil {
 		t.Error("AllProjects: expected non-nil empty slice")
@@ -442,6 +509,7 @@ func TestAllProjects_NeverNil(t *testing.T) {
 }
 
 func TestAllProjects_ReturnsAll(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	if n := len(reg.AllProjects()); n != 3 {
 		t.Errorf("AllProjects: expected 3, got %d", n)
@@ -449,6 +517,7 @@ func TestAllProjects_ReturnsAll(t *testing.T) {
 }
 
 func TestUnattachedProjects_ReturnsOnlyUnattached(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	unattached := reg.UnattachedProjects()
 	if len(unattached) != 1 {
@@ -460,6 +529,7 @@ func TestUnattachedProjects_ReturnsOnlyUnattached(t *testing.T) {
 }
 
 func TestUnattachedProjects_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.UnattachedProjects() == nil {
 		t.Error("UnattachedProjects: expected non-nil empty slice")
@@ -467,15 +537,16 @@ func TestUnattachedProjects_NeverNil(t *testing.T) {
 }
 
 func TestProjectsBySession_ReturnsAttachedProjects(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
-	projects := reg.ProjectsBySession(s)
-	if len(projects) != 2 {
-		t.Errorf("expected 2 projects for alice/claude, got %d", len(projects))
+	if n := len(reg.ProjectsBySession(s)); n != 2 {
+		t.Errorf("expected 2 projects for alice/claude, got %d", n)
 	}
 }
 
 func TestProjectsBySession_ExcludesUnattached(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
 	for _, p := range reg.ProjectsBySession(s) {
@@ -486,6 +557,7 @@ func TestProjectsBySession_ExcludesUnattached(t *testing.T) {
 }
 
 func TestProjectsBySession_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.ProjectsBySession(nil) == nil {
 		t.Error("ProjectsBySession: expected non-nil empty slice")
@@ -495,6 +567,7 @@ func TestProjectsBySession_NeverNil(t *testing.T) {
 // ── SessionsByProject ─────────────────────────────────────────────────────────
 
 func TestSessionsByProject_ReturnsAttachedSessions(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	sessions := reg.SessionsByProject("Alpha")
 	if len(sessions) != 1 {
@@ -506,14 +579,15 @@ func TestSessionsByProject_ReturnsAttachedSessions(t *testing.T) {
 }
 
 func TestSessionsByProject_UnattachedReturnsEmpty(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
-	sessions := reg.SessionsByProject("Orphan")
-	if len(sessions) != 0 {
-		t.Errorf("expected 0 sessions for Orphan, got %d", len(sessions))
+	if n := len(reg.SessionsByProject("Orphan")); n != 0 {
+		t.Errorf("expected 0 sessions for Orphan, got %d", n)
 	}
 }
 
 func TestSessionsByProject_NeverNil(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if reg.SessionsByProject("ghost") == nil {
 		t.Error("SessionsByProject: expected non-nil empty slice")
@@ -521,6 +595,7 @@ func TestSessionsByProject_NeverNil(t *testing.T) {
 }
 
 func TestSessionsByProject_MultiSession(t *testing.T) {
+	t.Parallel()
 	// A project attached to two sessions from different providers must appear
 	// in both SessionsByProject and both ProjectsBySession lookups.
 	reg := model.NewRegistry()
@@ -554,6 +629,7 @@ func TestSessionsByProject_MultiSession(t *testing.T) {
 // ── AttachProject ─────────────────────────────────────────────────────────────
 
 func TestAttachProject_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
 	must(t, reg.AttachProject("Orphan", s))
@@ -564,6 +640,7 @@ func TestAttachProject_Success(t *testing.T) {
 }
 
 func TestAttachProject_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
 	if err := reg.AttachProject("ghost", s); err == nil {
@@ -572,6 +649,7 @@ func TestAttachProject_NotFound(t *testing.T) {
 }
 
 func TestAttachProject_NilSession(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	if err := reg.AttachProject("Orphan", nil); err == nil {
 		t.Error("expected error for nil session")
@@ -579,6 +657,7 @@ func TestAttachProject_NilSession(t *testing.T) {
 }
 
 func TestAttachProject_SessionNotInRegistry(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	outsideSession := model.NewSession(
 		model.NewUser("x@example.com", "X"),
@@ -590,6 +669,7 @@ func TestAttachProject_SessionNotInRegistry(t *testing.T) {
 }
 
 func TestAttachProject_ProviderDoesNotSupportProjects(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.AddProject(model.NewProject("X")))
 	s := reg.SessionAt("bob@example.com", "chatgpt")
@@ -599,6 +679,7 @@ func TestAttachProject_ProviderDoesNotSupportProjects(t *testing.T) {
 }
 
 func TestAttachProject_Duplicate(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Alpha is already attached to alice/claude in seedRegistry.
 	s := reg.SessionAt("alice@example.com", "claude")
@@ -608,12 +689,11 @@ func TestAttachProject_Duplicate(t *testing.T) {
 }
 
 func TestAttachProject_PopulatesBothIndexes(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
-	// Verify both indexes agree for Alpha (attached in seedRegistry).
-	projectsForSession := reg.ProjectsBySession(s)
 	var foundViaSession bool
-	for _, p := range projectsForSession {
+	for _, p := range reg.ProjectsBySession(s) {
 		if p.Name() == "Alpha" {
 			foundViaSession = true
 			break
@@ -631,15 +711,17 @@ func TestAttachProject_PopulatesBothIndexes(t *testing.T) {
 // ── DetachProject ─────────────────────────────────────────────────────────────
 
 func TestDetachProject_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
 	must(t, reg.DetachProject("Alpha", s))
-	if sessions := reg.SessionsByProject("Alpha"); len(sessions) != 0 {
-		t.Errorf("Alpha should have no sessions after detach, got %d", len(sessions))
+	if n := len(reg.SessionsByProject("Alpha")); n != 0 {
+		t.Errorf("Alpha should have no sessions after detach, got %d", n)
 	}
 }
 
 func TestDetachProject_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	s := reg.SessionAt("alice@example.com", "claude")
 	if err := reg.DetachProject("ghost", s); err == nil {
@@ -648,6 +730,7 @@ func TestDetachProject_NotFound(t *testing.T) {
 }
 
 func TestDetachProject_NilSession(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	if err := reg.DetachProject("Alpha", nil); err == nil {
 		t.Error("expected error for nil session")
@@ -655,6 +738,7 @@ func TestDetachProject_NilSession(t *testing.T) {
 }
 
 func TestDetachProject_NotAttached(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Orphan has no sessions; detach must fail.
 	s := reg.SessionAt("alice@example.com", "claude")
@@ -666,6 +750,7 @@ func TestDetachProject_NotAttached(t *testing.T) {
 // ── RemoveProject ─────────────────────────────────────────────────────────────
 
 func TestRemoveProject_Success(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveProject("Orphan"))
 	if reg.ProjectByName("Orphan") != nil {
@@ -674,6 +759,7 @@ func TestRemoveProject_Success(t *testing.T) {
 }
 
 func TestRemoveProject_NotFound(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if err := reg.RemoveProject("ghost"); err == nil {
 		t.Error("expected error for unknown project")
@@ -681,6 +767,7 @@ func TestRemoveProject_NotFound(t *testing.T) {
 }
 
 func TestRemoveProject_CleansIndexes(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	must(t, reg.RemoveProject("Alpha"))
 	// Alpha must no longer appear in ProjectsBySession for alice/claude.
@@ -690,13 +777,13 @@ func TestRemoveProject_CleansIndexes(t *testing.T) {
 			t.Error("Alpha still visible via ProjectsBySession after removal")
 		}
 	}
-	// SessionsByProject must return empty for the removed project.
-	if sessions := reg.SessionsByProject("Alpha"); len(sessions) != 0 {
-		t.Errorf("SessionsByProject should be empty after removal, got %d", len(sessions))
+	if n := len(reg.SessionsByProject("Alpha")); n != 0 {
+		t.Errorf("SessionsByProject should be empty after removal, got %d", n)
 	}
 }
 
 func TestRemoveProject_ClearsLastQuestionPointer(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Attach a LastQuestion referencing Alpha to alice's session.
 	s := reg.SessionAt("alice@example.com", "claude")
@@ -709,6 +796,7 @@ func TestRemoveProject_ClearsLastQuestionPointer(t *testing.T) {
 }
 
 func TestRemoveProject_DoesNotAffectOtherLastQuestions(t *testing.T) {
+	t.Parallel()
 	reg := seedRegistry(t)
 	// Attach LastQuestion referencing Beta to alice's session.
 	s := reg.SessionAt("alice@example.com", "claude")

@@ -82,6 +82,7 @@ func seedRegistry(t *testing.T) model.Registry {
 // ── Load ──────────────────────────────────────────────────────────────────────
 
 func TestLoad_FileNotExist_ReturnsEmptyRegistry(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	reg, err := s.Load()
 	if err != nil {
@@ -93,6 +94,7 @@ func TestLoad_FileNotExist_ReturnsEmptyRegistry(t *testing.T) {
 }
 
 func TestLoad_EmptyFile_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	if err := os.WriteFile(path, []byte{}, 0600); err != nil {
 		t.Fatalf("write empty file: %v", err)
@@ -104,6 +106,7 @@ func TestLoad_EmptyFile_ReturnsError(t *testing.T) {
 }
 
 func TestLoad_InvalidJSON_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	if err := os.WriteFile(path, []byte("not json {{{"), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -115,6 +118,7 @@ func TestLoad_InvalidJSON_ReturnsError(t *testing.T) {
 }
 
 func TestLoad_SessionReferencesUnknownUser_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	// Manually craft JSON with a session that references a non-existent user.
 	raw := `{
@@ -133,6 +137,7 @@ func TestLoad_SessionReferencesUnknownUser_ReturnsError(t *testing.T) {
 }
 
 func TestLoad_SessionReferencesUnknownProvider_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	raw := `{
 		"providers": {},
@@ -150,6 +155,7 @@ func TestLoad_SessionReferencesUnknownProvider_ReturnsError(t *testing.T) {
 }
 
 func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	raw := `{
 		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
@@ -171,6 +177,7 @@ func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
 }
 
 func TestLoad_ProjectPartialSessionReference_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	// user_email set but provider empty in the session reference.
 	raw := `{
@@ -193,6 +200,7 @@ func TestLoad_ProjectPartialSessionReference_ReturnsError(t *testing.T) {
 }
 
 func TestLoad_LastQuestionReferencesUnknownProject_ReturnsError(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "registry.json")
 	raw := `{
 		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
@@ -218,6 +226,7 @@ func TestLoad_LastQuestionReferencesUnknownProject_ReturnsError(t *testing.T) {
 // ── Save ──────────────────────────────────────────────────────────────────────
 
 func TestSave_CreatesFile(t *testing.T) {
+	t.Parallel()
 	s, path := tempStore(t)
 	must(t, s.Save(model.NewRegistry()))
 	if _, err := os.Stat(path); err != nil {
@@ -226,6 +235,7 @@ func TestSave_CreatesFile(t *testing.T) {
 }
 
 func TestSave_CreatesParentDirectory(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "nested", "dir")
 	s := json.New(filepath.Join(dir, "registry.json"))
 	must(t, s.Save(model.NewRegistry()))
@@ -235,6 +245,7 @@ func TestSave_CreatesParentDirectory(t *testing.T) {
 }
 
 func TestSave_NoTempFileLeft(t *testing.T) {
+	t.Parallel()
 	s, path := tempStore(t)
 	must(t, s.Save(model.NewRegistry()))
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
@@ -243,6 +254,7 @@ func TestSave_NoTempFileLeft(t *testing.T) {
 }
 
 func TestSave_FileIsValidJSON(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	// A successful Load is the definitive JSON validity check.
@@ -254,6 +266,7 @@ func TestSave_FileIsValidJSON(t *testing.T) {
 // ── Round-trip ────────────────────────────────────────────────────────────────
 
 func TestRoundTrip_Providers(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -280,6 +293,7 @@ func TestRoundTrip_Providers(t *testing.T) {
 }
 
 func TestRoundTrip_Users(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -296,6 +310,7 @@ func TestRoundTrip_Users(t *testing.T) {
 }
 
 func TestRoundTrip_Sessions(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -315,6 +330,7 @@ func TestRoundTrip_Sessions(t *testing.T) {
 }
 
 func TestRoundTrip_NextPromptAt(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -333,6 +349,7 @@ func TestRoundTrip_NextPromptAt(t *testing.T) {
 }
 
 func TestRoundTrip_LastQuestion(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -356,6 +373,7 @@ func TestRoundTrip_LastQuestion(t *testing.T) {
 }
 
 func TestRoundTrip_LastQuestion_ProjectPointer(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -380,6 +398,7 @@ func TestRoundTrip_LastQuestion_ProjectPointer(t *testing.T) {
 }
 
 func TestRoundTrip_Projects(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -402,6 +421,7 @@ func TestRoundTrip_Projects(t *testing.T) {
 }
 
 func TestRoundTrip_Project_SessionPointers(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -418,7 +438,7 @@ func TestRoundTrip_Project_SessionPointers(t *testing.T) {
 }
 
 func TestRoundTrip_Project_MultiSession(t *testing.T) {
-	// A project attached to two sessions round-trips with both associations intact.
+	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
 	must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
@@ -455,6 +475,7 @@ func TestRoundTrip_Project_MultiSession(t *testing.T) {
 }
 
 func TestRoundTrip_UnattachedProject(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -465,12 +486,13 @@ func TestRoundTrip_UnattachedProject(t *testing.T) {
 	if orphan == nil {
 		t.Fatal("project Orphan not found after round-trip")
 	}
-	if sessions := loaded.SessionsByProject("Orphan"); len(sessions) != 0 {
-		t.Errorf("Orphan should have no sessions after round-trip, got %d", len(sessions))
+	if n := len(loaded.SessionsByProject("Orphan")); n != 0 {
+		t.Errorf("Orphan should have no sessions after round-trip, got %d", n)
 	}
 }
 
 func TestRoundTrip_SessionWithNoLastQuestion(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -488,6 +510,7 @@ func TestRoundTrip_SessionWithNoLastQuestion(t *testing.T) {
 }
 
 func TestRoundTrip_EmptyRegistry(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(model.NewRegistry()))
 	loaded, err := s.Load()
@@ -500,6 +523,7 @@ func TestRoundTrip_EmptyRegistry(t *testing.T) {
 }
 
 func TestRoundTrip_DualIndexIntact(t *testing.T) {
+	t.Parallel()
 	s, _ := tempStore(t)
 	must(t, s.Save(seedRegistry(t)))
 	loaded, err := s.Load()
@@ -515,5 +539,43 @@ func TestRoundTrip_DualIndexIntact(t *testing.T) {
 	}
 	if byUser[0] != byProvider[0] {
 		t.Error("dual-index pointers diverge after round-trip")
+	}
+}
+
+// ── Determinism ───────────────────────────────────────────────────────────────
+
+func TestSave_ProjectSessionsOrderDeterministic(t *testing.T) {
+	t.Parallel()
+	// A project attached to two sessions must produce identical JSON on
+	// repeated saves regardless of map iteration order.
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("claude"),
+	)))
+	must(t, reg.AddSession(model.NewSession(
+		reg.UserByEmail("alice@example.com"),
+		reg.ProviderByName("gemini"),
+	)))
+	must(t, reg.AddProject(model.NewProject("Alpha")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
+	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "gemini")))
+
+	s, path := tempStore(t)
+	must(t, s.Save(reg))
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read first save: %v", err)
+	}
+	must(t, s.Save(reg))
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read second save: %v", err)
+	}
+	if string(first) != string(second) {
+		t.Error("repeated saves of identical registry produced different JSON")
 	}
 }

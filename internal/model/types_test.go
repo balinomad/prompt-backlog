@@ -10,6 +10,7 @@ import (
 // ── NewRegistry ───────────────────────────────────────────────────────────────
 
 func TestNewRegistry_Empty(t *testing.T) {
+	t.Parallel()
 	reg := model.NewRegistry()
 	if n := len(reg.AllProviders()); n != 0 {
 		t.Errorf("AllProviders: expected 0, got %d", n)
@@ -26,6 +27,7 @@ func TestNewRegistry_Empty(t *testing.T) {
 }
 
 func TestNewRegistry_AcceptsFirstProvider(t *testing.T) {
+	t.Parallel()
 	// Verifies that NewRegistry initialises internal maps so the first write
 	// does not panic.
 	reg := model.NewRegistry()
@@ -37,6 +39,7 @@ func TestNewRegistry_AcceptsFirstProvider(t *testing.T) {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 func TestNewProvider_Fields(t *testing.T) {
+	t.Parallel()
 	p := model.NewProvider("claude", true, false)
 	if p.Name() != "claude" {
 		t.Errorf("Name: got %q, want %q", p.Name(), "claude")
@@ -50,6 +53,7 @@ func TestNewProvider_Fields(t *testing.T) {
 }
 
 func TestNewProvider_AllCapabilitiesFalse(t *testing.T) {
+	t.Parallel()
 	p := model.NewProvider("basic", false, false)
 	if p.HasProjects || p.HasDeepResearch {
 		t.Error("expected all capabilities false")
@@ -57,6 +61,7 @@ func TestNewProvider_AllCapabilitiesFalse(t *testing.T) {
 }
 
 func TestProvider_Name_Immutable(t *testing.T) {
+	t.Parallel()
 	p := model.NewProvider("claude", true, false)
 	if p.Name() != "claude" {
 		t.Errorf("Name: got %q, want %q", p.Name(), "claude")
@@ -66,6 +71,7 @@ func TestProvider_Name_Immutable(t *testing.T) {
 // ── User ──────────────────────────────────────────────────────────────────────
 
 func TestNewUser_Fields(t *testing.T) {
+	t.Parallel()
 	u := model.NewUser("alice@example.com", "Alice")
 	if u.Email() != "alice@example.com" {
 		t.Errorf("Email: got %q, want %q", u.Email(), "alice@example.com")
@@ -76,6 +82,7 @@ func TestNewUser_Fields(t *testing.T) {
 }
 
 func TestUser_Email_Immutable(t *testing.T) {
+	t.Parallel()
 	u := model.NewUser("alice@example.com", "Alice")
 	if u.Email() != "alice@example.com" {
 		t.Errorf("Email: got %q, want %q", u.Email(), "alice@example.com")
@@ -83,6 +90,7 @@ func TestUser_Email_Immutable(t *testing.T) {
 }
 
 func TestUser_Name_Mutable(t *testing.T) {
+	t.Parallel()
 	u := model.NewUser("alice@example.com", "Alice")
 	u.Name = "Alice Smith"
 	if u.Name != "Alice Smith" {
@@ -93,6 +101,7 @@ func TestUser_Name_Mutable(t *testing.T) {
 // ── Session ───────────────────────────────────────────────────────────────────
 
 func TestNewSession_Fields(t *testing.T) {
+	t.Parallel()
 	u := model.NewUser("alice@example.com", "Alice")
 	p := model.NewProvider("claude", true, false)
 	s := model.NewSession(u, p)
@@ -111,6 +120,7 @@ func TestNewSession_Fields(t *testing.T) {
 }
 
 func TestSession_NextPromptAt_Mutable(t *testing.T) {
+	t.Parallel()
 	u := model.NewUser("alice@example.com", "Alice")
 	p := model.NewProvider("claude", true, false)
 	s := model.NewSession(u, p)
@@ -125,6 +135,7 @@ func TestSession_NextPromptAt_Mutable(t *testing.T) {
 }
 
 func TestSession_LastQuestion_Mutable(t *testing.T) {
+	t.Parallel()
 	u := model.NewUser("alice@example.com", "Alice")
 	p := model.NewProvider("claude", true, false)
 	s := model.NewSession(u, p)
@@ -143,6 +154,7 @@ func TestSession_LastQuestion_Mutable(t *testing.T) {
 // ── Project ───────────────────────────────────────────────────────────────────
 
 func TestNewProject_Fields(t *testing.T) {
+	t.Parallel()
 	p := model.NewProject("Alpha")
 	if p.Name() != "Alpha" {
 		t.Errorf("Name: got %q, want %q", p.Name(), "Alpha")
@@ -150,6 +162,7 @@ func TestNewProject_Fields(t *testing.T) {
 }
 
 func TestProject_Fields_Mutable(t *testing.T) {
+	t.Parallel()
 	p := model.NewProject("Alpha")
 	p.Description = "Backend rewrite"
 	p.Instructions = "Use Go interfaces"
@@ -164,6 +177,7 @@ func TestProject_Fields_Mutable(t *testing.T) {
 // ── LastQuestion ──────────────────────────────────────────────────────────────
 
 func TestNewLastQuestion_WithProject(t *testing.T) {
+	t.Parallel()
 	proj := model.NewProject("Alpha")
 	lq := model.NewLastQuestion(proj)
 	if lq.Project() != proj {
@@ -172,6 +186,7 @@ func TestNewLastQuestion_WithProject(t *testing.T) {
 }
 
 func TestNewLastQuestion_WithNil(t *testing.T) {
+	t.Parallel()
 	lq := model.NewLastQuestion(nil)
 	if lq.Project() != nil {
 		t.Error("Project: expected nil")
@@ -179,6 +194,7 @@ func TestNewLastQuestion_WithNil(t *testing.T) {
 }
 
 func TestNewLastQuestion_DefaultFields(t *testing.T) {
+	t.Parallel()
 	lq := model.NewLastQuestion(nil)
 	if lq.MidAnswer {
 		t.Error("MidAnswer: expected false")
@@ -192,6 +208,7 @@ func TestNewLastQuestion_DefaultFields(t *testing.T) {
 }
 
 func TestLastQuestion_Fields_Mutable(t *testing.T) {
+	t.Parallel()
 	lq := model.NewLastQuestion(nil)
 	lq.Topic = "Architecture"
 	lq.MidAnswer = true
@@ -210,6 +227,7 @@ func TestLastQuestion_Fields_Mutable(t *testing.T) {
 // ── ParseTime / FormatTime ────────────────────────────────────────────────────
 
 func TestParseTime_ValidInputs(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		"2026-05-18 09:00",
 		"2026-12-31 23:59",
@@ -217,6 +235,7 @@ func TestParseTime_ValidInputs(t *testing.T) {
 	}
 	for _, s := range cases {
 		t.Run(s, func(t *testing.T) {
+			t.Parallel()
 			if _, err := model.ParseTime(s); err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -225,6 +244,7 @@ func TestParseTime_ValidInputs(t *testing.T) {
 }
 
 func TestParseTime_InvalidInputs(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		"",
 		"not-a-date",
@@ -236,6 +256,7 @@ func TestParseTime_InvalidInputs(t *testing.T) {
 	}
 	for _, s := range cases {
 		t.Run(`"`+s+`"`, func(t *testing.T) {
+			t.Parallel()
 			if _, err := model.ParseTime(s); err == nil {
 				t.Errorf("expected error for %q, got none", s)
 			}
@@ -244,6 +265,7 @@ func TestParseTime_InvalidInputs(t *testing.T) {
 }
 
 func TestFormatTime_RoundTrip(t *testing.T) {
+	t.Parallel()
 	original := "2026-05-20 14:30"
 	parsed, err := model.ParseTime(original)
 	if err != nil {
@@ -255,7 +277,7 @@ func TestFormatTime_RoundTrip(t *testing.T) {
 }
 
 func TestFormatTime_ParseTime_Symmetric(t *testing.T) {
-	// FormatTime output must always be parseable by ParseTime.
+	t.Parallel()
 	now := time.Now().Truncate(time.Minute)
 	formatted := model.FormatTime(now)
 	parsed, err := model.ParseTime(formatted)
