@@ -8,3 +8,4 @@
 - [ ] We can extend the model with skills, and connect them to sessions. We also need a mechanism to register which version of the skill was installed with which session.
 - [ ] Unattached is questionable, projects should be used for both attached and unattached.
 - [ ] Need an numbered list to summarize what to do next (per session). This can be more complex (type: prompt, todo) for each list item.
+- [ ] Add CI: `.golangci.yml` and `.github/workflows/go.yml`

@@ -284,8 +284,11 @@ func (s *Store) Save(reg model.Registry) error {
 		return fmt.Errorf("store: write %q: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp) // best-effort cleanup; original error takes precedence
-		return fmt.Errorf("store: rename %q to %q: %w", tmp, s.path, err)
+		err = fmt.Errorf("store: rename %q to %q: %w", tmp, s.path, err)
+		if rmErr := os.Remove(tmp); rmErr != nil {
+			err = errors.Join(err, rmErr)
+		}
+		return err
 	}
 	return nil
 }
