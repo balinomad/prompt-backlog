@@ -41,38 +41,35 @@ func TestNewProjectForm_IncompatibleProvider_ReturnsErrorModal(t *testing.T) {
 	}
 }
 
-func TestNewProjectForm_CompatibleProvider_ReturnsForm(t *testing.T) {
+func TestNewProjectForm_ReturnsForm(t *testing.T) {
 	t.Parallel()
-	// alice/claude has HasProjects=true — form should open normally.
-	app := newMockApp(t)
-	s := app.registry.SessionAt("alice@example.com", "claude")
-	result := NewProjectForm(app, nil, s, func() {})
-	if _, ok := result.(*tview.Flex); !ok {
-		t.Error("expected centred form for provider with project support")
+	cases := []struct {
+		name         string
+		userEmail    string // empty = nil session
+		providerName string
+		projectName  string // empty = nil (new mode), non-empty = edit mode
+	}{
+		{"compatible provider", "alice@example.com", "claude", ""},
+		{"nil session", "", "", ""},
+		{"edit mode bypasses provider check", "bob@example.com", "chatgpt", "Orphan"},
 	}
-}
-
-func TestNewProjectForm_NilSession_ReturnsForm(t *testing.T) {
-	t.Parallel()
-	// nil session means unattached project — no provider check needed.
-	app := newMockApp(t)
-	result := NewProjectForm(app, nil, nil, func() {})
-	if _, ok := result.(*tview.Flex); !ok {
-		t.Error("expected form when session is nil")
-	}
-}
-
-func TestNewProjectForm_EditMode_ReturnsForm(t *testing.T) {
-	t.Parallel()
-	// Edit mode skips the pre-flight check entirely.
-	app := newMockApp(t)
-	// Use the chatgpt session (incompatible), but edit an existing project —
-	// the pre-flight guard must not fire.
-	s := app.registry.SessionAt("bob@example.com", "chatgpt")
-	proj := app.registry.ProjectByName("Orphan")
-	result := NewProjectForm(app, proj, s, func() {})
-	if _, ok := result.(*tview.Flex); !ok {
-		t.Error("expected form in edit mode regardless of provider capability")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newMockApp(t)
+			var s *model.Session
+			if tc.userEmail != "" {
+				s = app.registry.SessionAt(tc.userEmail, tc.providerName)
+			}
+			var proj *model.Project
+			if tc.projectName != "" {
+				proj = app.registry.ProjectByName(tc.projectName)
+			}
+			result := NewProjectForm(app, proj, s, func() {})
+			if _, ok := result.(*tview.Flex); !ok {
+				t.Errorf("expected centred form for case %q", tc.name)
+			}
+		})
 	}
 }
 

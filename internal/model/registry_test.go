@@ -57,27 +57,24 @@ func TestAddProvider_Success(t *testing.T) {
 	}
 }
 
-func TestAddProvider_NilPointer(t *testing.T) {
+func TestAddProvider_RejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddProvider(nil); err == nil {
-		t.Error("expected error for nil provider")
+	cases := []struct {
+		name     string
+		provider *model.Provider
+	}{
+		{"nil pointer", nil},
+		{"empty name", model.NewProvider("", false, false)},
+		{"whitespace name", model.NewProvider("   ", false, false)},
 	}
-}
-
-func TestAddProvider_EmptyName(t *testing.T) {
-	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddProvider(model.NewProvider("", false, false)); err == nil {
-		t.Error("expected error for empty name")
-	}
-}
-
-func TestAddProvider_WhitespaceName(t *testing.T) {
-	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddProvider(model.NewProvider("   ", false, false)); err == nil {
-		t.Error("expected error for whitespace-only name")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := model.NewRegistry()
+			if err := reg.AddProvider(tc.provider); err == nil {
+				t.Errorf("expected error for %q", tc.name)
+			}
+		})
 	}
 }
 
@@ -153,27 +150,24 @@ func TestAddUser_Success(t *testing.T) {
 	}
 }
 
-func TestAddUser_NilPointer(t *testing.T) {
+func TestAddUser_RejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddUser(nil); err == nil {
-		t.Error("expected error for nil user")
+	cases := []struct {
+		name string
+		user *model.User
+	}{
+		{"nil pointer", nil},
+		{"empty email", model.NewUser("", "Alice")},
+		{"whitespace email", model.NewUser("   ", "Alice")},
 	}
-}
-
-func TestAddUser_EmptyEmail(t *testing.T) {
-	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddUser(model.NewUser("", "Alice")); err == nil {
-		t.Error("expected error for empty email")
-	}
-}
-
-func TestAddUser_WhitespaceEmail(t *testing.T) {
-	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddUser(model.NewUser("   ", "Alice")); err == nil {
-		t.Error("expected error for whitespace-only email")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := model.NewRegistry()
+			if err := reg.AddUser(tc.user); err == nil {
+				t.Errorf("expected error for %q", tc.name)
+			}
+		})
 	}
 }
 
@@ -459,27 +453,24 @@ func TestAddProject_Success(t *testing.T) {
 	}
 }
 
-func TestAddProject_NilPointer(t *testing.T) {
+func TestAddProject_RejectsInvalidInput(t *testing.T) {
 	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddProject(nil); err == nil {
-		t.Error("expected error for nil project")
+	cases := []struct {
+		name    string
+		project *model.Project
+	}{
+		{"nil pointer", nil},
+		{"empty name", model.NewProject("")},
+		{"whitespace name", model.NewProject("   ")},
 	}
-}
-
-func TestAddProject_EmptyName(t *testing.T) {
-	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddProject(model.NewProject("")); err == nil {
-		t.Error("expected error for empty name")
-	}
-}
-
-func TestAddProject_WhitespaceName(t *testing.T) {
-	t.Parallel()
-	reg := model.NewRegistry()
-	if err := reg.AddProject(model.NewProject("   ")); err == nil {
-		t.Error("expected error for whitespace-only name")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := model.NewRegistry()
+			if err := reg.AddProject(tc.project); err == nil {
+				t.Errorf("expected error for %q", tc.name)
+			}
+		})
 	}
 }
 

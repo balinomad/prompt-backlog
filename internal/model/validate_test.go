@@ -19,67 +19,59 @@ func TestFieldError_Format(t *testing.T) {
 
 // ── ValidateProvider ──────────────────────────────────────────────────────────
 
-func TestValidateProvider_Valid(t *testing.T) {
+func TestValidateProvider(t *testing.T) {
 	t.Parallel()
-	p := model.NewProvider("claude", true, false)
-	if errs := model.ValidateProvider(p); len(errs) != 0 {
-		t.Errorf("expected no errors, got: %v", errs)
+	cases := []struct {
+		name     string
+		provider *model.Provider
+		wantErrs bool
+	}{
+		{"valid", model.NewProvider("claude", true, false), false},
+		{"nil", nil, true},
+		{"empty name", model.NewProvider("", false, false), true},
+		{"whitespace name", model.NewProvider("   ", false, false), true},
 	}
-}
-
-func TestValidateProvider_Nil(t *testing.T) {
-	t.Parallel()
-	if errs := model.ValidateProvider(nil); len(errs) == 0 {
-		t.Error("expected error for nil provider")
-	}
-}
-
-func TestValidateProvider_EmptyName(t *testing.T) {
-	t.Parallel()
-	p := model.NewProvider("", false, false)
-	if errs := model.ValidateProvider(p); len(errs) == 0 {
-		t.Error("expected error for empty name")
-	}
-}
-
-func TestValidateProvider_WhitespaceName(t *testing.T) {
-	t.Parallel()
-	p := model.NewProvider("   ", false, false)
-	if errs := model.ValidateProvider(p); len(errs) == 0 {
-		t.Error("expected error for whitespace-only name")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			errs := model.ValidateProvider(tc.provider)
+			if tc.wantErrs && len(errs) == 0 {
+				t.Error("expected errors, got none")
+			}
+			if !tc.wantErrs && len(errs) != 0 {
+				t.Errorf("expected no errors, got: %v", errs)
+			}
+		})
 	}
 }
 
 // ── ValidateUser ──────────────────────────────────────────────────────────────
 
-func TestValidateUser_Valid(t *testing.T) {
+func TestValidateUser(t *testing.T) {
 	t.Parallel()
-	u := model.NewUser("alice@example.com", "Alice")
-	if errs := model.ValidateUser(u); len(errs) != 0 {
-		t.Errorf("expected no errors, got: %v", errs)
+	cases := []struct {
+		name     string
+		user     *model.User
+		wantErrs bool
+	}{
+		{"valid", model.NewUser("alice@example.com", "Alice"), false},
+		{"nil", nil, true},
+		{"empty email", model.NewUser("", "Alice"), true},
+		{"whitespace email", model.NewUser("   ", "Alice"), true},
+		{"empty name", model.NewUser("alice@example.com", ""), true},
+		{"whitespace name", model.NewUser("alice@example.com", "   "), true},
 	}
-}
-
-func TestValidateUser_Nil(t *testing.T) {
-	t.Parallel()
-	if errs := model.ValidateUser(nil); len(errs) == 0 {
-		t.Error("expected error for nil user")
-	}
-}
-
-func TestValidateUser_EmptyEmail(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("", "Alice")
-	if errs := model.ValidateUser(u); len(errs) == 0 {
-		t.Error("expected error for empty email")
-	}
-}
-
-func TestValidateUser_WhitespaceEmail(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("   ", "Alice")
-	if errs := model.ValidateUser(u); len(errs) == 0 {
-		t.Error("expected error for whitespace-only email")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			errs := model.ValidateUser(tc.user)
+			if tc.wantErrs && len(errs) == 0 {
+				t.Error("expected errors, got none")
+			}
+			if !tc.wantErrs && len(errs) != 0 {
+				t.Errorf("expected no errors, got: %v", errs)
+			}
+		})
 	}
 }
 
@@ -103,22 +95,6 @@ func TestValidateUser_InvalidEmail(t *testing.T) {
 	}
 }
 
-func TestValidateUser_EmptyName(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("alice@example.com", "")
-	if errs := model.ValidateUser(u); len(errs) == 0 {
-		t.Error("expected error for empty name")
-	}
-}
-
-func TestValidateUser_WhitespaceName(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("alice@example.com", "   ")
-	if errs := model.ValidateUser(u); len(errs) == 0 {
-		t.Error("expected error for whitespace-only name")
-	}
-}
-
 func TestValidateUser_BothInvalid(t *testing.T) {
 	t.Parallel()
 	u := model.NewUser("", "")
@@ -129,34 +105,29 @@ func TestValidateUser_BothInvalid(t *testing.T) {
 
 // ── ValidateProject ───────────────────────────────────────────────────────────
 
-func TestValidateProject_Valid(t *testing.T) {
+func TestValidateProject(t *testing.T) {
 	t.Parallel()
-	p := model.NewProject("Alpha")
-	if errs := model.ValidateProject(p); len(errs) != 0 {
-		t.Errorf("expected no errors, got: %v", errs)
+	cases := []struct {
+		name     string
+		project  *model.Project
+		wantErrs bool
+	}{
+		{"valid", model.NewProject("Alpha"), false},
+		{"nil", nil, true},
+		{"empty name", model.NewProject(""), true},
+		{"whitespace name", model.NewProject("   "), true},
 	}
-}
-
-func TestValidateProject_Nil(t *testing.T) {
-	t.Parallel()
-	if errs := model.ValidateProject(nil); len(errs) == 0 {
-		t.Error("expected error for nil project")
-	}
-}
-
-func TestValidateProject_EmptyName(t *testing.T) {
-	t.Parallel()
-	p := model.NewProject("")
-	if errs := model.ValidateProject(p); len(errs) == 0 {
-		t.Error("expected error for empty name")
-	}
-}
-
-func TestValidateProject_WhitespaceName(t *testing.T) {
-	t.Parallel()
-	p := model.NewProject("   ")
-	if errs := model.ValidateProject(p); len(errs) == 0 {
-		t.Error("expected error for whitespace-only name")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			errs := model.ValidateProject(tc.project)
+			if tc.wantErrs && len(errs) == 0 {
+				t.Error("expected errors, got none")
+			}
+			if !tc.wantErrs && len(errs) != 0 {
+				t.Errorf("expected no errors, got: %v", errs)
+			}
+		})
 	}
 }
 
@@ -206,63 +177,57 @@ func TestValidateLastQuestion_AllCombinationsValid(t *testing.T) {
 
 // ── ValidateProjectAssignment ─────────────────────────────────────────────────
 
-func TestValidateProjectAssignment_NilSession(t *testing.T) {
+func TestValidateProjectAssignment(t *testing.T) {
 	t.Parallel()
-	if errs := model.ValidateProjectAssignment(nil); len(errs) != 0 {
-		t.Errorf("expected no errors for nil session, got: %v", errs)
+	alice := model.NewUser("alice@example.com", "Alice")
+	bob := model.NewUser("bob@example.com", "Bob")
+	cases := []struct {
+		name     string
+		session  *model.Session
+		wantErrs bool
+	}{
+		{"nil session", nil, false},
+		{"provider supports projects",
+			model.NewSession(alice, model.NewProvider("claude", true, false)), false},
+		{"provider does not support projects",
+			model.NewSession(bob, model.NewProvider("chatgpt", false, false)), true},
+		{"nil provider",
+			model.NewSession(alice, nil), true},
 	}
-}
-
-func TestValidateProjectAssignment_ProviderSupportsProjects(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("alice@example.com", "Alice")
-	p := model.NewProvider("claude", true, false)
-	s := model.NewSession(u, p)
-	if errs := model.ValidateProjectAssignment(s); len(errs) != 0 {
-		t.Errorf("expected no errors, got: %v", errs)
-	}
-}
-
-func TestValidateProjectAssignment_ProviderDoesNotSupportProjects(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("bob@example.com", "Bob")
-	p := model.NewProvider("chatgpt", false, false)
-	s := model.NewSession(u, p)
-	if errs := model.ValidateProjectAssignment(s); len(errs) == 0 {
-		t.Error("expected error: provider does not support projects")
-	}
-}
-
-func TestValidateProjectAssignment_NilProvider(t *testing.T) {
-	t.Parallel()
-	u := model.NewUser("alice@example.com", "Alice")
-	s := model.NewSession(u, nil)
-	if errs := model.ValidateProjectAssignment(s); len(errs) == 0 {
-		t.Error("expected error for nil provider")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			errs := model.ValidateProjectAssignment(tc.session)
+			if tc.wantErrs && len(errs) == 0 {
+				t.Error("expected errors, got none")
+			}
+			if !tc.wantErrs && len(errs) != 0 {
+				t.Errorf("expected no errors, got: %v", errs)
+			}
+		})
 	}
 }
 
 // ── FormatErrors ──────────────────────────────────────────────────────────────
 
-func TestFormatErrors_Nil(t *testing.T) {
+func TestFormatErrors(t *testing.T) {
 	t.Parallel()
-	if s := model.FormatErrors(nil); s != "" {
-		t.Errorf("expected empty string, got %q", s)
+	cases := []struct {
+		name string
+		errs []error
+		want string
+	}{
+		{"nil input", nil, ""},
+		{"empty slice", []error{}, ""},
+		{"single error", []error{&model.FieldError{Field: "name", Message: "required"}}, "name: required"},
 	}
-}
-
-func TestFormatErrors_Empty(t *testing.T) {
-	t.Parallel()
-	if s := model.FormatErrors([]error{}); s != "" {
-		t.Errorf("expected empty string, got %q", s)
-	}
-}
-
-func TestFormatErrors_Single(t *testing.T) {
-	t.Parallel()
-	errs := []error{&model.FieldError{Field: "name", Message: "required"}}
-	if got := model.FormatErrors(errs); got != "name: required" {
-		t.Errorf("got %q, want %q", got, "name: required")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := model.FormatErrors(tc.errs); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

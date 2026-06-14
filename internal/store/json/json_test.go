@@ -93,133 +93,70 @@ func TestLoad_FileNotExist_ReturnsEmptyRegistry(t *testing.T) {
 	}
 }
 
-func TestLoad_EmptyFile_ReturnsError(t *testing.T) {
+func TestLoad_InvalidData_ReturnsError(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	if err := os.WriteFile(path, []byte{}, 0600); err != nil {
-		t.Fatalf("write empty file: %v", err)
-	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for empty file")
-	}
-}
-
-func TestLoad_InvalidJSON_ReturnsError(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	if err := os.WriteFile(path, []byte("not json {{{"), 0600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for invalid JSON")
-	}
-}
-
-func TestLoad_SessionReferencesUnknownUser_ReturnsError(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	// Manually craft JSON with a session that references a non-existent user.
-	raw := `{
-		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-		"users": {},
-		"sessions": {"ghost@example.com": {"claude": {}}},
-		"projects": {}
-	}`
-	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for session referencing unknown user")
-	}
-}
-
-func TestLoad_SessionReferencesUnknownProvider_ReturnsError(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	raw := `{
-		"providers": {},
-		"users": {"alice@example.com": {"name": "Alice"}},
-		"sessions": {"alice@example.com": {"ghost": {}}},
-		"projects": {}
-	}`
-	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for session referencing unknown provider")
-	}
-}
-
-func TestLoad_ProjectReferencesUnknownSession_ReturnsError(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	raw := `{
-		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-		"users": {"alice@example.com": {"name": "Alice"}},
-		"sessions": {},
-		"projects": {
-			"Alpha": {
-				"sessions": [{"user_email": "alice@example.com", "provider": "claude"}]
-			}
-		}
-	}`
-	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for project referencing unknown session")
-	}
-}
-
-func TestLoad_ProjectPartialSessionReference_ReturnsError(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	// user_email set but provider empty in the session reference.
-	raw := `{
-		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-		"users": {"alice@example.com": {"name": "Alice"}},
-		"sessions": {"alice@example.com": {"claude": {}}},
-		"projects": {
-			"Alpha": {
-				"sessions": [{"user_email": "alice@example.com"}]
-			}
-		}
-	}`
-	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for partial session reference in project")
-	}
-}
-
-func TestLoad_LastQuestionReferencesUnknownProject_ReturnsError(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "registry.json")
-	raw := `{
-		"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-		"users": {"alice@example.com": {"name": "Alice"}},
-		"sessions": {
-			"alice@example.com": {
-				"claude": {
-					"last_question": {"project_name": "ghost", "mid_answer": false}
+	cases := []struct {
+		name    string
+		content []byte
+	}{
+		{"empty file", []byte{}},
+		{"invalid json", []byte("not json {{{")},
+		{"session references unknown user", []byte(`{
+			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+			"users": {},
+			"sessions": {"ghost@example.com": {"claude": {}}},
+			"projects": {}
+		}`)},
+		{"session references unknown provider", []byte(`{
+			"providers": {},
+			"users": {"alice@example.com": {"name": "Alice"}},
+			"sessions": {"alice@example.com": {"ghost": {}}},
+			"projects": {}
+		}`)},
+		{"project references unknown session", []byte(`{
+			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+			"users": {"alice@example.com": {"name": "Alice"}},
+			"sessions": {},
+			"projects": {
+				"Alpha": {
+					"sessions": [{"user_email": "alice@example.com", "provider": "claude"}]
 				}
 			}
-		},
-		"projects": {}
-	}`
-	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
-		t.Fatalf("write file: %v", err)
+		}`)},
+		{"project has partial session reference", []byte(`{
+			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+			"users": {"alice@example.com": {"name": "Alice"}},
+			"sessions": {"alice@example.com": {"claude": {}}},
+			"projects": {
+				"Alpha": {
+					"sessions": [{"user_email": "alice@example.com"}]
+				}
+			}
+		}`)},
+		{"last question references unknown project", []byte(`{
+			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
+			"users": {"alice@example.com": {"name": "Alice"}},
+			"sessions": {
+				"alice@example.com": {
+					"claude": {
+						"last_question": {"project_name": "ghost", "mid_answer": false}
+					}
+				}
+			},
+			"projects": {}
+		}`)},
 	}
-	s := json.New(path)
-	if _, err := s.Load(); err == nil {
-		t.Error("expected error for last_question referencing unknown project")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "registry.json")
+			if err := os.WriteFile(path, tc.content, 0600); err != nil {
+				t.Fatalf("write file: %v", err)
+			}
+			if _, err := json.New(path).Load(); err == nil {
+				t.Errorf("expected error for %q, got none", tc.name)
+			}
+		})
 	}
 }
 

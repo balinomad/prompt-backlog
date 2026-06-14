@@ -38,33 +38,31 @@ func TestNewRegistry_AcceptsFirstProvider(t *testing.T) {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-func TestNewProvider_Fields(t *testing.T) {
+func TestNewProvider(t *testing.T) {
 	t.Parallel()
-	p := model.NewProvider("claude", true, false)
-	if p.Name() != "claude" {
-		t.Errorf("Name: got %q, want %q", p.Name(), "claude")
+	cases := []struct {
+		name            string
+		providerName    string
+		hasProjects     bool
+		hasDeepResearch bool
+	}{
+		{"all capabilities set", "claude", true, false},
+		{"no capabilities", "basic", false, false},
 	}
-	if !p.HasProjects {
-		t.Error("HasProjects: expected true")
-	}
-	if p.HasDeepResearch {
-		t.Error("HasDeepResearch: expected false")
-	}
-}
-
-func TestNewProvider_AllCapabilitiesFalse(t *testing.T) {
-	t.Parallel()
-	p := model.NewProvider("basic", false, false)
-	if p.HasProjects || p.HasDeepResearch {
-		t.Error("expected all capabilities false")
-	}
-}
-
-func TestProvider_Name_Immutable(t *testing.T) {
-	t.Parallel()
-	p := model.NewProvider("claude", true, false)
-	if p.Name() != "claude" {
-		t.Errorf("Name: got %q, want %q", p.Name(), "claude")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := model.NewProvider(tc.providerName, tc.hasProjects, tc.hasDeepResearch)
+			if p.Name() != tc.providerName {
+				t.Errorf("Name: got %q, want %q", p.Name(), tc.providerName)
+			}
+			if p.HasProjects != tc.hasProjects {
+				t.Errorf("HasProjects: got %v, want %v", p.HasProjects, tc.hasProjects)
+			}
+			if p.HasDeepResearch != tc.hasDeepResearch {
+				t.Errorf("HasDeepResearch: got %v, want %v", p.HasDeepResearch, tc.hasDeepResearch)
+			}
+		})
 	}
 }
 
@@ -176,34 +174,34 @@ func TestProject_Fields_Mutable(t *testing.T) {
 
 // ── LastQuestion ──────────────────────────────────────────────────────────────
 
-func TestNewLastQuestion_WithProject(t *testing.T) {
+func TestNewLastQuestion(t *testing.T) {
 	t.Parallel()
 	proj := model.NewProject("Alpha")
-	lq := model.NewLastQuestion(proj)
-	if lq.Project() != proj {
-		t.Error("Project: pointer mismatch")
+	cases := []struct {
+		name        string
+		project     *model.Project
+		wantProject *model.Project
+	}{
+		{"nil project", nil, nil},
+		{"with project", proj, proj},
 	}
-}
-
-func TestNewLastQuestion_WithNil(t *testing.T) {
-	t.Parallel()
-	lq := model.NewLastQuestion(nil)
-	if lq.Project() != nil {
-		t.Error("Project: expected nil")
-	}
-}
-
-func TestNewLastQuestion_DefaultFields(t *testing.T) {
-	t.Parallel()
-	lq := model.NewLastQuestion(nil)
-	if lq.MidAnswer {
-		t.Error("MidAnswer: expected false")
-	}
-	if lq.Topic != "" {
-		t.Errorf("Topic: expected empty, got %q", lq.Topic)
-	}
-	if lq.NextPrompt != "" {
-		t.Errorf("NextPrompt: expected empty, got %q", lq.NextPrompt)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lq := model.NewLastQuestion(tc.project)
+			if lq.Project() != tc.wantProject {
+				t.Errorf("Project: got %v, want %v", lq.Project(), tc.wantProject)
+			}
+			if lq.MidAnswer {
+				t.Error("MidAnswer: expected false by default")
+			}
+			if lq.Topic != "" {
+				t.Errorf("Topic: expected empty, got %q", lq.Topic)
+			}
+			if lq.NextPrompt != "" {
+				t.Errorf("NextPrompt: expected empty, got %q", lq.NextPrompt)
+			}
+		})
 	}
 }
 

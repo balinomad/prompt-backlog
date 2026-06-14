@@ -124,27 +124,27 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_Edit_EmptyList_NoModal(t *testing.T) {
+func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
-	app.registry = model.NewRegistry()
-	p := NewProvidersPanel(app)
-	p.Refresh()
-	p.handleKey(runeKey(KeyEdit))
-	if app.modal != nil {
-		t.Error("edit with empty list should not open a modal")
+	cases := []struct {
+		name string
+		key  rune
+	}{
+		{"edit", KeyEdit},
+		{"delete", KeyDelete},
 	}
-}
-
-func TestProvidersPanel_Delete_EmptyList_NoModal(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	app.registry = model.NewRegistry()
-	p := NewProvidersPanel(app)
-	p.Refresh()
-	p.handleKey(runeKey(KeyDelete))
-	if app.modal != nil {
-		t.Error("delete with empty list should not open a modal")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newMockApp(t)
+			app.registry = model.NewRegistry()
+			p := NewProvidersPanel(app)
+			p.Refresh()
+			p.handleKey(runeKey(tc.key))
+			if app.modal != nil {
+				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
+			}
+		})
 	}
 }
 

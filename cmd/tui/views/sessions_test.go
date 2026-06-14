@@ -164,29 +164,28 @@ func TestSessionsPanel_Keys_ShowModal(t *testing.T) {
 	}
 }
 
-func TestSessionsPanel_Delete_EmptyList_NoModal(t *testing.T) {
+func TestSessionsPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
-	app.registry = model.NewRegistry()
-	must(t, app.registry.AddProvider(model.NewProvider("claude", true, false)))
-	p := NewSessionsPanel(app)
-	p.Refresh()
-	p.handleKey(runeKey(KeyDelete))
-	if app.modal != nil {
-		t.Error("delete with empty list should not open a modal")
+	cases := []struct {
+		name string
+		key  rune
+	}{
+		{"delete", KeyDelete},
+		{"edit", KeyEdit},
 	}
-}
-
-func TestSessionsPanel_Edit_EmptyList_NoModal(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	app.registry = model.NewRegistry()
-	must(t, app.registry.AddProvider(model.NewProvider("claude", true, false)))
-	p := NewSessionsPanel(app)
-	p.Refresh()
-	p.handleKey(runeKey(KeyEdit))
-	if app.modal != nil {
-		t.Error("edit with empty list should not open a modal")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newMockApp(t)
+			app.registry = model.NewRegistry()
+			must(t, app.registry.AddProvider(model.NewProvider("claude", true, false)))
+			p := NewSessionsPanel(app)
+			p.Refresh()
+			p.handleKey(runeKey(tc.key))
+			if app.modal != nil {
+				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
+			}
+		})
 	}
 }
 
