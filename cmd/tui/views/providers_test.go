@@ -78,7 +78,7 @@ func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
 		fire func(*ProvidersPanel)
 	}{
 		{"esc key", func(p *ProvidersPanel) { p.handleKey(escKey()) }},
-		{"p key", func(p *ProvidersPanel) { p.handleKey(runeKey(KeyProviders)) }},
+		{"r key", func(p *ProvidersPanel) { p.handleKey(runeKey(KeyProviders)) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

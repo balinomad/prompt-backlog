@@ -68,6 +68,9 @@ func (a *App) Mutate(fn func(*model.Registry) error) error {
 	}
 	saveErr := a.store.Save(a.registry)
 	a.refreshAll()
+	if saveErr == nil {
+		a.statusBar.SetMessage("[green]saved ✓[-]")
+	}
 	return saveErr
 }
 

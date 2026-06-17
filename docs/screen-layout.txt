@@ -5,13 +5,13 @@
 │  │   bob@example.com      │  │    Project Beta                   │   │
 │  │   charlie@example.com  │  │  ─────────────────────────────    │   │
 │  │                        │  │  Last Q             [mid-answer]  │   │
-│  │   [s] Standalone       │  └───────────────────────────────────┘   │
+│  │                        │  └───────────────────────────────────┘   │
 │  │                        │  ┌─ Session Detail ──────────────────┐   │
 │  │                        │  │  Name:   Alice Smith              │   │
 │  │                        │  │  Email:  alice@example.com        │   │
 │  │                        │  │  Next:   2026-05-20 09:00         │   │
 │  └────────────────────────┘  └───────────────────────────────────┘   │
 │                                                                      │
-│  [n]ew  [e]dit  [d]elete  [m]id-answer  [Tab]switch focus  [?]help   │
+│  [n]ew  [e]dit  [d]elete  [Space]toggle  [Tab]switch focus  [?]help  │
 │  [q]quit                                                  saved ✓    │
 └──────────────────────────────────────────────────────────────────────┘

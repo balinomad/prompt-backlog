@@ -11,7 +11,7 @@ import (
 const (
 	// HintsSessionsPanel is shown when the sessions list has focus.
 	HintsSessionsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]p[-::-] providers  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+		"  [::b]r[-::-] providers  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
 
 	// HintsProjectsPanel is shown when the projects list has focus.
 	HintsProjectsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +

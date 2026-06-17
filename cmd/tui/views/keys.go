@@ -25,7 +25,7 @@ const (
 	KeyQuit rune = 'q'
 
 	// KeyProviders switches to the providers management screen.
-	KeyProviders rune = 'p'
+	KeyProviders rune = 'r'
 )
 
 // ── Special keys (checked via event.Key()) ───────────────────────────────────

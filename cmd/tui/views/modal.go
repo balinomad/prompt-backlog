@@ -109,7 +109,6 @@ const helpText = `
   [::b]↑ ↓[-::-]               Move through list items
   [::b]Tab[-::-]               Rotate focus forward
   [::b]Shift+Tab[-::-]         Rotate focus backward
-  [::b]Enter[-::-]             Expand session → focus projects
 
 [::b]Actions[-::-]
   [::b]n[-::-]                 New item
@@ -118,7 +117,7 @@ const helpText = `
   [::b]Space[-::-]             Toggle mid-answer flag
 
 [::b]Screens[-::-]
-  [::b]p[-::-]                 Providers screen
+  [::b]r[-::-]                 Providers screen
 
 [::b]Forms[-::-]
   [::b]Ctrl+S[-::-]            Save

@@ -5,14 +5,13 @@
 | `↑↓`        | any list                          | navigate                   |
 | `Tab`       | anywhere                          | rotate focus forward       |
 | `Shift+Tab` | anywhere                          | rotate focus backward      |
-| `Enter`     | session list                      | expand → focus projects    |
 | `n`         | sessions / projects               | new item form              |
 | `e`         | any selected item                 | edit form                  |
 | `d`         | any selected item                 | delete (confirm modal)     |
 | `Space`     | project or last-question selected | toggle mid-answer          |
 | `Ctrl+S`    | form                              | save                       |
 | `Esc`       | form / modal                      | cancel / close             |
-| `p`         | sessions panel                    | switch to providers screen |
+| `r`         | sessions panel                    | switch to providers screen |
 | `?`         | anywhere                          | help overlay               |
 | `q`         | anywhere                          | quit                       |
 

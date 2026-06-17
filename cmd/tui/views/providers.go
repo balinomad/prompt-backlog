@@ -11,8 +11,8 @@ import (
 )
 
 // ProvidersPanel is a full-screen view for managing providers.
-// The operator navigates to it with 'p' and returns to the main view with
-// 'Esc' or 'p'.
+// The operator navigates to it with 'r' and returns to the main view with
+// 'Esc' or 'r'.
 type ProvidersPanel struct {
 	*tview.Flex
 	list       *tview.List
@@ -122,7 +122,7 @@ func (p *ProvidersPanel) renderInfo(prov *model.Provider) {
 
 // handleKey processes keyboard input for this panel.
 func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	// Esc and 'p' both return to the main screen.
+	// Esc and 'r' both return to the main screen.
 	if event.Key() == KeyCancel {
 		p.app.SwitchToMain()
 		return nil
