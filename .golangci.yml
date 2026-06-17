@@ -189,9 +189,7 @@ linters:
         - performance
         - style
       disabled-checks:
-        # globalConfig is intentionally passed by value to middleware closures
-        # at boot time to eliminate any hot-path read-lock requirement.
-        - hugeParam
+        - unnamedResult
 
     perfsprint:
       err-error: true

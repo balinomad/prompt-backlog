@@ -1,6 +1,10 @@
+// Package model contains types and data structures for the data model.
 package model
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // TimeFormat is the canonical display and parse format for all timestamps.
 // Using Go's reference time: Mon Jan 2 15:04:05 MST 2006.
@@ -163,7 +167,11 @@ func (lq *LastQuestion) Project() *Project { return lq.project }
 
 // ParseTime parses s using TimeFormat in the local timezone.
 func ParseTime(s string) (time.Time, error) {
-	return time.ParseInLocation(TimeFormat, s, time.Local)
+	t, err := time.ParseInLocation(TimeFormat, s, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid time %q: %w", s, err)
+	}
+	return t, nil
 }
 
 // FormatTime formats t using TimeFormat.

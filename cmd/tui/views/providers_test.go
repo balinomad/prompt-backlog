@@ -46,7 +46,8 @@ func TestProvidersPanel_Refresh_SortedByName(t *testing.T) {
 	p.Refresh()
 
 	var names []string
-	for i := 0; i < p.list.GetItemCount(); i++ {
+	itemCount := p.list.GetItemCount()
+	for i := range itemCount {
 		main, _ := p.list.GetItemText(i)
 		names = append(names, main)
 	}

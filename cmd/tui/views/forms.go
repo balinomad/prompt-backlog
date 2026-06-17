@@ -84,13 +84,32 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 	}
 	form.AddInputField("Name", initName, 40, nil, nil)
 	form.AddInputField("Next prompt at", initNext, 20, nil, nil)
-	form.GetFormItemByLabel("Next prompt at").(*tview.InputField).SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
+	form.AddInputField("Next prompt at", initNext, 20, nil, nil)
+
+	nextField, ok := form.GetFormItemByLabel("Next prompt at").(*tview.InputField)
+	if !ok {
+		// We just added this field, so this should theoretically never happen.
+		// If it does, abort form creation and show an error modal.
+		return errorModal("Internal error: failed to initialize form fields.", onClose)
+	}
+	nextField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
 
 	// ── Save logic ────────────────────────────────────────────────────────────
 
 	save := func() {
-		nameVal := strings.TrimSpace(form.GetFormItemByLabel("Name").(*tview.InputField).GetText())
-		nextVal := strings.TrimSpace(form.GetFormItemByLabel("Next prompt at").(*tview.InputField).GetText())
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Name field missing[-]")
+			return
+		}
+		nameVal := strings.TrimSpace(nameField.GetText())
+
+		nextPromtField, ok := form.GetFormItemByLabel("Next prompt at").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Next prompt field missing[-]")
+			return
+		}
+		nextVal := strings.TrimSpace(nextPromtField.GetText())
 
 		// Parse the optional timestamp.
 		var nextTime *time.Time
@@ -129,8 +148,19 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 			}
 		} else {
 			// New: create user (if absent) and session.
-			emailVal := strings.TrimSpace(form.GetFormItemByLabel("Email").(*tview.InputField).GetText())
-			_, providerName := form.GetFormItemByLabel("Provider").(*tview.DropDown).GetCurrentOption()
+			emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+			if !ok {
+				app.SetStatus("[red]internal error: Email field missing[-]")
+				return
+			}
+			emailVal := strings.TrimSpace(emailField.GetText())
+
+			providerDropDown, ok := form.GetFormItemByLabel("Provider").(*tview.DropDown)
+			if !ok {
+				app.SetStatus("[red]internal error: Provider dropdown missing[-]")
+				return
+			}
+			_, providerName := providerDropDown.GetCurrentOption()
 
 			if errs := model.ValidateUser(model.NewUser(emailVal, nameVal)); len(errs) != 0 {
 				app.SetStatus("[red]" + model.FormatErrors(errs) + "[-]")
@@ -214,8 +244,19 @@ func NewProjectForm(app App, project *model.Project, session *model.Session, onC
 	form.AddInputField("Instructions", initInstr, 40, nil, nil)
 
 	save := func() {
-		descVal := strings.TrimSpace(form.GetFormItemByLabel("Description").(*tview.InputField).GetText())
-		instrVal := strings.TrimSpace(form.GetFormItemByLabel("Instructions").(*tview.InputField).GetText())
+		descField, ok := form.GetFormItemByLabel("Description").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Description field missing[-]")
+			return
+		}
+		descVal := strings.TrimSpace(descField.GetText())
+
+		instrField, ok := form.GetFormItemByLabel("Instructions").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Instructions field missing[-]")
+			return
+		}
+		instrVal := strings.TrimSpace(instrField.GetText())
 
 		if isEdit {
 			name := initName
@@ -232,7 +273,13 @@ func NewProjectForm(app App, project *model.Project, session *model.Session, onC
 				return
 			}
 		} else {
-			nameVal := strings.TrimSpace(form.GetFormItemByLabel("Name").(*tview.InputField).GetText())
+			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+			if !ok {
+				app.SetStatus("[red]internal error: Name field missing[-]")
+				return
+			}
+			nameVal := strings.TrimSpace(nameField.GetText())
+
 			if errs := model.ValidateProject(model.NewProject(nameVal)); len(errs) != 0 {
 				app.SetStatus("[red]" + model.FormatErrors(errs) + "[-]")
 				return
@@ -302,8 +349,19 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	form.AddCheckbox("Supports deep research", initHasDeepResearch, nil)
 
 	save := func() {
-		hasProjects := form.GetFormItemByLabel("Supports projects").(*tview.Checkbox).IsChecked()
-		hasDeepResearch := form.GetFormItemByLabel("Supports deep research").(*tview.Checkbox).IsChecked()
+		projectCheckbox, ok := form.GetFormItemByLabel("Supports projects").(*tview.Checkbox)
+		if !ok {
+			app.SetStatus("[red]internal error: project checkbox missing[-]")
+			return
+		}
+		hasProjects := projectCheckbox.IsChecked()
+
+		researchCheckbox, ok := form.GetFormItemByLabel("Supports deep research").(*tview.Checkbox)
+		if !ok {
+			app.SetStatus("[red]internal error: deep research checkbox missing[-]")
+			return
+		}
+		hasDeepResearch := researchCheckbox.IsChecked()
 
 		if isEdit {
 			name := initName
@@ -320,7 +378,12 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 				return
 			}
 		} else {
-			nameVal := strings.TrimSpace(form.GetFormItemByLabel("Name").(*tview.InputField).GetText())
+			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+			if !ok {
+				app.SetStatus("[red]internal error: Name field missing[-]")
+				return
+			}
+			nameVal := strings.TrimSpace(nameField.GetText())
 			p := model.NewProvider(nameVal, hasProjects, hasDeepResearch)
 			if errs := model.ValidateProvider(p); len(errs) != 0 {
 				app.SetStatus("[red]" + model.FormatErrors(errs) + "[-]")
@@ -394,10 +457,33 @@ func NewLastQuestionForm(app App, session *model.Session, onClose func()) tview.
 	form.AddInputField("Next prompt", initNextPrompt, 40, nil, nil)
 
 	save := func() {
-		_, projectName := form.GetFormItemByLabel("Project").(*tview.DropDown).GetCurrentOption()
-		topic := strings.TrimSpace(form.GetFormItemByLabel("Topic").(*tview.InputField).GetText())
-		midAnswer := form.GetFormItemByLabel("Mid-answer").(*tview.Checkbox).IsChecked()
-		nextPrompt := strings.TrimSpace(form.GetFormItemByLabel("Next prompt").(*tview.InputField).GetText())
+		projectDropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
+		if !ok {
+			app.SetStatus("[red]internal error: project dropdown missing[-]")
+			return
+		}
+		_, projectName := projectDropDown.GetCurrentOption()
+
+		topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: topic field missing[-]")
+			return
+		}
+		topic := strings.TrimSpace(topicField.GetText())
+
+		midAnswerCheckbox, ok := form.GetFormItemByLabel("Mid-answer").(*tview.Checkbox)
+		if !ok {
+			app.SetStatus("[red]internal error: mid-answer checkbox missing[-]")
+			return
+		}
+		midAnswer := midAnswerCheckbox.IsChecked()
+
+		nextPromptField, ok := form.GetFormItemByLabel("Next prompt").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: next prompt field missing[-]")
+			return
+		}
+		nextPrompt := strings.TrimSpace(nextPromptField.GetText())
 
 		email := session.User().Email()
 		provider := session.Provider().Name()

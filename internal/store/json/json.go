@@ -1,3 +1,4 @@
+// Package json implements store.Store using JSON files.
 package json
 
 import (

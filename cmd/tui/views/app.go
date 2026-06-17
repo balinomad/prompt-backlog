@@ -1,3 +1,4 @@
+// Package views contains all views for the tui.
 package views
 
 import (

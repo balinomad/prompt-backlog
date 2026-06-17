@@ -1,3 +1,4 @@
+// Package main implements the tui application.
 package main
 
 import (
@@ -47,7 +48,10 @@ func New(s store.Store) (*App, error) {
 
 // Run starts the tview event loop. It blocks until the application stops.
 func (a *App) Run() error {
-	return a.tv.Run()
+	if err := a.tv.Run(); err != nil {
+		return fmt.Errorf("run tview: %w", err)
+	}
+	return nil
 }
 
 // ── views.App implementation ──────────────────────────────────────────────────

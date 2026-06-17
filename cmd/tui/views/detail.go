@@ -381,13 +381,13 @@ func lastQuestionItemText(lq *model.LastQuestion) string {
 	return strings.Join(parts, "  ")
 }
 
-// truncate shortens s to max runes, appending "…" when truncated.
-func truncate(s string, max int) string {
+// truncate shortens s to maxRunes, appending "…" when truncated.
+func truncate(s string, maxRunes int) string {
 	runes := []rune(s)
-	if len(runes) <= max {
+	if len(runes) <= maxRunes {
 		return s
 	}
-	return string(runes[:max-1]) + "…"
+	return string(runes[:maxRunes-1]) + "…"
 }
 
 // dimText wraps s in tview's dim color tag.

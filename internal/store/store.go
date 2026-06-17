@@ -1,3 +1,4 @@
+// Package store defines the persistence contract for the registry.
 package store
 
 import "github.com/balinomad/llm-desk/internal/model"
