@@ -276,11 +276,11 @@ func (s *Store) Save(reg model.Registry) error {
 	if err != nil {
 		return fmt.Errorf("store: marshal: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return fmt.Errorf("store: create directory for %q: %w", s.path, err)
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("store: write %q: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, s.path); err != nil {

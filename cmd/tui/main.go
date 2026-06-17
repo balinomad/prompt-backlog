@@ -43,7 +43,7 @@ func main() {
 
 // openStore returns a Store implementation for the given data file path.
 // The storage format is determined from the file extension.
-// Supported extensions: .json
+// Supported extensions: .json.
 func openStore(path string) (store.Store, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {

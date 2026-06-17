@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -22,7 +23,7 @@ func (e *FieldError) Error() string {
 // ValidateProvider returns all validation errors for a provider.
 func ValidateProvider(p *Provider) []error {
 	if p == nil {
-		return []error{fmt.Errorf("provider is nil")}
+		return []error{errors.New("provider is nil")}
 	}
 	var errs []error
 	if strings.TrimSpace(p.name) == "" {
@@ -34,7 +35,7 @@ func ValidateProvider(p *Provider) []error {
 // ValidateUser returns all validation errors for a user.
 func ValidateUser(u *User) []error {
 	if u == nil {
-		return []error{fmt.Errorf("user is nil")}
+		return []error{errors.New("user is nil")}
 	}
 	var errs []error
 	email := strings.TrimSpace(u.email)
@@ -53,7 +54,7 @@ func ValidateUser(u *User) []error {
 // ValidateProject returns all validation errors for a project.
 func ValidateProject(p *Project) []error {
 	if p == nil {
-		return []error{fmt.Errorf("project is nil")}
+		return []error{errors.New("project is nil")}
 	}
 	var errs []error
 	if strings.TrimSpace(p.name) == "" {
@@ -120,5 +121,5 @@ func isValidEmail(s string) bool {
 		return false
 	}
 	local, domain := parts[0], parts[1]
-	return len(local) > 0 && strings.Contains(domain, ".")
+	return local != "" && strings.Contains(domain, ".")
 }

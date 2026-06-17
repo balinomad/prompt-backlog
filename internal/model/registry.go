@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -12,10 +13,10 @@ import (
 // with the same name already exists.
 func (r *Registry) AddProvider(p *Provider) error {
 	if p == nil {
-		return fmt.Errorf("add provider: nil pointer")
+		return errors.New("add provider: nil pointer")
 	}
 	if strings.TrimSpace(p.name) == "" {
-		return fmt.Errorf("add provider: name required")
+		return errors.New("add provider: name required")
 	}
 	if _, exists := r.providers[p.name]; exists {
 		return fmt.Errorf("add provider: %q already exists", p.name)
@@ -60,10 +61,10 @@ func (r *Registry) RemoveProvider(name string) error {
 // the same email already exists.
 func (r *Registry) AddUser(u *User) error {
 	if u == nil {
-		return fmt.Errorf("add user: nil pointer")
+		return errors.New("add user: nil pointer")
 	}
 	if strings.TrimSpace(u.email) == "" {
-		return fmt.Errorf("add user: email required")
+		return errors.New("add user: email required")
 	}
 	if _, exists := r.users[u.email]; exists {
 		return fmt.Errorf("add user: %q already exists", u.email)
@@ -109,13 +110,13 @@ func (r *Registry) RemoveUser(email string) error {
 // Pointer identity is used to verify registry membership.
 func (r *Registry) AddSession(s *Session) error {
 	if s == nil {
-		return fmt.Errorf("add session: nil pointer")
+		return errors.New("add session: nil pointer")
 	}
 	if s.user == nil {
-		return fmt.Errorf("add session: user is nil")
+		return errors.New("add session: user is nil")
 	}
 	if s.provider == nil {
-		return fmt.Errorf("add session: provider is nil")
+		return errors.New("add session: provider is nil")
 	}
 	if r.users[s.user.email] != s.user {
 		return fmt.Errorf("add session: user %q is not registered in this registry",
@@ -224,10 +225,10 @@ func (r *Registry) RemoveSession(userEmail, providerName string) error {
 // associate it with one or more sessions.
 func (r *Registry) AddProject(p *Project) error {
 	if p == nil {
-		return fmt.Errorf("add project: nil pointer")
+		return errors.New("add project: nil pointer")
 	}
 	if strings.TrimSpace(p.name) == "" {
-		return fmt.Errorf("add project: name required")
+		return errors.New("add project: name required")
 	}
 	if _, exists := r.projects[p.name]; exists {
 		return fmt.Errorf("add project: %q already exists", p.name)
@@ -297,7 +298,7 @@ func (r *Registry) AttachProject(projectName string, session *Session) error {
 		return fmt.Errorf("attach project: %q not found", projectName)
 	}
 	if session == nil {
-		return fmt.Errorf("attach project: session is nil")
+		return errors.New("attach project: session is nil")
 	}
 	if r.SessionAt(session.user.email, session.provider.name) != session {
 		return fmt.Errorf("attach project: session %q/%q is not registered in this registry",
@@ -338,7 +339,7 @@ func (r *Registry) DetachProject(projectName string, session *Session) error {
 		return fmt.Errorf("detach project: %q not found", projectName)
 	}
 	if session == nil {
-		return fmt.Errorf("detach project: session is nil")
+		return errors.New("detach project: session is nil")
 	}
 	if r.sessionsByProject[projectName][session.user.email][session.provider.name] == nil {
 		return fmt.Errorf("detach project: %q is not attached to session %q/%q",

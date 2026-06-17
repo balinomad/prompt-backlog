@@ -1,6 +1,7 @@
 package views
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -288,7 +289,7 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 					if err := p.app.Mutate(func(r *model.Registry) error {
 						s := r.SessionAt(email, provider)
 						if s == nil {
-							return fmt.Errorf("session not found")
+							return errors.New("session not found")
 						}
 						s.LastQuestion = nil
 						return nil
@@ -314,7 +315,7 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			if err := p.app.Mutate(func(r *model.Registry) error {
 				s := r.SessionAt(email, provider)
 				if s == nil {
-					return fmt.Errorf("session not found")
+					return errors.New("session not found")
 				}
 				if s.LastQuestion == nil {
 					s.LastQuestion = model.NewLastQuestion(nil)

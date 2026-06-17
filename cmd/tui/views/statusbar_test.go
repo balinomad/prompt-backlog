@@ -76,6 +76,7 @@ func TestStatusBar_AllHintsConstantsNonEmpty(t *testing.T) {
 
 func TestStatusBar_SetMessage(t *testing.T) {
 	t.Parallel()
+
 	cases := []struct {
 		name string
 		msg  string
@@ -86,6 +87,7 @@ func TestStatusBar_SetMessage(t *testing.T) {
 	sb := NewStatusBar()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sb.SetMessage(tc.msg)
 			if got := sb.messageView.GetText(false); got != tc.msg {
 				t.Errorf("SetMessage(%q): got %q", tc.msg, got)

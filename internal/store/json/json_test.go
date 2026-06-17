@@ -1,6 +1,7 @@
 package json_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -150,7 +151,7 @@ func TestLoad_InvalidData_ReturnsError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "registry.json")
-			if err := os.WriteFile(path, tc.content, 0600); err != nil {
+			if err := os.WriteFile(path, tc.content, 0o600); err != nil {
 				t.Fatalf("write file: %v", err)
 			}
 			if _, err := json.New(path).Load(); err == nil {
@@ -512,7 +513,7 @@ func TestSave_ProjectSessionsOrderDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read second save: %v", err)
 	}
-	if string(first) != string(second) {
+	if !bytes.Equal(first, second) {
 		t.Error("repeated saves of identical registry produced different JSON")
 	}
 }

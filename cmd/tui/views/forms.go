@@ -1,6 +1,7 @@
 package views
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -83,8 +84,7 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 	}
 	form.AddInputField("Name", initName, 40, nil, nil)
 	form.AddInputField("Next prompt at", initNext, 20, nil, nil)
-	form.GetFormItemByLabel("Next prompt at").(*tview.InputField).
-		SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
+	form.GetFormItemByLabel("Next prompt at").(*tview.InputField).SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
 
 	// ── Save logic ────────────────────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 				u.Name = nameVal
 				s := r.SessionAt(email, provider)
 				if s == nil {
-					return fmt.Errorf("session not found")
+					return errors.New("session not found")
 				}
 				s.NextPromptAt = nextTime
 				return nil
@@ -247,7 +247,7 @@ func NewProjectForm(app App, project *model.Project, session *model.Session, onC
 				if session != nil {
 					s := r.SessionAt(session.User().Email(), session.Provider().Name())
 					if s == nil {
-						return fmt.Errorf("session not found")
+						return errors.New("session not found")
 					}
 					return r.AttachProject(nameVal, s)
 				}
@@ -405,7 +405,7 @@ func NewLastQuestionForm(app App, session *model.Session, onClose func()) tview.
 		if err := app.Mutate(func(r *model.Registry) error {
 			s := r.SessionAt(email, provider)
 			if s == nil {
-				return fmt.Errorf("session not found")
+				return errors.New("session not found")
 			}
 			var proj *model.Project
 			if projectName != "none" {
