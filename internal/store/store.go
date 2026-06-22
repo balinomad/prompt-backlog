@@ -11,11 +11,11 @@ import "github.com/balinomad/llm-desk/internal/model"
 // changes to the model or TUI packages.
 type Store interface {
 	// Load reads the registry from the underlying storage.
-	// Returns a fully initialised Registry with all pointer references resolved.
-	// Returns an empty Registry (not an error) when no data has been persisted yet.
-	Load() (model.Registry, error)
+	// Returns a fully initialised *Registry with all pointer references resolved.
+	// It returns an empty registry (not an error) when no data has been persisted yet.
+	Load() (*model.Registry, error)
 
 	// Save writes the registry to the underlying storage.
 	// The call is synchronous; when Save returns without error the data is durable.
-	Save(reg model.Registry) error
+	Save(*model.Registry) error
 }

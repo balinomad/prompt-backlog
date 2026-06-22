@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
@@ -18,50 +17,55 @@ import (
 var _ store.Store = (*Store)(nil)
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
+
 // Private types that mirror the JSON structure exactly.
 // They are used only by Load and Save; no other package sees them.
+// Entities are stored as flat, normalized arrays to act as the single
+// source of truth, independent of the Registry's runtime map indexes.
 // time.Time fields serialise as RFC 3339 automatically via encoding/json.
-
 type registryDTO struct {
-	Providers map[string]providerDTO           `json:"providers"`
-	Users     map[string]userDTO               `json:"users"`
-	Sessions  map[string]map[string]sessionDTO `json:"sessions"`
-	Projects  map[string]projectDTO            `json:"projects"`
+	Providers []providerDTO `json:"providers,omitempty"`
+	Users     []userDTO     `json:"users,omitempty"`
+	Projects  []projectDTO  `json:"projects,omitempty"`
+	Accounts  []accountDTO  `json:"accounts,omitempty"`
+	Sessions  []sessionDTO  `json:"sessions,omitempty"`
 }
 
 type providerDTO struct {
-	HasProjects     bool `json:"has_projects"`
-	HasDeepResearch bool `json:"has_deep_research"`
+	Name            string `json:"name"`
+	HasProjects     bool   `json:"has_projects"`
+	HasDeepResearch bool   `json:"has_deep_research"`
 }
 
 type userDTO struct {
-	Name string `json:"name"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+type projectDTO struct {
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	Instructions string `json:"instructions,omitempty"`
+}
+
+type accountDTO struct {
+	UserEmail    string     `json:"user_email"`
+	ProviderName string     `json:"provider_name"`
+	PauseUntil   *time.Time `json:"pause_until,omitempty"`
+	Projects     []string   `json:"projects,omitempty"`
 }
 
 type sessionDTO struct {
-	LastQuestion *lastQuestionDTO `json:"last_question,omitempty"`
-	NextPromptAt *time.Time       `json:"next_prompt_at,omitempty"`
+	UserEmail    string      `json:"user_email"`
+	ProviderName string      `json:"provider_name"`
+	ProjectName  string      `json:"project_name,omitempty"`
+	Topic        string      `json:"topic,omitempty"`
+	Queue        []promptDTO `json:"queue,omitempty"`
 }
 
-type lastQuestionDTO struct {
-	ProjectName string `json:"project_name,omitempty"`
-	Topic       string `json:"topic,omitempty"`
-	MidAnswer   bool   `json:"mid_answer"`
-	NextPrompt  string `json:"next_prompt,omitempty"`
-}
-
-// sessionRefDTO is a lightweight reference to a session by its natural keys.
-type sessionRefDTO struct {
-	UserEmail string `json:"user_email"`
-	Provider  string `json:"provider"`
-}
-
-// projectDTO stores a project with an optional list of session associations.
-// An empty or absent Sessions slice means the project is unattached.
-type projectDTO struct {
-	Sessions     []sessionRefDTO `json:"sessions,omitempty"`
-	Description  string          `json:"description,omitempty"`
-	Instructions string          `json:"instructions,omitempty"`
+type promptDTO struct {
+	Text          string `json:"text"`
+	SpawnsSession bool   `json:"spawns_session"`
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -86,183 +90,101 @@ func New(path string) *Store {
 // this is the expected first-run state.
 // A zero-byte file is treated as a failed write and returns an error.
 // All other I/O and parse failures are returned with context.
-func (s *Store) Load() (model.Registry, error) {
+func (s *Store) Load() (*model.Registry, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return model.NewRegistry(), nil
 		}
-		return model.Registry{}, fmt.Errorf("store: read %q: %w", s.path, err)
+		return model.NewRegistry(), fmt.Errorf("store: read %q: %w", s.path, err)
 	}
 	if len(data) == 0 {
-		return model.Registry{}, fmt.Errorf("store: %q is empty (possible failed write)", s.path)
+		return model.NewRegistry(), fmt.Errorf("store: %q is empty (possible failed write)", s.path)
 	}
 
 	var dto registryDTO
 	if err := stdjson.Unmarshal(data, &dto); err != nil {
-		return model.Registry{}, fmt.Errorf("store: parse %q: %w", s.path, err)
+		return model.NewRegistry(), fmt.Errorf("store: parse %q: %w", s.path, err)
 	}
 
 	return buildRegistry(dto)
 }
 
-// buildRegistry constructs a fully resolved Registry from a DTO.
-// Resolution order is mandatory:
-//
-//  1. Providers       — no dependencies
-//  2. Users           — no dependencies
-//  3. Sessions        — depend on Providers and Users
-//  4. Projects        — depend on Sessions (for attachment)
-//  5. LastQuestions   — depend on Projects; second pass over sessions
-func buildRegistry(dto registryDTO) (model.Registry, error) {
+// buildRegistry constructs a fully resolved Registry from flat DTO arrays.
+// Resolution order is mandatory: base entities first, join entities second,
+// sessions last. The Registry builds its internal maps automatically as
+// Add* methods are called.
+func buildRegistry(dto registryDTO) (*model.Registry, error) {
 	reg := model.NewRegistry()
 
-	providers, err := resolveProviders(dto, &reg)
-	if err != nil {
-		return model.Registry{}, err
+	for _, pdto := range dto.Providers {
+		if err := reg.AddProvider(model.NewProvider(pdto.Name, pdto.HasProjects, pdto.HasDeepResearch)); err != nil {
+			return nil, fmt.Errorf("store: load provider %q: %w", pdto.Name, err)
+		}
 	}
-	users, err := resolveUsers(dto, &reg)
-	if err != nil {
-		return model.Registry{}, err
+
+	for _, udto := range dto.Users {
+		if err := reg.AddUser(model.NewUser(udto.Email, udto.Name)); err != nil {
+			return nil, fmt.Errorf("store: load user %q: %w", udto.Email, err)
+		}
 	}
-	sessions, err := resolveSessions(dto, &reg, providers, users)
-	if err != nil {
-		return model.Registry{}, err
+
+	for _, pdto := range dto.Projects {
+		if err := reg.AddProject(model.NewProject(pdto.Name, pdto.Description, pdto.Instructions)); err != nil {
+			return nil, fmt.Errorf("store: load project %q: %w", pdto.Name, err)
+		}
 	}
-	projects, err := resolveProjects(dto, &reg, sessions)
-	if err != nil {
-		return model.Registry{}, err
+
+	for _, adto := range dto.Accounts {
+		u := reg.User(adto.UserEmail)
+		p := reg.Provider(adto.ProviderName)
+		acc, err := reg.AddAccount(u, p)
+		if err != nil {
+			return nil, fmt.Errorf("store: load account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
+		}
+
+		if adto.PauseUntil != nil && !adto.PauseUntil.IsZero() {
+			if err := reg.PauseAccount(acc, *adto.PauseUntil); err != nil {
+				return nil, fmt.Errorf("store: restore pause state for account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
+			}
+		}
+
+		for _, pName := range adto.Projects {
+			proj := reg.Project(pName)
+			if err := reg.AddProjectToAccount(acc, proj); err != nil {
+				return nil, fmt.Errorf("store: assign project %q to account %q|%q: %w", pName, adto.UserEmail, adto.ProviderName, err)
+			}
+		}
 	}
-	if err := resolveLastQuestions(dto, sessions, projects); err != nil {
-		return model.Registry{}, err
+
+	for i, sdto := range dto.Sessions {
+		u := reg.User(sdto.UserEmail)
+		p := reg.Provider(sdto.ProviderName)
+		acc := reg.Account(u, p)
+		if acc == nil {
+			return nil, fmt.Errorf("store: load session at index %d: account %q|%q not found", i, sdto.UserEmail, sdto.ProviderName)
+		}
+
+		var proj *model.Project
+		if sdto.ProjectName != "" {
+			proj = reg.Project(sdto.ProjectName)
+			if proj == nil {
+				return nil, fmt.Errorf("store: load session at index %d: project %q not found", i, sdto.ProjectName)
+			}
+		}
+
+		var queue []model.Prompt
+		for _, prompt := range sdto.Queue {
+			queue = append(queue, model.NewPrompt(prompt.Text, prompt.SpawnsSession))
+		}
+
+		// AddSession automatically assigns the next incrementing ephemeral ID.
+		if _, err := reg.AddSession(acc, proj, sdto.Topic, queue); err != nil {
+			return nil, fmt.Errorf("store: load session at index %d: %w", i, err)
+		}
 	}
+
 	return reg, nil
-}
-
-func resolveProviders(dto registryDTO, reg *model.Registry) (map[string]*model.Provider, error) {
-	index := make(map[string]*model.Provider, len(dto.Providers))
-	for name, pdto := range dto.Providers {
-		p := model.NewProvider(name, pdto.HasProjects, pdto.HasDeepResearch)
-		if err := reg.AddProvider(p); err != nil {
-			return nil, fmt.Errorf("store: load providers: %w", err)
-		}
-		index[name] = p
-	}
-	return index, nil
-}
-
-func resolveUsers(dto registryDTO, reg *model.Registry) (map[string]*model.User, error) {
-	index := make(map[string]*model.User, len(dto.Users))
-	for email, udto := range dto.Users {
-		u := model.NewUser(email, udto.Name)
-		if err := reg.AddUser(u); err != nil {
-			return nil, fmt.Errorf("store: load users: %w", err)
-		}
-		index[email] = u
-	}
-	return index, nil
-}
-
-func resolveSessions(
-	dto registryDTO,
-	reg *model.Registry,
-	providers map[string]*model.Provider,
-	users map[string]*model.User,
-) (map[string]map[string]*model.Session, error) {
-	index := make(map[string]map[string]*model.Session)
-	for userEmail, providerSessions := range dto.Sessions {
-		user := users[userEmail]
-		if user == nil {
-			return nil, fmt.Errorf("store: session references unknown user %q", userEmail)
-		}
-		for providerName, sdto := range providerSessions {
-			provider := providers[providerName]
-			if provider == nil {
-				return nil, fmt.Errorf("store: session references unknown provider %q", providerName)
-			}
-			s := model.NewSession(user, provider)
-			s.NextPromptAt = sdto.NextPromptAt
-			// LastQuestion is completed in resolveLastQuestions after projects are loaded.
-			if err := reg.AddSession(s); err != nil {
-				return nil, fmt.Errorf("store: load sessions: %w", err)
-			}
-			if index[userEmail] == nil {
-				index[userEmail] = make(map[string]*model.Session)
-			}
-			index[userEmail][providerName] = s
-		}
-	}
-	return index, nil
-}
-
-// resolveProjects adds each project to the registry and attaches it to every
-// session listed in its Sessions slice.
-func resolveProjects(
-	dto registryDTO,
-	reg *model.Registry,
-	sessions map[string]map[string]*model.Session,
-) (map[string]*model.Project, error) {
-	index := make(map[string]*model.Project, len(dto.Projects))
-	for name, pdto := range dto.Projects {
-		p := model.NewProject(name)
-		p.Description = pdto.Description
-		p.Instructions = pdto.Instructions
-		if err := reg.AddProject(p); err != nil {
-			return nil, fmt.Errorf("store: load projects: %w", err)
-		}
-		for _, ref := range pdto.Sessions {
-			if ref.UserEmail == "" || ref.Provider == "" {
-				return nil, fmt.Errorf(
-					"store: project %q has session reference with empty user_email or provider",
-					name)
-			}
-			session := sessions[ref.UserEmail][ref.Provider]
-			if session == nil {
-				return nil, fmt.Errorf(
-					"store: project %q references unknown session %q/%q",
-					name, ref.UserEmail, ref.Provider)
-			}
-			if err := reg.AttachProject(name, session); err != nil {
-				return nil, fmt.Errorf("store: attach project %q to %q/%q: %w",
-					name, ref.UserEmail, ref.Provider, err)
-			}
-		}
-		index[name] = p
-	}
-	return index, nil
-}
-
-// resolveLastQuestions performs a second pass over sessions to build each
-// LastQuestion with its fully resolved project pointer.
-// Sessions with no last_question in the DTO are left with LastQuestion nil.
-func resolveLastQuestions(
-	dto registryDTO,
-	sessions map[string]map[string]*model.Session,
-	projects map[string]*model.Project,
-) error {
-	for userEmail, providerSessions := range dto.Sessions {
-		for providerName, sdto := range providerSessions {
-			if sdto.LastQuestion == nil {
-				continue
-			}
-			lqdto := sdto.LastQuestion
-			var project *model.Project
-			if lqdto.ProjectName != "" {
-				project = projects[lqdto.ProjectName]
-				if project == nil {
-					return fmt.Errorf(
-						"store: last_question in session %q/%q references unknown project %q",
-						userEmail, providerName, lqdto.ProjectName)
-				}
-			}
-			lq := model.NewLastQuestion(project)
-			lq.Topic = lqdto.Topic
-			lq.MidAnswer = lqdto.MidAnswer
-			lq.NextPrompt = lqdto.NextPrompt
-			sessions[userEmail][providerName].LastQuestion = lq
-		}
-	}
-	return nil
 }
 
 // ── Save ──────────────────────────────────────────────────────────────────────
@@ -271,7 +193,7 @@ func resolveLastQuestions(
 // The data is written to a temporary file in the same directory and renamed
 // into place. An interrupted write therefore never corrupts the existing file.
 // The parent directory is created if it does not yet exist.
-func (s *Store) Save(reg model.Registry) error {
+func (s *Store) Save(reg *model.Registry) error {
 	dto := buildDTO(reg)
 	data, err := stdjson.MarshalIndent(dto, "", "  ")
 	if err != nil {
@@ -294,95 +216,73 @@ func (s *Store) Save(reg model.Registry) error {
 	return nil
 }
 
-func buildDTO(reg model.Registry) registryDTO {
-	return registryDTO{
-		Providers: buildProvidersDTO(reg),
-		Users:     buildUsersDTO(reg),
-		Sessions:  buildSessionsDTO(reg),
-		Projects:  buildProjectsDTO(reg),
-	}
-}
+// buildDTO constructs the flat JSON DTOs using the Registry's deterministic getters.
+// buildDTO constructs the flat JSON DTOs using the Registry's getters,
+// explicitly sorting all slices to guarantee deterministic output and
+// stable session ID reconstruction.
+func buildDTO(reg *model.Registry) registryDTO {
+	var dto registryDTO
 
-func buildProvidersDTO(reg model.Registry) map[string]providerDTO {
-	providers := reg.AllProviders()
-	out := make(map[string]providerDTO, len(providers))
-	for _, p := range providers {
-		out[p.Name()] = providerDTO{
-			HasProjects:     p.HasProjects,
-			HasDeepResearch: p.HasDeepResearch,
+	for _, p := range reg.Providers() {
+		dto.Providers = append(dto.Providers, providerDTO{
+			Name:            p.Name(),
+			HasProjects:     p.HasProjects(),
+			HasDeepResearch: p.HasDeepResearch(),
+		})
+	}
+
+	for _, u := range reg.Users() {
+		dto.Users = append(dto.Users, userDTO{
+			Email: u.Email(),
+			Name:  u.Name(),
+		})
+	}
+
+	for _, p := range reg.Projects() {
+		dto.Projects = append(dto.Projects, projectDTO{
+			Name:         p.Name(),
+			Description:  p.Description(),
+			Instructions: p.Instructions(),
+		})
+	}
+
+	for _, acc := range reg.Accounts() {
+		adto := accountDTO{
+			UserEmail:    acc.UserEmail(),
+			ProviderName: acc.ProviderName(),
 		}
-	}
-	return out
-}
 
-func buildUsersDTO(reg model.Registry) map[string]userDTO {
-	users := reg.AllUsers()
-	out := make(map[string]userDTO, len(users))
-	for _, u := range users {
-		out[u.Email()] = userDTO{Name: u.Name}
-	}
-	return out
-}
-
-func buildSessionsDTO(reg model.Registry) map[string]map[string]sessionDTO {
-	out := make(map[string]map[string]sessionDTO)
-	for _, s := range reg.AllSessions() {
-		userEmail := s.User().Email()
-		providerName := s.Provider().Name()
-		if out[userEmail] == nil {
-			out[userEmail] = make(map[string]sessionDTO)
+		if !acc.PauseUntil().IsZero() {
+			t := acc.PauseUntil()
+			adto.PauseUntil = &t
 		}
-		out[userEmail][providerName] = buildSessionDTO(s)
-	}
-	return out
-}
 
-func buildSessionDTO(s *model.Session) sessionDTO {
-	sdto := sessionDTO{NextPromptAt: s.NextPromptAt}
-	if s.LastQuestion == nil {
-		return sdto
-	}
-	lqdto := &lastQuestionDTO{
-		Topic:      s.LastQuestion.Topic,
-		MidAnswer:  s.LastQuestion.MidAnswer,
-		NextPrompt: s.LastQuestion.NextPrompt,
-	}
-	if p := s.LastQuestion.Project(); p != nil {
-		lqdto.ProjectName = p.Name()
-	}
-	sdto.LastQuestion = lqdto
-	return sdto
-}
+		for _, p := range reg.AccountProjects(acc) {
+			adto.Projects = append(adto.Projects, p.Name())
+		}
 
-func buildProjectsDTO(reg model.Registry) map[string]projectDTO {
-	projects := reg.AllProjects()
-	out := make(map[string]projectDTO, len(projects))
-	for _, p := range projects {
-		sessions := reg.SessionsByProject(p.Name())
+		dto.Accounts = append(dto.Accounts, adto)
+	}
 
-		refs := make([]sessionRefDTO, 0, len(sessions))
-		for _, s := range sessions {
-			refs = append(refs, sessionRefDTO{
-				UserEmail: s.User().Email(),
-				Provider:  s.Provider().Name(),
+	// reg.Sessions() guarantees deterministic slice ordering by ID.
+	// Saving in this order ensures strict chronological re-creation on Load.
+	for _, s := range reg.Sessions() {
+		sdto := sessionDTO{
+			UserEmail:    s.AccountKey().Email,
+			ProviderName: s.AccountKey().Provider,
+			ProjectName:  s.ProjectName(),
+			Topic:        s.Topic(),
+		}
+
+		for _, prompt := range s.Queue() {
+			sdto.Queue = append(sdto.Queue, promptDTO{
+				Text:          prompt.Text(),
+				SpawnsSession: prompt.SpawnsSession(),
 			})
 		}
 
-		sort.Slice(refs, func(i, j int) bool {
-			if refs[i].UserEmail != refs[j].UserEmail {
-				return refs[i].UserEmail < refs[j].UserEmail
-			}
-			return refs[i].Provider < refs[j].Provider
-		})
-
-		pdto := projectDTO{
-			Description:  p.Description,
-			Instructions: p.Instructions,
-		}
-		if len(refs) > 0 {
-			pdto.Sessions = refs
-		}
-		out[p.Name()] = pdto
+		dto.Sessions = append(dto.Sessions, sdto)
 	}
-	return out
+
+	return dto
 }
