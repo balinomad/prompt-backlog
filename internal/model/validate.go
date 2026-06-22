@@ -6,120 +6,142 @@ import (
 	"strings"
 )
 
-// ── FieldError ────────────────────────────────────────────────────────────────
+// Shared categories — for generic dispatch (e.g. mapping any registry
+// failure to an HTTP status) regardless of entity type.
+var (
+	ErrNotFound     = errors.New("not found")
+	ErrExists       = errors.New("already exists")
+	ErrStale        = errors.New("is stale")
+	ErrNil          = errors.New("is nil")
+	ErrRequired     = errors.New("required")
+	ErrEmailInvalid = errors.New("invalid email format")
+	ErrUnsupported  = errors.New("not supported")
+)
 
-// FieldError is a validation error tied to a specific field name.
-type FieldError struct {
-	Field   string
-	Message string
-}
+// Entity-specific — wraps its category, so both checks succeed on the
+// same error: errors.Is(err, ErrProviderNotFound) and errors.Is(err, ErrNotFound).
+var (
+	ErrProviderNotFound = fmt.Errorf("provider %w", ErrNotFound)
+	ErrProviderExists   = fmt.Errorf("provider %w", ErrExists)
+	ErrProviderStale    = fmt.Errorf("provider %w", ErrStale)
+	ErrProviderNil      = fmt.Errorf("provider %w", ErrNil)
 
-func (e *FieldError) Error() string {
-	return e.Field + ": " + e.Message
-}
+	ErrUserNotFound = fmt.Errorf("user %w", ErrNotFound)
+	ErrUserExists   = fmt.Errorf("user %w", ErrExists)
+	ErrUserStale    = fmt.Errorf("user %w", ErrStale)
+	ErrUserNil      = fmt.Errorf("user %w", ErrNil)
 
-// ── Single-entity validators ──────────────────────────────────────────────────
+	ErrProjectNotFound     = fmt.Errorf("project %w", ErrNotFound)
+	ErrProjectExists       = fmt.Errorf("project %w", ErrExists)
+	ErrProjectStale        = fmt.Errorf("project %w", ErrStale)
+	ErrProjectNil          = fmt.Errorf("project %w", ErrNil)
+	ErrProjectsUnsupported = fmt.Errorf("projects %w", ErrUnsupported)
 
-// ValidateProvider returns all validation errors for a provider.
-func ValidateProvider(p *Provider) []error {
-	if p == nil {
-		return []error{errors.New("provider is nil")}
-	}
-	var errs []error
-	if strings.TrimSpace(p.name) == "" {
-		errs = append(errs, &FieldError{Field: "name", Message: "required"})
-	}
-	return errs
-}
+	ErrAccountNotFound = fmt.Errorf("account %w", ErrNotFound)
+	ErrAccountExists   = fmt.Errorf("account %w", ErrExists)
+	ErrAccountStale    = fmt.Errorf("account %w", ErrStale)
+	ErrAccountNil      = fmt.Errorf("account %w", ErrNil)
 
-// ValidateUser returns all validation errors for a user.
-func ValidateUser(u *User) []error {
-	if u == nil {
-		return []error{errors.New("user is nil")}
-	}
-	var errs []error
-	email := strings.TrimSpace(u.email)
+	ErrSessionNotFound = fmt.Errorf("session %w", ErrNotFound)
+	ErrSessionStale    = fmt.Errorf("session %w", ErrStale)
+	ErrSessionNil      = fmt.Errorf("session %w", ErrNil)
+
+	ErrEmailRequired = fmt.Errorf("email %w", ErrRequired)
+	ErrKeyRequired   = fmt.Errorf("key %w", ErrRequired)
+	ErrNameRequired  = fmt.Errorf("name %w", ErrRequired)
+	ErrTextRequired  = fmt.Errorf("text %w", ErrRequired)
+)
+
+// ValidateProvider returns an error when the provider is invalid.
+func ValidateProvider(p *Provider) error {
 	switch {
-	case email == "":
-		errs = append(errs, &FieldError{Field: "email", Message: "required"})
-	case !isValidEmail(email):
-		errs = append(errs, &FieldError{Field: "email", Message: "must contain exactly one @ with a non-empty local part and a domain containing ."})
+	case p == nil:
+		return ErrProviderNil
+	case p.name == "":
+		return ErrNameRequired
+	default:
+		return nil
 	}
-	if strings.TrimSpace(u.Name) == "" {
-		errs = append(errs, &FieldError{Field: "name", Message: "required"})
-	}
-	return errs
 }
 
-// ValidateProject returns all validation errors for a project.
-func ValidateProject(p *Project) []error {
-	if p == nil {
-		return []error{errors.New("project is nil")}
+// ValidateUser returns an error when the user is invalid.
+func ValidateUser(u *User) error {
+	if u == nil {
+		return ErrUserNil
 	}
 	var errs []error
-	if strings.TrimSpace(p.name) == "" {
-		errs = append(errs, &FieldError{Field: "name", Message: "required"})
+	if u.email == "" {
+		errs = append(errs, ErrEmailRequired)
+	} else if !isValidEmail(u.email) {
+		errs = append(errs, ErrEmailInvalid)
 	}
-	return errs
+	if u.name == "" {
+		errs = append(errs, ErrNameRequired)
+	}
+	return errJoin(errs)
 }
 
-// ValidateLastQuestion returns all validation errors for a last question.
-// All field combinations are currently valid; this function exists as a hook
-// for future constraints such as maximum prompt length.
-func ValidateLastQuestion(_ *LastQuestion) []error {
+// ValidateProject returns an error when the project is invalid.
+func ValidateProject(p *Project) error {
+	switch {
+	case p == nil:
+		return ErrProjectNil
+	case p.name == "":
+		return ErrNameRequired
+	default:
+		return nil
+	}
+}
+
+// ValidateAccount returns an error when the account is invalid.
+func ValidateAccount(acc *Account) error {
+	if acc == nil {
+		return ErrAccountNil
+	}
+	var errs []error
+	if acc.key == (AccountKey{}) {
+		errs = append(errs, ErrKeyRequired)
+	} else {
+		if acc.key.Email == "" {
+			errs = append(errs, fmt.Errorf("user %w", ErrEmailRequired))
+		}
+		if acc.key.Provider == "" {
+			errs = append(errs, fmt.Errorf("provider %w", ErrNameRequired))
+		}
+	}
+	return errJoin(errs)
+}
+
+// ValidatePrompt returns an error when the prompt is invalid.
+func ValidatePrompt(p Prompt) error {
+	if p.text == "" {
+		return ErrTextRequired
+	}
 	return nil
 }
-
-// ── Context-aware validators ──────────────────────────────────────────────────
-
-// ValidateProjectAssignment verifies that the given session supports projects.
-// Call this before AttachProject to surface a user-friendly error before the
-// operation is attempted. Passing a nil session is valid — there is no session
-// association to validate.
-func ValidateProjectAssignment(s *Session) []error {
-	if s == nil {
-		return nil // unattached project — always valid
-	}
-	var errs []error
-	if s.provider == nil {
-		errs = append(errs, &FieldError{Field: "provider", Message: "session has no provider"})
-		return errs
-	}
-	if !s.provider.HasProjects {
-		errs = append(errs, &FieldError{
-			Field:   "provider",
-			Message: fmt.Sprintf("%q does not support projects", s.provider.name),
-		})
-	}
-	return errs
-}
-
-// ── Display helpers ───────────────────────────────────────────────────────────
-
-// FormatErrors joins a slice of errors into a semicolon-separated string
-// suitable for display in a status bar or modal.
-// Returns "" when errs is empty or nil.
-func FormatErrors(errs []error) string {
-	if len(errs) == 0 {
-		return ""
-	}
-	msgs := make([]string, 0, len(errs))
-	for _, e := range errs {
-		msgs = append(msgs, e.Error())
-	}
-	return strings.Join(msgs, "; ")
-}
-
-// ── Private helpers ───────────────────────────────────────────────────────────
 
 // isValidEmail returns true when s has exactly one "@", a non-empty local part
 // before it, and at least one "." in the domain after it.
 // Intentionally light-touch for a personal tool; not RFC 5321 compliant.
 func isValidEmail(s string) bool {
-	parts := strings.SplitN(s, "@", 3)
-	if len(parts) != 2 {
+	local, domain, found := strings.Cut(s, "@")
+	if !found || local == "" || domain == "" {
 		return false
 	}
-	local, domain := parts[0], parts[1]
-	return local != "" && strings.Contains(domain, ".")
+	if strings.Contains(domain, "@") {
+		return false
+	}
+	return strings.Contains(domain, ".")
+}
+
+// errJoin joins a slice of errors into a single error.
+func errJoin(errs []error) error {
+	switch len(errs) {
+	case 0:
+		return nil
+	case 1:
+		return errs[0]
+	default:
+		return errors.Join(errs...)
+	}
 }
