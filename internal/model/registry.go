@@ -388,8 +388,8 @@ func (r *Registry) ProjectSessions(p *Project) []*Session {
 	}
 
 	result := make([]*Session, 0, len(m))
-	for sessId := range m {
-		if sess := r.sessions[sessId]; sess != nil {
+	for sessID := range m {
+		if sess := r.sessions[sessID]; sess != nil {
 			result = append(result, sess)
 		}
 	}
@@ -620,8 +620,8 @@ func (r *Registry) AccountSessions(acc *Account) []*Session {
 	}
 
 	result := make([]*Session, 0, len(m))
-	for sessId := range m {
-		if sess := r.sessions[sessId]; sess != nil {
+	for sessID := range m {
+		if sess := r.sessions[sessID]; sess != nil {
 			result = append(result, sess)
 		}
 	}

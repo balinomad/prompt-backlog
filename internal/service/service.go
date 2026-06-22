@@ -24,7 +24,7 @@ type Service struct {
 // Returns an error when the Registry is nil.
 func New(reg *model.Registry) (*Service, error) {
 	if reg == nil {
-		return nil, fmt.Errorf("new service: registry is nil")
+		return nil, fmt.Errorf("new service: registry %w", model.ErrNil)
 	}
 	return &Service{reg: reg}, nil
 }

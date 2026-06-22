@@ -107,14 +107,14 @@ func (s *Store) Load() (*model.Registry, error) {
 		return model.NewRegistry(), fmt.Errorf("store: parse %q: %w", s.path, err)
 	}
 
-	return buildRegistry(dto)
+	return buildRegistry(&dto)
 }
 
 // buildRegistry constructs a fully resolved Registry from flat DTO arrays.
 // Resolution order is mandatory: base entities first, join entities second,
 // sessions last. The Registry builds its internal maps automatically as
 // Add* methods are called.
-func buildRegistry(dto registryDTO) (*model.Registry, error) {
+func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 	reg := model.NewRegistry()
 
 	for _, pdto := range dto.Providers {

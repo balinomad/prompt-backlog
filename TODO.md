@@ -9,3 +9,4 @@
 - [ ] Unattached is questionable, projects should be used for both attached and unattached.
 - [ ] Need an numbered list to summarize what to do next (per session). This can be more complex (type: prompt, todo) for each list item.
 - [ ] Add CI: `.golangci.yml` and `.github/workflows/go.yml`
+- [ ] `model.Registry`'s multi-result read getters (`ProjectSessions`, `AccountSessions`, `AccountProjects`, `ProjectAccounts`) return nil on stale/missing input by design, so callers don't error-check reads — revisit only if the service layer needs to distinguish "not found" from "found, zero results."
