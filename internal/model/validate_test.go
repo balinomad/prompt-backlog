@@ -169,12 +169,16 @@ func TestValidateProject(t *testing.T) {
 			want: model.ErrNameRequired,
 		},
 		{
-			name: "valid",
+			name: "valid with empty fields",
 			in:   model.NewProject("Alpha", "", ""),
 		},
 		{
 			name: "trimmed valid",
 			in:   model.NewProject("  Alpha  ", "", ""),
+		},
+		{
+			name: "valid",
+			in:   model.NewProject("Alpha", "desc", "inst"),
 		},
 	}
 
@@ -280,12 +284,19 @@ func TestValidatePrompt(t *testing.T) {
 			want: model.ErrTextRequired,
 		},
 		{
-			name: "valid",
+			name: "empty text",
+			in:   model.NewPrompt("", true),
+			want: model.ErrTextRequired,
+		},
+		{
+			name: "valid no spawn",
 			in:   model.NewPrompt("continue", false),
+			want: nil,
 		},
 		{
 			name: "valid spawn session",
 			in:   model.NewPrompt("continue", true),
+			want: nil,
 		},
 	}
 
@@ -306,6 +317,10 @@ func TestValidatePrompt(t *testing.T) {
 	}
 }
 
+// TestErrorCategories confirms every entity-specific sentinel wraps
+// its shared category, since registry.go and service.go callers dispatch on
+// the category (e.g. errors.Is(err, model.ErrNotFound)) without knowing the
+// concrete entity type.
 func TestErrorCategories(t *testing.T) {
 	t.Parallel()
 

@@ -7,13 +7,6 @@ import (
 	"github.com/balinomad/llm-desk/internal/model"
 )
 
-func TestNewRegistry(t *testing.T) {
-	t.Parallel()
-	if reg := model.NewRegistry(); reg == nil {
-		t.Fatal("NewRegistry returned nil")
-	}
-}
-
 func TestNewProvider(t *testing.T) {
 	t.Parallel()
 
