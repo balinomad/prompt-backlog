@@ -147,6 +147,8 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 			if err := reg.PauseAccount(acc, *adto.PauseUntil); err != nil {
 				return nil, fmt.Errorf("store: restore pause state for account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
 			}
+			// acc must be re-read because PauseAccount replaces the registry's Account via Copy-on-Write
+			acc = reg.Account(u, p)
 		}
 
 		for _, pName := range adto.Projects {

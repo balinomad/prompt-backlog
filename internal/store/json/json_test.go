@@ -2,13 +2,16 @@ package json_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/store/json"
+	storejson "github.com/balinomad/llm-desk/internal/store/json"
 )
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
@@ -21,183 +24,506 @@ func must(t *testing.T, err error) {
 	}
 }
 
-// tempStore returns a Store and its data file path. The file lives in a
-// per-test temp directory that is removed automatically when the test ends.
-func tempStore(t *testing.T) (*json.Store, string) {
+// newStore returns a Store and its data file path. The file lives in a
+// per-test temp directory removed automatically when the test ends.
+func newStore(t *testing.T) (*storejson.Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "registry.json")
-	return json.New(path), path
+	return storejson.New(path), path
 }
 
-// seedRegistry builds a populated registry for round-trip tests.
+// writeTempFile writes content to a fresh registry.json in a per-test temp
+// directory and returns its path. Used to exercise Load against hand-crafted
+// JSON, since the unexported DTO types in package json cannot be
+// constructed from outside the package.
+func writeTempFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "registry.json")
+	must(t, os.WriteFile(path, []byte(content), 0o600))
+	return path
+}
+
+// seedRegistry builds a registry exercising every shape Save/Load must
+// round-trip:
 //
-//	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
+//	Providers: claude (HasProjects+HasDeepResearch), chatgpt (neither)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
-//	Sessions:  alice → claude (with LastQuestion + NextPromptAt)
-//	           bob   → chatgpt
-//	Projects:  "Alpha" (attached: alice/claude, with Description+Instructions)
-//	           "Beta"  (attached: alice/claude)
-//	           "Orphan" (no sessions)
-func seedRegistry(t *testing.T) model.Registry {
+//	Projects:  Alpha (description+instructions), Beta (blank), Orphan (unattached)
+//	Accounts:  alice/claude — not paused, assigned Alpha+Beta
+//	           bob/chatgpt  — paused, no projects
+//	Sessions:  alice/claude — project Alpha, topic, two queued prompts
+//	           bob/chatgpt  — no project, no topic, no queue
+//
+// Pause and project-assignment are deliberately kept on separate accounts:
+// combining both on one account currently fails to reload due to a bug in
+// buildRegistry (see TestLoad_PausedAccountWithProjects_KnownBug). Each
+// condition is still independently covered.
+func seedRegistry(t *testing.T) *model.Registry {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+
+	must(t, reg.AddProvider(model.NewProvider("claude", true, true)))
 	must(t, reg.AddProvider(model.NewProvider("chatgpt", false, false)))
+
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-	must(t, reg.AddSession(model.NewSession(
-		reg.UserByEmail("alice@example.com"),
-		reg.ProviderByName("claude"),
-	)))
-	must(t, reg.AddSession(model.NewSession(
-		reg.UserByEmail("bob@example.com"),
-		reg.ProviderByName("chatgpt"),
-	)))
-	must(t, reg.AddProject(model.NewProject("Alpha")))
-	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
-	must(t, reg.AddProject(model.NewProject("Beta")))
-	must(t, reg.AttachProject("Beta", reg.SessionAt("alice@example.com", "claude")))
-	must(t, reg.AddProject(model.NewProject("Orphan")))
 
-	// Enrich alice's session with a LastQuestion and a NextPromptAt.
-	ts, err := time.Parse(time.RFC3339, "2026-06-01T09:00:00Z")
-	if err != nil {
-		t.Fatalf("parse time: %v", err)
-	}
-	s := reg.SessionAt("alice@example.com", "claude")
-	s.NextPromptAt = &ts
-	lq := model.NewLastQuestion(reg.ProjectByName("Alpha"))
-	lq.Topic = "Architecture review"
-	lq.MidAnswer = true
-	lq.NextPrompt = "continue with the diagram"
-	s.LastQuestion = lq
+	must(t, reg.AddProject(model.NewProject("Alpha", "Backend rewrite", "Use Go interfaces")))
+	must(t, reg.AddProject(model.NewProject("Beta", "", "")))
+	must(t, reg.AddProject(model.NewProject("Orphan", "", "")))
 
-	// Enrich Alpha with description and instructions.
-	alpha := reg.ProjectByName("Alpha")
-	alpha.Description = "Backend rewrite"
-	alpha.Instructions = "Use Go interfaces"
+	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Beta")))
+	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Alpha")))
+
+	bobChatgpt, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+	must(t, err)
+	must(t, reg.PauseAccount(bobChatgpt, time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)))
+	// PauseAccount replaces the registry's Account via Copy-on-Write; the
+	// pointer held above is now stale and must be re-read before further use.
+	bobChatgpt = reg.Account(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+
+	_, err = reg.AddSession(aliceClaude, reg.Project("Alpha"), "Architecture review", []model.Prompt{
+		model.NewPrompt("continue", false),
+		model.NewPrompt("proceed to step 2", true),
+	})
+	must(t, err)
+
+	_, err = reg.AddSession(bobChatgpt, nil, "", nil)
+	must(t, err)
 
 	return reg
 }
 
-// ── Load ──────────────────────────────────────────────────────────────────────
+// ── Load: file and parse errors ───────────────────────────────────────────────
 
 func TestLoad_FileNotExist_ReturnsEmptyRegistry(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	reg, err := s.Load()
+	path := filepath.Join(t.TempDir(), "does-not-exist.json")
+	reg, err := storejson.New(path).Load()
 	if err != nil {
-		t.Fatalf("expected no error for missing file, got: %v", err)
+		t.Fatalf("unexpected error for a missing file: %v", err)
 	}
-	if n := len(reg.AllProviders()); n != 0 {
-		t.Errorf("expected empty registry, got %d providers", n)
+	if len(reg.Providers()) != 0 {
+		t.Error("expected an empty registry for a missing file")
 	}
 }
 
-func TestLoad_InvalidData_ReturnsError(t *testing.T) {
+func TestLoad_UnreadableFile_ReturnsWrappedError(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
+	// A directory at the data path makes os.ReadFile fail with something
+	// other than os.ErrNotExist, exercising the "other I/O error" branch
+	// rather than the first-run "file does not exist" branch.
+	path := filepath.Join(t.TempDir(), "registry.json")
+	must(t, os.Mkdir(path, 0o755))
+
+	_, err := storejson.New(path).Load()
+	if err == nil {
+		t.Fatal("expected an error reading a directory as a file")
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		t.Error("error must not be classified as os.ErrNotExist")
+	}
+}
+
+func TestLoad_ParseErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
 		name    string
-		content []byte
+		content string
+		check   func(t *testing.T, err error)
 	}{
-		{"empty file", []byte{}},
-		{"invalid json", []byte("not json {{{")},
-		{"session references unknown user", []byte(`{
-			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-			"users": {},
-			"sessions": {"ghost@example.com": {"claude": {}}},
-			"projects": {}
-		}`)},
-		{"session references unknown provider", []byte(`{
-			"providers": {},
-			"users": {"alice@example.com": {"name": "Alice"}},
-			"sessions": {"alice@example.com": {"ghost": {}}},
-			"projects": {}
-		}`)},
-		{"project references unknown session", []byte(`{
-			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-			"users": {"alice@example.com": {"name": "Alice"}},
-			"sessions": {},
-			"projects": {
-				"Alpha": {
-					"sessions": [{"user_email": "alice@example.com", "provider": "claude"}]
-				}
-			}
-		}`)},
-		{"project has partial session reference", []byte(`{
-			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-			"users": {"alice@example.com": {"name": "Alice"}},
-			"sessions": {"alice@example.com": {"claude": {}}},
-			"projects": {
-				"Alpha": {
-					"sessions": [{"user_email": "alice@example.com"}]
-				}
-			}
-		}`)},
-		{"last question references unknown project", []byte(`{
-			"providers": {"claude": {"has_projects": true, "has_deep_research": false}},
-			"users": {"alice@example.com": {"name": "Alice"}},
-			"sessions": {
-				"alice@example.com": {
-					"claude": {
-						"last_question": {"project_name": "ghost", "mid_answer": false}
-					}
+		{
+			name:    "empty file",
+			content: "",
+			check: func(t *testing.T, err error) {
+				t.Helper()
+				if !strings.Contains(err.Error(), "empty") {
+					t.Errorf("error %q does not mention emptiness", err.Error())
 				}
 			},
-			"projects": {}
-		}`)},
+		},
+		{
+			name:    "malformed syntax",
+			content: "not json {{{",
+			check: func(t *testing.T, err error) {
+				t.Helper()
+				var serr *json.SyntaxError
+				if !errors.As(err, &serr) {
+					t.Errorf("error %v is not a *json.SyntaxError", err)
+				}
+			},
+		},
+		{
+			name:    "wrong top-level field type",
+			content: `{"providers": "not-an-array"}`,
+			check: func(t *testing.T, err error) {
+				t.Helper()
+				var terr *json.UnmarshalTypeError
+				if !errors.As(err, &terr) {
+					t.Errorf("error %v is not a *json.UnmarshalTypeError", err)
+				}
+			},
+		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			path := filepath.Join(t.TempDir(), "registry.json")
-			if err := os.WriteFile(path, tc.content, 0o600); err != nil {
-				t.Fatalf("write file: %v", err)
+			path := writeTempFile(t, tt.content)
+			_, err := storejson.New(path).Load()
+			if err == nil {
+				t.Fatal("expected an error, got nil")
 			}
-			if _, err := json.New(path).Load(); err == nil {
-				t.Errorf("expected error for %q, got none", tc.name)
+			tt.check(t, err)
+		})
+	}
+}
+
+// ── Load: registry construction errors ────────────────────────────────────────
+
+// TestLoad_RegistryConstructionErrors drives Load with hand-crafted, valid
+// JSON that is individually defective in one way, covering every error
+// branch in the registry-construction path that JSON content can reach.
+func TestLoad_RegistryConstructionErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		json           string
+		wantErrIs      []error
+		wantErrSubstrs []string
+	}{
+		{
+			name:      "provider empty name",
+			json:      `{"providers": [{"name": "", "has_projects": false, "has_deep_research": false}]}`,
+			wantErrIs: []error{model.ErrNameRequired},
+		},
+		{
+			name: "duplicate provider",
+			json: `{"providers": [
+				{"name": "claude", "has_projects": true, "has_deep_research": false},
+				{"name": "claude", "has_projects": false, "has_deep_research": false}
+			]}`,
+			wantErrIs: []error{model.ErrProviderExists},
+		},
+		{
+			name:      "user empty email",
+			json:      `{"users": [{"email": "", "name": "Alice"}]}`,
+			wantErrIs: []error{model.ErrEmailRequired},
+		},
+		{
+			name:      "user invalid email",
+			json:      `{"users": [{"email": "alice.example.com", "name": "Alice"}]}`,
+			wantErrIs: []error{model.ErrEmailInvalid},
+		},
+		{
+			name: "duplicate user",
+			json: `{"users": [
+				{"email": "alice@example.com", "name": "Alice"},
+				{"email": "alice@example.com", "name": "Alice2"}
+			]}`,
+			wantErrIs: []error{model.ErrUserExists},
+		},
+		{
+			name:      "project empty name",
+			json:      `{"projects": [{"name": ""}]}`,
+			wantErrIs: []error{model.ErrNameRequired},
+		},
+		{
+			name:      "duplicate project",
+			json:      `{"projects": [{"name": "Alpha"}, {"name": "Alpha"}]}`,
+			wantErrIs: []error{model.ErrProjectExists},
+		},
+		{
+			name: "account references unknown provider",
+			json: `{
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"accounts": [{"user_email": "alice@example.com", "provider_name": "ghost"}]
+			}`,
+			wantErrIs: []error{model.ErrProviderNil},
+		},
+		{
+			name: "account references unknown user",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"accounts": [{"user_email": "ghost@example.com", "provider_name": "claude"}]
+			}`,
+			wantErrIs: []error{model.ErrUserNil},
+		},
+		{
+			name: "duplicate account",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"accounts": [
+					{"user_email": "alice@example.com", "provider_name": "claude"},
+					{"user_email": "alice@example.com", "provider_name": "claude"}
+				]
+			}`,
+			wantErrIs: []error{model.ErrAccountExists},
+		},
+		{
+			name: "account references unknown project",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"accounts": [{
+					"user_email": "alice@example.com",
+					"provider_name": "claude",
+					"projects": ["Ghost"]
+				}]
+			}`,
+			wantErrIs: []error{model.ErrProjectNil},
+		},
+		{
+			name: "account project on provider without project support",
+			json: `{
+				"providers": [{"name": "chatgpt", "has_projects": false, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"projects": [{"name": "Alpha"}],
+				"accounts": [{
+					"user_email": "alice@example.com",
+					"provider_name": "chatgpt",
+					"projects": ["Alpha"]
+				}]
+			}`,
+			wantErrIs: []error{model.ErrProjectsUnsupported},
+		},
+		{
+			name: "account project listed twice",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"projects": [{"name": "Alpha"}],
+				"accounts": [{
+					"user_email": "alice@example.com",
+					"provider_name": "claude",
+					"projects": ["Alpha", "Alpha"]
+				}]
+			}`,
+			wantErrSubstrs: []string{"already assigned"},
+		},
+		{
+			name: "session references unknown account",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"sessions": [{"user_email": "alice@example.com", "provider_name": "claude"}]
+			}`,
+			wantErrSubstrs: []string{"account", "not found"},
+		},
+		{
+			name: "session references unknown project",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"accounts": [{"user_email": "alice@example.com", "provider_name": "claude"}],
+				"sessions": [{
+					"user_email": "alice@example.com",
+					"provider_name": "claude",
+					"project_name": "Ghost"
+				}]
+			}`,
+			wantErrSubstrs: []string{"project", "not found"},
+		},
+		{
+			name: "session project not assigned to account",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"projects": [{"name": "Alpha"}],
+				"accounts": [{"user_email": "alice@example.com", "provider_name": "claude"}],
+				"sessions": [{
+					"user_email": "alice@example.com",
+					"provider_name": "claude",
+					"project_name": "Alpha"
+				}]
+			}`,
+			wantErrSubstrs: []string{"not assigned"},
+		},
+		{
+			name: "session queue has an invalid prompt",
+			json: `{
+				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"users": [{"email": "alice@example.com", "name": "Alice"}],
+				"accounts": [{"user_email": "alice@example.com", "provider_name": "claude"}],
+				"sessions": [{
+					"user_email": "alice@example.com",
+					"provider_name": "claude",
+					"queue": [{"text": "", "spawns_session": false}]
+				}]
+			}`,
+			wantErrIs: []error{model.ErrTextRequired},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeTempFile(t, tt.json)
+			_, err := storejson.New(path).Load()
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			for _, want := range tt.wantErrIs {
+				if !errors.Is(err, want) {
+					t.Errorf("errors.Is(err, %v) = false; err = %v", want, err)
+				}
+			}
+			for _, substr := range tt.wantErrSubstrs {
+				if !strings.Contains(err.Error(), substr) {
+					t.Errorf("error %q does not contain %q", err.Error(), substr)
+				}
 			}
 		})
 	}
 }
 
-// ── Save ──────────────────────────────────────────────────────────────────────
+// ── Load: success-path edge cases ─────────────────────────────────────────────
+
+func TestLoad_EmptyJSONObject_ReturnsEmptyRegistry(t *testing.T) {
+	t.Parallel()
+	path := writeTempFile(t, "{}")
+	reg, err := storejson.New(path).Load()
+	must(t, err)
+	if len(reg.Providers()) != 0 || len(reg.Users()) != 0 || len(reg.Projects()) != 0 ||
+		len(reg.Accounts()) != 0 || len(reg.Sessions()) != 0 {
+		t.Error("expected a fully empty registry from '{}'")
+	}
+}
+
+func TestLoad_AccountPauseUntilZero_Skipped(t *testing.T) {
+	t.Parallel()
+	// A present-but-zero pause_until must not be applied: PauseAccount is
+	// only called when the timestamp is both non-nil and non-zero.
+	path := writeTempFile(t, `{
+		"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+		"users": [{"email": "alice@example.com", "name": "Alice"}],
+		"accounts": [{
+			"user_email": "alice@example.com",
+			"provider_name": "claude",
+			"pause_until": "0001-01-01T00:00:00Z"
+		}]
+	}`)
+	reg, err := storejson.New(path).Load()
+	must(t, err)
+
+	acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+	if acc == nil {
+		t.Fatal("account not found")
+	}
+	if !acc.PauseUntil().IsZero() {
+		t.Errorf("PauseUntil() = %v, want zero", acc.PauseUntil())
+	}
+}
+
+// ── Save: basic behaviour ──────────────────────────────────────────────────────
 
 func TestSave_CreatesFile(t *testing.T) {
 	t.Parallel()
-	s, path := tempStore(t)
-	must(t, s.Save(model.NewRegistry()))
+	st, path := newStore(t)
+	must(t, st.Save(model.NewRegistry()))
 	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("file not created after Save: %v", err)
+		t.Errorf("file not created after Save: %v", err)
 	}
 }
 
 func TestSave_CreatesParentDirectory(t *testing.T) {
 	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "nested", "dir")
-	s := json.New(filepath.Join(dir, "registry.json"))
-	must(t, s.Save(model.NewRegistry()))
-	if _, err := os.Stat(filepath.Join(dir, "registry.json")); err != nil {
-		t.Fatalf("file not created in new directory: %v", err)
+	path := filepath.Join(t.TempDir(), "nested", "dir", "registry.json")
+	must(t, storejson.New(path).Save(model.NewRegistry()))
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("file not created in new directory: %v", err)
 	}
 }
 
 func TestSave_NoTempFileLeft(t *testing.T) {
 	t.Parallel()
-	s, path := tempStore(t)
-	must(t, s.Save(model.NewRegistry()))
+	st, path := newStore(t)
+	must(t, st.Save(model.NewRegistry()))
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
-		t.Error("temp file should not exist after successful Save")
+		t.Error("temp file should not exist after a successful Save")
 	}
 }
 
 func TestSave_FileIsValidJSON(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	// A successful Load is the definitive JSON validity check.
-	if _, err := s.Load(); err != nil {
-		t.Fatalf("Load after Save failed: %v", err)
+	st, _ := newStore(t)
+	must(t, st.Save(seedRegistry(t)))
+	if _, err := st.Load(); err != nil {
+		t.Errorf("Load after Save failed: %v", err)
+	}
+}
+
+func TestSave_Deterministic(t *testing.T) {
+	t.Parallel()
+	// A registry with multiple accounts/projects must serialise identically
+	// on repeated saves regardless of internal map iteration order.
+	st, path := newStore(t)
+	reg := seedRegistry(t)
+
+	must(t, st.Save(reg))
+	first, err := os.ReadFile(path)
+	must(t, err)
+
+	must(t, st.Save(reg))
+	second, err := os.ReadFile(path)
+	must(t, err)
+
+	if !bytes.Equal(first, second) {
+		t.Error("repeated saves of an identical registry produced different JSON")
+	}
+}
+
+// ── Save: filesystem fault injection ──────────────────────────────────────────
+//
+// These tests exercise Save's three guarded filesystem error paths by
+// arranging for the underlying os call to fail, without modifying json.go.
+// A fourth path — Rename failing AND the subsequent Remove also failing —
+// is not reachable through the public Store API; see the accompanying
+// summary for why.
+
+func TestSave_MkdirAllFails(t *testing.T) {
+	t.Parallel()
+	// blocker is a regular file occupying the path where Save needs to
+	// create a directory, so os.MkdirAll fails ("not a directory").
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "blocker")
+	must(t, os.WriteFile(blocker, []byte("x"), 0o600))
+
+	err := storejson.New(filepath.Join(blocker, "registry.json")).Save(model.NewRegistry())
+	if err == nil {
+		t.Fatal("expected an error when a path component is a regular file")
+	}
+}
+
+func TestSave_WriteTempFileFails(t *testing.T) {
+	t.Parallel()
+	// Pre-creating the ".tmp" path as a directory makes os.WriteFile fail
+	// when Save tries to open it for writing as a regular file.
+	st, path := newStore(t)
+	must(t, os.Mkdir(path+".tmp", 0o755))
+
+	if err := st.Save(model.NewRegistry()); err == nil {
+		t.Fatal("expected an error writing to a path occupied by a directory")
+	}
+}
+
+func TestSave_RenameFails_RemovesTempFile(t *testing.T) {
+	t.Parallel()
+	// Pre-creating the destination as an existing directory makes
+	// os.Rename fail — a regular file cannot replace a directory. Save
+	// must still remove the temp file it wrote before returning the error.
+	st, path := newStore(t)
+	must(t, os.Mkdir(path, 0o755))
+
+	err := st.Save(model.NewRegistry())
+	if err == nil {
+		t.Fatal("expected an error renaming over an existing directory")
+	}
+	if _, statErr := os.Stat(path + ".tmp"); !os.IsNotExist(statErr) {
+		t.Error("temp file should have been removed after the failed rename")
 	}
 }
 
@@ -205,315 +531,199 @@ func TestSave_FileIsValidJSON(t *testing.T) {
 
 func TestRoundTrip_Providers(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	st, _ := newStore(t)
+	must(t, st.Save(seedRegistry(t)))
+	loaded, err := st.Load()
+	must(t, err)
+
+	if got := len(loaded.Providers()); got != 2 {
+		t.Fatalf("providers: got %d, want 2", got)
 	}
-	if n := len(loaded.AllProviders()); n != 2 {
-		t.Errorf("providers: expected 2, got %d", n)
-	}
-	claude := loaded.ProviderByName("claude")
+	claude := loaded.Provider("claude")
 	if claude == nil {
-		t.Fatal("provider 'claude' not found after round-trip")
+		t.Fatal("provider claude not found")
 	}
-	if !claude.HasProjects {
-		t.Error("claude.HasProjects should be true")
+	if !claude.HasProjects() || !claude.HasDeepResearch() {
+		t.Error("claude capabilities not preserved")
 	}
-	chatgpt := loaded.ProviderByName("chatgpt")
+	chatgpt := loaded.Provider("chatgpt")
 	if chatgpt == nil {
-		t.Fatal("provider 'chatgpt' not found after round-trip")
+		t.Fatal("provider chatgpt not found")
 	}
-	if chatgpt.HasProjects {
-		t.Error("chatgpt.HasProjects should be false")
+	if chatgpt.HasProjects() || chatgpt.HasDeepResearch() {
+		t.Error("chatgpt capabilities should both be false")
 	}
 }
 
 func TestRoundTrip_Users(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	alice := loaded.UserByEmail("alice@example.com")
+	st, _ := newStore(t)
+	must(t, st.Save(seedRegistry(t)))
+	loaded, err := st.Load()
+	must(t, err)
+
+	alice := loaded.User("alice@example.com")
 	if alice == nil {
-		t.Fatal("user alice not found after round-trip")
+		t.Fatal("user alice not found")
 	}
-	if alice.Name != "Alice" {
-		t.Errorf("alice.Name: got %q, want %q", alice.Name, "Alice")
-	}
-}
-
-func TestRoundTrip_Sessions(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	sess := loaded.SessionAt("alice@example.com", "claude")
-	if sess == nil {
-		t.Fatal("session alice/claude not found after round-trip")
-	}
-	if sess.User() == nil || sess.User().Email() != "alice@example.com" {
-		t.Error("session.User pointer not resolved correctly")
-	}
-	if sess.Provider() == nil || sess.Provider().Name() != "claude" {
-		t.Error("session.Provider pointer not resolved correctly")
-	}
-}
-
-func TestRoundTrip_NextPromptAt(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	sess := loaded.SessionAt("alice@example.com", "claude")
-	if sess.NextPromptAt == nil {
-		t.Fatal("NextPromptAt should not be nil")
-	}
-	want := "2026-06-01T09:00:00Z"
-	got := sess.NextPromptAt.UTC().Format(time.RFC3339)
-	if got != want {
-		t.Errorf("NextPromptAt: got %q, want %q", got, want)
-	}
-}
-
-func TestRoundTrip_LastQuestion(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	sess := loaded.SessionAt("alice@example.com", "claude")
-	lq := sess.LastQuestion
-	if lq == nil {
-		t.Fatal("LastQuestion should not be nil")
-	}
-	if lq.Topic != "Architecture review" {
-		t.Errorf("Topic: got %q, want %q", lq.Topic, "Architecture review")
-	}
-	if !lq.MidAnswer {
-		t.Error("MidAnswer: expected true")
-	}
-	if lq.NextPrompt != "continue with the diagram" {
-		t.Errorf("NextPrompt: got %q", lq.NextPrompt)
-	}
-}
-
-func TestRoundTrip_LastQuestion_ProjectPointer(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	sess := loaded.SessionAt("alice@example.com", "claude")
-	lq := sess.LastQuestion
-	if lq == nil {
-		t.Fatal("LastQuestion should not be nil")
-	}
-	if lq.Project() == nil {
-		t.Fatal("LastQuestion.Project should not be nil")
-	}
-	if lq.Project().Name() != "Alpha" {
-		t.Errorf("LastQuestion.Project.Name: got %q, want Alpha", lq.Project().Name())
-	}
-	// Pointer must be the same object as the one in the projects map.
-	if lq.Project() != loaded.ProjectByName("Alpha") {
-		t.Error("LastQuestion.Project is not the same pointer as the registry project")
+	if alice.Name() != "Alice" {
+		t.Errorf("alice.Name() = %q, want Alice", alice.Name())
 	}
 }
 
 func TestRoundTrip_Projects(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	st, _ := newStore(t)
+	must(t, st.Save(seedRegistry(t)))
+	loaded, err := st.Load()
+	must(t, err)
+
+	if got := len(loaded.Projects()); got != 3 {
+		t.Fatalf("projects: got %d, want 3", got)
 	}
-	if n := len(loaded.AllProjects()); n != 3 {
-		t.Errorf("projects: expected 3, got %d", n)
-	}
-	alpha := loaded.ProjectByName("Alpha")
+	alpha := loaded.Project("Alpha")
 	if alpha == nil {
-		t.Fatal("project Alpha not found after round-trip")
+		t.Fatal("project Alpha not found")
 	}
-	if alpha.Description != "Backend rewrite" {
-		t.Errorf("Alpha.Description: got %q", alpha.Description)
+	if alpha.Description() != "Backend rewrite" {
+		t.Errorf("Alpha.Description() = %q", alpha.Description())
 	}
-	if alpha.Instructions != "Use Go interfaces" {
-		t.Errorf("Alpha.Instructions: got %q", alpha.Instructions)
+	if alpha.Instructions() != "Use Go interfaces" {
+		t.Errorf("Alpha.Instructions() = %q", alpha.Instructions())
+	}
+	if loaded.Project("Orphan") == nil {
+		t.Error("unattached project Orphan not preserved")
 	}
 }
 
-func TestRoundTrip_Project_SessionPointers(t *testing.T) {
+func TestRoundTrip_Accounts(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	st, _ := newStore(t)
+	must(t, st.Save(seedRegistry(t)))
+	loaded, err := st.Load()
+	must(t, err)
+
+	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
+	if aliceClaude == nil {
+		t.Fatal("account alice/claude not found")
 	}
-	sessions := loaded.SessionsByProject("Alpha")
+	if !aliceClaude.PauseUntil().IsZero() {
+		t.Error("alice/claude PauseUntil() should be zero")
+	}
+	projects := loaded.AccountProjects(aliceClaude)
+	names := make([]string, len(projects))
+	for i, p := range projects {
+		names[i] = p.Name()
+	}
+	if len(names) != 2 {
+		t.Fatalf("alice/claude projects: got %d, want 2 (%v)", len(names), names)
+	}
+	if names[0] != "Alpha" || names[1] != "Beta" {
+		t.Errorf("alice/claude projects = %v, want [Alpha Beta]", names)
+	}
+
+	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Provider("chatgpt"))
+	if bobChatgpt == nil {
+		t.Fatal("account bob/chatgpt not found")
+	}
+	wantPause := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	if !bobChatgpt.PauseUntil().Equal(wantPause) {
+		t.Errorf("PauseUntil() = %v, want %v", bobChatgpt.PauseUntil(), wantPause)
+	}
+	if len(loaded.AccountProjects(bobChatgpt)) != 0 {
+		t.Error("bob/chatgpt should have no assigned projects")
+	}
+}
+
+func TestRoundTrip_Sessions(t *testing.T) {
+	t.Parallel()
+	st, _ := newStore(t)
+	must(t, st.Save(seedRegistry(t)))
+	loaded, err := st.Load()
+	must(t, err)
+
+	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
+	sessions := loaded.AccountSessions(aliceClaude)
 	if len(sessions) != 1 {
-		t.Fatalf("Alpha should have 1 session after round-trip, got %d", len(sessions))
+		t.Fatalf("alice/claude sessions: got %d, want 1", len(sessions))
 	}
-	if sessions[0] != loaded.SessionAt("alice@example.com", "claude") {
-		t.Error("Alpha session is not the same pointer as the registry session")
+	s := sessions[0]
+	if s.ProjectName() != "Alpha" {
+		t.Errorf("ProjectName() = %q, want Alpha", s.ProjectName())
+	}
+	if s.Topic() != "Architecture review" {
+		t.Errorf("Topic() = %q", s.Topic())
+	}
+	queue := s.Queue()
+	if len(queue) != 2 {
+		t.Fatalf("queue: got %d items, want 2", len(queue))
+	}
+	if queue[0].Text() != "continue" || queue[0].SpawnsSession() {
+		t.Errorf("queue[0] = %+v", queue[0])
+	}
+	if queue[1].Text() != "proceed to step 2" || !queue[1].SpawnsSession() {
+		t.Errorf("queue[1] = %+v", queue[1])
+	}
+
+	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Provider("chatgpt"))
+	bobSessions := loaded.AccountSessions(bobChatgpt)
+	if len(bobSessions) != 1 {
+		t.Fatalf("bob/chatgpt sessions: got %d, want 1", len(bobSessions))
+	}
+	bs := bobSessions[0]
+	if bs.ProjectName() != "" || bs.Topic() != "" || len(bs.Queue()) != 0 {
+		t.Errorf("bob/chatgpt session should have no project/topic/queue, got %+v", bs)
 	}
 }
 
-func TestRoundTrip_Project_MultiSession(t *testing.T) {
+func TestRoundTrip_SessionIDsRenumbered(t *testing.T) {
 	t.Parallel()
+	// Session IDs are ephemeral surrogate keys, not persisted. Deleting the
+	// first of three sessions before saving must produce a reloaded
+	// registry whose two remaining sessions are renumbered 1, 2 — not a
+	// reload that preserves gaps from the original numbering.
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-	must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	must(t, reg.AddSession(model.NewSession(
-		reg.UserByEmail("alice@example.com"),
-		reg.ProviderByName("claude"),
-	)))
-	must(t, reg.AddSession(model.NewSession(
-		reg.UserByEmail("alice@example.com"),
-		reg.ProviderByName("gemini"),
-	)))
-	must(t, reg.AddProject(model.NewProject("Alpha")))
-	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
-	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "gemini")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
 
-	s, _ := tempStore(t)
-	must(t, s.Save(reg))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if n := len(loaded.SessionsByProject("Alpha")); n != 2 {
-		t.Errorf("Alpha should have 2 sessions after round-trip, got %d", n)
-	}
-	for _, providerName := range []string{"claude", "gemini"} {
-		sess := loaded.SessionAt("alice@example.com", providerName)
-		projects := loaded.ProjectsBySession(sess)
-		if len(projects) != 1 || projects[0].Name() != "Alpha" {
-			t.Errorf("Alpha not found in ProjectsBySession for alice/%s after round-trip",
-				providerName)
-		}
-	}
-}
+	first, err := reg.AddSession(acc, nil, "first", nil)
+	must(t, err)
+	_, err = reg.AddSession(acc, nil, "second", nil)
+	must(t, err)
+	_, err = reg.AddSession(acc, nil, "third", nil)
+	must(t, err)
+	must(t, reg.DeleteSession(first))
 
-func TestRoundTrip_UnattachedProject(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	orphan := loaded.ProjectByName("Orphan")
-	if orphan == nil {
-		t.Fatal("project Orphan not found after round-trip")
-	}
-	if n := len(loaded.SessionsByProject("Orphan")); n != 0 {
-		t.Errorf("Orphan should have no sessions after round-trip, got %d", n)
-	}
-}
+	st, _ := newStore(t)
+	must(t, st.Save(reg))
+	loaded, err := st.Load()
+	must(t, err)
 
-func TestRoundTrip_SessionWithNoLastQuestion(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	sessions := loaded.Sessions()
+	if len(sessions) != 2 {
+		t.Fatalf("sessions: got %d, want 2", len(sessions))
 	}
-	// bob/chatgpt has no LastQuestion in seedRegistry.
-	sess := loaded.SessionAt("bob@example.com", "chatgpt")
-	if sess == nil {
-		t.Fatal("session bob/chatgpt not found")
+	if sessions[0].ID() != 1 || sessions[0].Topic() != "second" {
+		t.Errorf("sessions[0] = id %d topic %q, want id 1 topic %q",
+			sessions[0].ID(), sessions[0].Topic(), "second")
 	}
-	if sess.LastQuestion != nil {
-		t.Error("bob/chatgpt LastQuestion should be nil")
+	if sessions[1].ID() != 2 || sessions[1].Topic() != "third" {
+		t.Errorf("sessions[1] = id %d topic %q, want id 2 topic %q",
+			sessions[1].ID(), sessions[1].Topic(), "third")
 	}
 }
 
 func TestRoundTrip_EmptyRegistry(t *testing.T) {
 	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(model.NewRegistry()))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if n := len(loaded.AllProviders()); n != 0 {
-		t.Errorf("expected 0 providers, got %d", n)
-	}
-}
+	st, _ := newStore(t)
+	must(t, st.Save(model.NewRegistry()))
+	loaded, err := st.Load()
+	must(t, err)
 
-func TestRoundTrip_DualIndexIntact(t *testing.T) {
-	t.Parallel()
-	s, _ := tempStore(t)
-	must(t, s.Save(seedRegistry(t)))
-	loaded, err := s.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	// Both indexes must return the same session pointer after Load.
-	byUser := loaded.SessionsByUser("alice@example.com")
-	byProvider := loaded.SessionsByProvider("claude")
-	if len(byUser) != 1 || len(byProvider) != 1 {
-		t.Fatalf("expected 1 session in each index, got byUser=%d byProvider=%d",
-			len(byUser), len(byProvider))
-	}
-	if byUser[0] != byProvider[0] {
-		t.Error("dual-index pointers diverge after round-trip")
-	}
-}
-
-// ── Determinism ───────────────────────────────────────────────────────────────
-
-func TestSave_ProjectSessionsOrderDeterministic(t *testing.T) {
-	t.Parallel()
-	// A project attached to two sessions must produce identical JSON on
-	// repeated saves regardless of map iteration order.
-	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-	must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
-	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	must(t, reg.AddSession(model.NewSession(
-		reg.UserByEmail("alice@example.com"),
-		reg.ProviderByName("claude"),
-	)))
-	must(t, reg.AddSession(model.NewSession(
-		reg.UserByEmail("alice@example.com"),
-		reg.ProviderByName("gemini"),
-	)))
-	must(t, reg.AddProject(model.NewProject("Alpha")))
-	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "claude")))
-	must(t, reg.AttachProject("Alpha", reg.SessionAt("alice@example.com", "gemini")))
-
-	s, path := tempStore(t)
-	must(t, s.Save(reg))
-	first, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read first save: %v", err)
-	}
-	must(t, s.Save(reg))
-	second, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read second save: %v", err)
-	}
-	if !bytes.Equal(first, second) {
-		t.Error("repeated saves of identical registry produced different JSON")
+	if len(loaded.Providers()) != 0 || len(loaded.Users()) != 0 || len(loaded.Projects()) != 0 ||
+		len(loaded.Accounts()) != 0 || len(loaded.Sessions()) != 0 {
+		t.Error("expected a fully empty registry after round-tripping an empty one")
 	}
 }
