@@ -31,23 +31,49 @@ import (
 
 	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/store"
 )
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
 // Service acts as the application layer, resolving primitive UI inputs
-// into domain entities before delegating to the Registry.
+// into domain entities before delegating to the Registry. It owns the
+// full persistence lifecycle: New loads, Save persists. Mutating methods
+// never call Save themselves — the caller decides when a batch of calls
+// is committed, exactly as before; only the storage dependency moved.
 type Service struct {
 	reg *model.Registry
+	st  store.Store
 }
 
-// New creates a new Service backed by the given Registry.
-// Returns an error when the Registry is nil.
-func New(reg *model.Registry) (*Service, error) {
-	if reg == nil {
-		return nil, fmt.Errorf("new service: registry %w", apperr.ErrNil)
+// New loads the registry from st and returns a ready-to-use Service.
+// Returns an error when st is nil or the load fails.
+func New(st store.Store) (*Service, error) {
+	if st == nil {
+		return nil, fmt.Errorf("new service: store %w", apperr.ErrNil)
 	}
-	return &Service{reg: reg}, nil
+	reg, err := st.Load()
+	if err != nil {
+		return nil, fmt.Errorf("new service: load: %w", err)
+	}
+	if reg == nil {
+		return nil, fmt.Errorf("new service: store returned a nil registry")
+	}
+	return &Service{
+		reg: reg,
+		st:  st,
+	}, nil
+}
+
+// Save persists the current registry state. Call this once after a batch
+// of mutating calls succeeds — not after each individual call — so a
+// single UI action that touches more than one aggregate still produces
+// exactly one write.
+func (s *Service) Save() error {
+	if err := s.st.Save(s.reg); err != nil {
+		return fmt.Errorf("save: %w", err)
+	}
+	return nil
 }
 
 // ── Resolution helpers (private) ───────────────────────────────────────────────
