@@ -32,12 +32,19 @@ func TestValidateProvider(t *testing.T) {
 			want: model.ErrNameRequired,
 		},
 		{
-			name: "valid",
-			in:   model.NewProvider("claude", true, false),
+			name: "valid with no capabilities",
+			in:   model.NewProvider("claude", false, false),
+			want: nil,
+		},
+		{
+			name: "valid with all capabilities",
+			in:   model.NewProvider("claude", true, true),
+			want: nil,
 		},
 		{
 			name: "trimmed valid",
 			in:   model.NewProvider("  claude  ", true, false),
+			want: nil,
 		},
 	}
 
@@ -47,12 +54,12 @@ func TestValidateProvider(t *testing.T) {
 			err := model.ValidateProvider(tt.in)
 			if tt.want == nil {
 				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
+					t.Errorf("unexpected error: %v", err)
 				}
 				return
 			}
 			if !errors.Is(err, tt.want) {
-				t.Fatalf("expected %v, got %v", tt.want, err)
+				t.Errorf("expected %v, got %v", tt.want, err)
 			}
 		})
 	}
@@ -117,6 +124,7 @@ func TestValidateUser(t *testing.T) {
 		{
 			name: "normalized email",
 			in:   model.NewUser("  ALICE@EXAMPLE.COM  ", "Alice"),
+			want: nil,
 		},
 		{
 			name: "valid",
@@ -130,7 +138,7 @@ func TestValidateUser(t *testing.T) {
 			err := model.ValidateUser(tt.in)
 			if len(tt.want) == 0 {
 				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
+					t.Errorf("unexpected error: %v", err)
 				}
 				return
 			}
@@ -139,7 +147,7 @@ func TestValidateUser(t *testing.T) {
 			}
 			for _, target := range tt.want {
 				if !errors.Is(err, target) {
-					t.Fatalf("expected %v in %v", target, err)
+					t.Errorf("expected %v in %v", target, err)
 				}
 			}
 		})
@@ -189,12 +197,12 @@ func TestValidateProject(t *testing.T) {
 			err := model.ValidateProject(tt.in)
 			if tt.want == nil {
 				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
+					t.Errorf("unexpected error: %v", err)
 				}
 				return
 			}
 			if !errors.Is(err, tt.want) {
-				t.Fatalf("expected %v, got %v", tt.want, err)
+				t.Errorf("expected %v, got %v", tt.want, err)
 			}
 		})
 	}
@@ -250,7 +258,7 @@ func TestValidateAccount(t *testing.T) {
 			err := model.ValidateAccount(tt.in)
 			if len(tt.want) == 0 {
 				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
+					t.Errorf("unexpected error: %v", err)
 				}
 				return
 			}
@@ -259,7 +267,7 @@ func TestValidateAccount(t *testing.T) {
 			}
 			for _, target := range tt.want {
 				if !errors.Is(err, target) {
-					t.Fatalf("expected %v in %v", target, err)
+					t.Errorf("expected %v in %v", target, err)
 				}
 			}
 		})
@@ -307,12 +315,12 @@ func TestValidatePrompt(t *testing.T) {
 			err := model.ValidatePrompt(tt.in)
 			if tt.want == nil {
 				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
+					t.Errorf("unexpected error: %v", err)
 				}
 				return
 			}
 			if !errors.Is(err, tt.want) {
-				t.Fatalf("expected %v, got %v", tt.want, err)
+				t.Errorf("expected %v, got %v", tt.want, err)
 			}
 		})
 	}
@@ -326,9 +334,9 @@ func TestErrorCategories(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		err    error
-		target error
+		name     string
+		specific error
+		category error
 	}{
 		{"provider not found", model.ErrProviderNotFound, apperr.ErrNotFound},
 		{"provider exists", model.ErrProviderExists, apperr.ErrExists},
@@ -364,8 +372,8 @@ func TestErrorCategories(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if !errors.Is(tt.err, tt.target) {
-				t.Fatalf("%v should match %v", tt.err, tt.target)
+			if !errors.Is(tt.specific, tt.category) {
+				t.Errorf("%v does not wrap %v", tt.specific, tt.category)
 			}
 		})
 	}

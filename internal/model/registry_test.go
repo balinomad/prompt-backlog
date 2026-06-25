@@ -99,6 +99,7 @@ func TestRegistry_AddProvider(t *testing.T) {
 		{
 			"duplicate name",
 			func(t *testing.T, r *model.Registry) {
+				t.Helper()
 				must(t, r.AddProvider(model.NewProvider("claude", true, false)))
 			},
 			model.NewProvider("claude", false, false),
@@ -307,7 +308,10 @@ func TestRegistry_AddUser(t *testing.T) {
 		{"empty name", func(*testing.T, *model.Registry) {}, model.NewUser("alice@example.com", ""), model.ErrNameRequired},
 		{
 			"duplicate email",
-			func(t *testing.T, r *model.Registry) { must(t, r.AddUser(model.NewUser("alice@example.com", "Alice"))) },
+			func(t *testing.T, r *model.Registry) {
+				t.Helper()
+				must(t, r.AddUser(model.NewUser("alice@example.com", "Alice")))
+			},
 			model.NewUser("alice@example.com", "Alice2"),
 			model.ErrUserExists,
 		},
@@ -503,7 +507,10 @@ func TestRegistry_AddProject(t *testing.T) {
 		{"whitespace-only name", func(*testing.T, *model.Registry) {}, model.NewProject("   ", "", ""), model.ErrNameRequired},
 		{
 			"duplicate name",
-			func(t *testing.T, r *model.Registry) { must(t, r.AddProject(model.NewProject("Alpha", "", ""))) },
+			func(t *testing.T, r *model.Registry) {
+				t.Helper()
+				must(t, r.AddProject(model.NewProject("Alpha", "", "")))
+			},
 			model.NewProject("Alpha", "", ""),
 			model.ErrProjectExists,
 		},
@@ -1246,7 +1253,7 @@ func TestRegistry_AccountSessions(t *testing.T) {
 
 // ── Session CRUD ──────────────────────────────────────────────────────────────
 
-func TestRegistry_AddSession(t *testing.T) {
+func TestRegistry_AddSession_Success(t *testing.T) {
 	t.Parallel()
 	t.Run("success without project", func(t *testing.T) {
 		t.Parallel()
@@ -1278,6 +1285,10 @@ func TestRegistry_AddSession(t *testing.T) {
 			t.Errorf("expected the new session to be indexed under Beta, got %v", got)
 		}
 	})
+}
+
+func TestRegistry_AddSession_Validation(t *testing.T) {
+	t.Parallel()
 	t.Run("account nil", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1348,28 +1359,29 @@ func TestRegistry_AddSession(t *testing.T) {
 			t.Fatal("got nil, want error")
 		}
 	})
-	t.Run("IDs are global, not per account", func(t *testing.T) {
-		t.Parallel()
-		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-		aliceAcc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
-		must(t, err)
-		bobAcc, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("claude"))
-		must(t, err)
+}
 
-		s1, err := reg.AddSession(aliceAcc, nil, "", nil)
-		must(t, err)
-		s2, err := reg.AddSession(bobAcc, nil, "", nil)
-		must(t, err)
-		s3, err := reg.AddSession(aliceAcc, nil, "", nil)
-		must(t, err)
+func TestRegistry_AddSession_GlobalSequence(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
+	aliceAcc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	bobAcc, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("claude"))
+	must(t, err)
 
-		if s1.ID() != 1 || s2.ID() != 2 || s3.ID() != 3 {
-			t.Errorf("got IDs %d, %d, %d across accounts; want 1, 2, 3 (a single global sequence)", s1.ID(), s2.ID(), s3.ID())
-		}
-	})
+	s1, err := reg.AddSession(aliceAcc, nil, "", nil)
+	must(t, err)
+	s2, err := reg.AddSession(bobAcc, nil, "", nil)
+	must(t, err)
+	s3, err := reg.AddSession(aliceAcc, nil, "", nil)
+	must(t, err)
+
+	if s1.ID() != 1 || s2.ID() != 2 || s3.ID() != 3 {
+		t.Errorf("got IDs %d, %d, %d across accounts; want 1, 2, 3 (a single global sequence)", s1.ID(), s2.ID(), s3.ID())
+	}
 }
 
 func TestRegistry_Session(t *testing.T) {
@@ -1523,9 +1535,9 @@ func TestRegistry_UpdateSessionTopic(t *testing.T) {
 		}
 	})
 }
-
 func TestRegistry_UpdateSessionProject(t *testing.T) {
 	t.Parallel()
+
 	t.Run("assign", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1541,10 +1553,11 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("ProjectSessions(Beta) = %v, want the new session indexed", pSessions)
 		}
 	})
+
 	t.Run("unassign", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		sess := reg.Session(1) // alice|claude, project=Alpha
+		sess := reg.Session(1)
 		must(t, reg.UpdateSessionProject(sess, nil))
 		got := reg.Session(1)
 		if got.ProjectName() != "" {
@@ -1554,10 +1567,11 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("ProjectSessions(Alpha) = %v, want empty after unassign", pSessions)
 		}
 	})
+
 	t.Run("switch project", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		sess := reg.Session(1) // alice|claude, project=Alpha
+		sess := reg.Session(1)
 		must(t, reg.UpdateSessionProject(sess, reg.Project("Beta")))
 		got := reg.Session(1)
 		if got.ProjectName() != "Beta" {
@@ -1570,6 +1584,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("ProjectSessions(Beta) = %v, want the session indexed after switching to it", pSessions)
 		}
 	})
+
 	t.Run("no-op when project is unchanged", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1580,6 +1595,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Error("expected the same pointer when the project does not change (no-op CoW)")
 		}
 	})
+
 	t.Run("no-op unassigning an already-unassigned session", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1590,6 +1606,11 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Error("expected the same pointer: already unassigned")
 		}
 	})
+}
+
+func TestRegistry_UpdateSessionProject_Errors(t *testing.T) {
+	t.Parallel()
+
 	t.Run("nil session", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1598,6 +1619,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("got %v, want ErrSessionNil", err)
 		}
 	})
+
 	t.Run("session not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1607,6 +1629,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("got %v, want ErrSessionNotFound", err)
 		}
 	})
+
 	t.Run("session stale", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1617,6 +1640,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("got %v, want ErrSessionStale", err)
 		}
 	})
+
 	t.Run("project not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1627,6 +1651,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("got %v, want ErrProjectNotFound", err)
 		}
 	})
+
 	t.Run("project stale", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -1638,6 +1663,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 			t.Errorf("got %v, want ErrProjectStale", err)
 		}
 	})
+
 	t.Run("project not assigned to account", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)

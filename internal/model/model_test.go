@@ -1,72 +1,306 @@
 package model_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
 )
 
+// ── Time helpers ──────────────────────────────────────────────────────────────
+
+func TestParseTime(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid morning", "2026-05-18 09:00", false},
+		{"valid midnight", "2026-01-01 00:00", false},
+		{"valid end of year", "2026-12-31 23:59", false},
+		{"empty", "", true},
+		{"garbage", "not-a-date", true},
+		{"wrong date separator", "2026/05/18 09:00", true},
+		{"reversed layout", "18-05-2026 09:00", true},
+		{"missing time", "2026-05-18", true},
+		{"missing date", "09:00", true},
+		{"trailing seconds not in layout", "2026-05-18 09:00:00", true},
+		{"month not zero-padded", "2026-5-18 09:00", true},
+		{"day not zero-padded", "2026-05-8 09:00", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := model.ParseTime(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseTime(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if !tt.wantErr && got.Location() != time.UTC {
+				t.Errorf("ParseTime(%q) location = %v, want UTC", tt.input, got.Location())
+			}
+		})
+	}
+}
+
+func TestFormatTime(t *testing.T) {
+	t.Parallel()
+
+	t.Run("round trip", func(t *testing.T) {
+		t.Parallel()
+		const original = "2026-05-20 14:30"
+		parsed, err := model.ParseTime(original)
+		if err != nil {
+			t.Fatalf("ParseTime: %v", err)
+		}
+		if got := model.FormatTime(parsed); got != original {
+			t.Errorf("round-trip: got %q, want %q", got, original)
+		}
+	})
+
+	t.Run("utc preservation", func(t *testing.T) {
+		t.Parallel()
+		// Anchored to UTC explicitly: TimeFormat carries no zone information,
+		// so formatting a non-UTC time and re-parsing it under ParseTime's
+		// forced UTC interpretation would not round-trip to the same instant.
+		now := time.Now().UTC().Truncate(time.Minute)
+		formatted := model.FormatTime(now)
+		parsed, err := model.ParseTime(formatted)
+		if err != nil {
+			t.Fatalf("ParseTime failed on FormatTime output %q: %v", formatted, err)
+		}
+		if !parsed.Equal(now) {
+			t.Errorf("time not preserved: got %v, want %v", parsed, now)
+		}
+	})
+}
+
+// ── Normalization helpers ─────────────────────────────────────────────────────
+
+func TestNormalizeEmail(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "already normalized",
+			input: "alice@example.com",
+			want:  "alice@example.com",
+		},
+		{
+			name:  "whitespace with uppercase",
+			input: "  ALICE@EXAMPLE.COM  ",
+			want:  "alice@example.com",
+		},
+		{
+			name:  "tabs and newlines",
+			input: "\talice@example.com\n",
+			want:  "alice@example.com",
+		},
+		{
+			name:  "mixed case and whitespace",
+			input: "  Alice@Example.Com  ",
+			want:  "alice@example.com",
+		},
+		{
+			name:  "empty",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "whitespace only",
+			input: "   ",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := model.NormalizeEmail(tt.input); got != tt.want {
+				t.Errorf("NormalizeEmail(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeText(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "already normalized",
+			input: "hello",
+			want:  "hello",
+		},
+		{
+			name:  "leading and trailing whitespace",
+			input: "  hello  ",
+			want:  "hello",
+		},
+		{
+			name:  "internal whitespace preserved",
+			input: "  hello   world  ",
+			want:  "hello   world",
+		},
+		{
+			name:  "tabs and newlines",
+			input: "\thello\n",
+			want:  "hello",
+		},
+		{
+			name:  "empty",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "whitespace only",
+			input: "  \t\n ",
+			want:  "",
+		},
+		{
+			name:  "case preserved",
+			input: "  HeLLo  ",
+			want:  "HeLLo",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := model.NormalizeText(tt.input); got != tt.want {
+				t.Errorf("NormalizeText(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNewProvider(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name            string
-		providerName    string
+		inName          string
 		hasProjects     bool
 		hasDeepResearch bool
 		wantName        string
 	}{
 		{
 			name:            "all capabilities",
-			providerName:    " claude ",
+			inName:          " claude ",
 			hasProjects:     true,
 			hasDeepResearch: true,
 			wantName:        "claude",
 		},
 		{
 			name:            "no capabilities",
-			providerName:    "basic",
+			inName:          "basic",
 			hasProjects:     false,
 			hasDeepResearch: false,
 			wantName:        "basic",
 		},
 		{
-			name:         "whitespace only",
-			providerName: "   ",
-			wantName:     "",
+			name:            "whitespace only",
+			inName:          "   ",
+			hasProjects:     false,
+			hasDeepResearch: false,
+			wantName:        "",
+		},
+		{
+			name:            "empty name",
+			inName:          "",
+			hasProjects:     false,
+			hasDeepResearch: false,
+			wantName:        "",
+		},
+		{
+			name:            "projects only",
+			inName:          "mid",
+			hasProjects:     true,
+			hasDeepResearch: false,
+			wantName:        "mid",
+		},
+		{
+			name:            "deep research only",
+			inName:          "mid",
+			hasProjects:     false,
+			hasDeepResearch: true,
+			wantName:        "mid",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewProvider(tt.providerName, tt.hasProjects, tt.hasDeepResearch)
+			p := model.NewProvider(tt.inName, tt.hasProjects, tt.hasDeepResearch)
 			if got := p.Name(); got != tt.wantName {
-				t.Fatalf("Name() = %q, want %q", got, tt.wantName)
+				t.Errorf("Name() = %q, want %q", got, tt.wantName)
 			}
 			if got := p.HasProjects(); got != tt.hasProjects {
-				t.Fatalf("HasProjects() = %v, want %v", got, tt.hasProjects)
+				t.Errorf("HasProjects() = %v, want %v", got, tt.hasProjects)
 			}
 			if got := p.HasDeepResearch(); got != tt.hasDeepResearch {
-				t.Fatalf("HasDeepResearch() = %v, want %v", got, tt.hasDeepResearch)
+				t.Errorf("HasDeepResearch() = %v, want %v", got, tt.hasDeepResearch)
 			}
 		})
 	}
 }
 
+// ── User ──────────────────────────────────────────────────────────────────────
+
 func TestNewUser(t *testing.T) {
 	t.Parallel()
-	u := model.NewUser(
-		" ALICE@example.com ",
-		" Alice ",
-	)
-	if got, want := u.Email(), "alice@example.com"; got != want {
-		t.Fatalf("Email() = %q, want %q", got, want)
+	tests := []struct {
+		name      string
+		inEmail   string
+		inName    string
+		wantEmail string
+		wantName  string
+	}{
+		{
+			name:      "trims and lowercases email, trims name",
+			inEmail:   " ALICE@Example.com ",
+			inName:    " Alice ",
+			wantEmail: "alice@example.com",
+			wantName:  "Alice",
+		},
+		{
+			name:      "already normalized",
+			inEmail:   "bob@example.com",
+			inName:    "Bob",
+			wantEmail: "bob@example.com",
+			wantName:  "Bob",
+		},
+		{
+			name:      "empty values",
+			inEmail:   "",
+			inName:    "",
+			wantEmail: "",
+			wantName:  "",
+		},
 	}
-	if got, want := u.Name(), "Alice"; got != want {
-		t.Fatalf("Name() = %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			u := model.NewUser(tt.inEmail, tt.inName)
+			if got := u.Email(); got != tt.wantEmail {
+				t.Errorf("Email() = %q, want %q", got, tt.wantEmail)
+			}
+			if got := u.Name(); got != tt.wantName {
+				t.Errorf("Name() = %q, want %q", got, tt.wantName)
+			}
+		})
 	}
 }
+
+// ── Project ───────────────────────────────────────────────────────────────────
 
 func TestNewProject(t *testing.T) {
 	t.Parallel()
@@ -132,115 +366,251 @@ func TestNewProject(t *testing.T) {
 			t.Parallel()
 			p := model.NewProject(tt.inName, tt.inDesc, tt.inInst)
 			if got := p.Name(); got != tt.wantName {
-				t.Fatalf("Name() = %q, want %q", got, tt.wantName)
+				t.Errorf("Name() = %q, want %q", got, tt.wantName)
 			}
 			if got := p.Description(); got != tt.wantDesc {
-				t.Fatalf("Description() = %q, want %q", got, tt.wantDesc)
+				t.Errorf("Description() = %q, want %q", got, tt.wantDesc)
 			}
 			if got := p.Instructions(); got != tt.wantInst {
-				t.Fatalf("Instructions() = %q, want %q", got, tt.wantInst)
+				t.Errorf("Instructions() = %q, want %q", got, tt.wantInst)
 			}
 		})
 	}
 }
 
-func TestAccountKeyString(t *testing.T) {
+// ── AccountKey ────────────────────────────────────────────────────────────────
+
+func TestAccountKey_String(t *testing.T) {
 	t.Parallel()
-	k := model.AccountKey{
-		Email:    "alice@example.com",
-		Provider: "claude",
+
+	tests := []struct {
+		name string
+		key  model.AccountKey
+		want string
+	}{
+		{"normal", model.AccountKey{Email: "alice@example.com", Provider: "claude"}, "alice@example.com|claude"},
+		{"zero value", model.AccountKey{}, "|"},
 	}
-	if got, want := k.String(), "alice@example.com|claude"; got != want {
-		t.Fatalf("String() = %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.key.String(); got != tt.want {
+				t.Errorf("String() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestNewAccount(t *testing.T) {
+func TestAccountKey_Equality(t *testing.T) {
 	t.Parallel()
-	acc := model.NewAccount(
-		" ALICE@EXAMPLE.COM ",
-		" claude ",
-	)
-	key := acc.Key()
-	if got, want := key.Email, "alice@example.com"; got != want {
-		t.Fatalf("Email = %q, want %q", got, want)
+	a := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
+	b := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
+	c := model.AccountKey{Email: "bob@example.com", Provider: "claude"}
+
+	if a != b {
+		t.Error("identical field values should compare equal")
 	}
-	if got, want := key.Provider, "claude"; got != want {
-		t.Fatalf("Provider = %q, want %q", got, want)
-	}
-	if got, want := acc.UserEmail(), "alice@example.com"; got != want {
-		t.Fatalf("UserEmail() = %q, want %q", got, want)
-	}
-	if got, want := acc.ProviderName(), "claude"; got != want {
-		t.Fatalf("ProviderName() = %q, want %q", got, want)
-	}
-	if !acc.PauseUntil().IsZero() {
-		t.Fatalf("PauseUntil() expected zero time")
+	if a == c {
+		t.Error("differing emails should not compare equal")
 	}
 }
+
+// ── Account ───────────────────────────────────────────────────────────────────
+
+func TestNewAccount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		inEmail   string
+		inProv    string
+		wantKey   model.AccountKey
+		wantEmail string
+		wantProv  string
+	}{
+		{
+			name:      "trims and lowercases email, trims provider",
+			inEmail:   " ALICE@Example.com ",
+			inProv:    " claude ",
+			wantKey:   model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			wantEmail: "alice@example.com",
+			wantProv:  "claude",
+		},
+		{
+			name:      "already normalized",
+			inEmail:   "bob@example.com",
+			inProv:    "chatgpt",
+			wantKey:   model.AccountKey{Email: "bob@example.com", Provider: "chatgpt"},
+			wantEmail: "bob@example.com",
+			wantProv:  "chatgpt",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			a := model.NewAccount(tt.inEmail, tt.inProv)
+			if got := a.Key(); got != tt.wantKey {
+				t.Errorf("Key() = %+v, want %+v", got, tt.wantKey)
+			}
+			if got := a.UserEmail(); got != tt.wantEmail {
+				t.Errorf("UserEmail() = %q, want %q", got, tt.wantEmail)
+			}
+			if got := a.ProviderName(); got != tt.wantProv {
+				t.Errorf("ProviderName() = %q, want %q", got, tt.wantProv)
+			}
+			if !a.PauseUntil().IsZero() {
+				t.Errorf("PauseUntil() = %v, want zero value", a.PauseUntil())
+			}
+		})
+	}
+}
+
+// ── Session ───────────────────────────────────────────────────────────────────
 
 func TestNewSession(t *testing.T) {
 	t.Parallel()
 
-	accKey := model.AccountKey{
-		Email:    "alice@example.com",
-		Provider: "claude",
+	tests := []struct {
+		name        string
+		key         model.AccountKey
+		id          uint64
+		inProject   string
+		inTopic     string
+		inQueue     []model.Prompt
+		wantProject string
+		wantTopic   string
+		wantQueue   []string
+	}{
+		{
+			name:        "basic fields",
+			key:         model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			id:          7,
+			inProject:   " Alpha ",
+			inTopic:     " Architecture review ",
+			inQueue:     []model.Prompt{model.NewPrompt("continue", false)},
+			wantProject: "Alpha",
+			wantTopic:   "Architecture review",
+			wantQueue:   []string{"continue"},
+		},
+		{
+			name:        "no project empty topic nil queue",
+			key:         model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			id:          1,
+			wantProject: "",
+			wantTopic:   "",
+			wantQueue:   nil,
+		},
+		{
+			name: "queue order preserved",
+			key:  model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			id:   1,
+			inQueue: []model.Prompt{
+				model.NewPrompt("first", false),
+				model.NewPrompt("second", true),
+				model.NewPrompt("third", false),
+			},
+			wantProject: "",
+			wantTopic:   "",
+			wantQueue:   []string{"first", "second", "third"},
+		},
 	}
-	queue := []model.Prompt{
-		model.NewPrompt("continue", false),
-		model.NewPrompt("step 2", true),
-	}
-	sess := model.NewSession(accKey, 42, " Project ", " Topic ", queue)
 
-	if got := sess.ID(); got != 42 {
-		t.Fatalf("ID() = %d, want 42", got)
-	}
-	if got := sess.AccountKey(); got != accKey {
-		t.Fatalf("AccountKey() mismatch")
-	}
-	if got := sess.ProjectName(); got != "Project" {
-		t.Fatalf("ProjectName() = %q", got)
-	}
-	if got := sess.Topic(); got != "Topic" {
-		t.Fatalf("Topic() = %q", got)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := model.NewSession(tt.key, tt.id, tt.inProject, tt.inTopic, tt.inQueue)
 
-	q := sess.Queue()
-	if len(q) != 2 {
-		t.Fatalf("Queue length = %d, want 2", len(q))
-	}
+			if got := s.ID(); got != tt.id {
+				t.Errorf("ID() = %d, want %d", got, tt.id)
+			}
+			if got := s.AccountKey(); got != tt.key {
+				t.Errorf("AccountKey() = %+v, want %+v", got, tt.key)
+			}
+			if got := s.ProjectName(); got != tt.wantProject {
+				t.Errorf("ProjectName() = %q, want %q", got, tt.wantProject)
+			}
+			if got := s.Topic(); got != tt.wantTopic {
+				t.Errorf("Topic() = %q, want %q", got, tt.wantTopic)
+			}
 
-	q[0] = model.NewPrompt("mutated", false)
-
-	again := sess.Queue()
-	if again[0].Text() != "continue" {
-		t.Fatal("Queue() did not return defensive copy")
+			gotQ := s.Queue()
+			if len(gotQ) != len(tt.wantQueue) {
+				t.Fatalf("Queue() length = %d, want %d", len(gotQ), len(tt.wantQueue))
+			}
+			for i, w := range tt.wantQueue {
+				if gotQ[i].Text() != w {
+					t.Errorf("Queue()[%d].Text() = %q, want %q", i, gotQ[i].Text(), w)
+				}
+			}
+		})
 	}
 }
+
+func TestNewSession_Behavioral(t *testing.T) {
+	t.Parallel()
+
+	t.Run("input queue is defensively cloned", func(t *testing.T) {
+		t.Parallel()
+		key := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
+		queue := []model.Prompt{model.NewPrompt("first", false)}
+		s := model.NewSession(key, 1, "", "", queue)
+
+		queue[0] = model.NewPrompt("mutated", true)
+
+		got := s.Queue()
+		if len(got) != 1 || got[0].Text() != "first" {
+			t.Errorf("Queue() = %+v, want unaffected by post-construction mutation", got)
+		}
+	})
+
+	t.Run("returned queue is a defensive copy", func(t *testing.T) {
+		t.Parallel()
+		key := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
+		queue := []model.Prompt{model.NewPrompt("first", false)}
+		s := model.NewSession(key, 1, "", "", queue)
+
+		got := s.Queue()
+		got[0] = model.NewPrompt("mutated", true)
+
+		again := s.Queue()
+		if len(again) != 1 || again[0].Text() != "first" {
+			t.Errorf("Queue() = %+v, want unaffected by mutation of returned slice", again)
+		}
+	})
+}
+
+// ── Prompt ────────────────────────────────────────────────────────────────────
 
 func TestNewPrompt(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		text          string
-		spawn         bool
-		wantText      string
-		wantSpawnFlag bool
+		name      string
+		text      string
+		spawn     bool
+		wantText  string
+		wantSpawn bool
 	}{
 		{
-			name:          "trimmed",
-			text:          " continue ",
-			spawn:         true,
-			wantText:      "continue",
-			wantSpawnFlag: true,
+			name:      "trimmed",
+			text:      " continue ",
+			spawn:     true,
+			wantText:  "continue",
+			wantSpawn: true,
 		},
 		{
-			name:          "empty",
-			text:          "   ",
-			spawn:         false,
-			wantText:      "",
-			wantSpawnFlag: false,
+			name:      "empty",
+			text:      "   ",
+			spawn:     false,
+			wantText:  "",
+			wantSpawn: false,
+		},
+		{
+			name:      "internal whitespace preserved",
+			text:      "  Proceed   to step 2  ",
+			spawn:     false,
+			wantText:  "Proceed   to step 2",
+			wantSpawn: false,
 		},
 	}
 
@@ -249,105 +619,30 @@ func TestNewPrompt(t *testing.T) {
 			t.Parallel()
 			p := model.NewPrompt(tt.text, tt.spawn)
 			if got := p.Text(); got != tt.wantText {
-				t.Fatalf("Text() = %q, want %q", got, tt.wantText)
+				t.Errorf("Text() = %q, want %q", got, tt.wantText)
 			}
-			if got := p.SpawnsSession(); got != tt.wantSpawnFlag {
-				t.Fatalf("SpawnsSession() = %v, want %v", got, tt.wantSpawnFlag)
-			}
-		})
-	}
-}
-
-func TestParseTime(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{"valid morning", "2026-05-18 09:00", false},
-		{"valid midnight", "2026-01-01 00:00", false},
-		{"empty", "", true},
-		{"garbage", "not-a-date", true},
-		{"wrong separator", "2026/05/18 09:00", true},
-		{"reversed", "18-05-2026 09:00", true},
-		{"missing time", "2026-05-18", true},
-		{"missing date", "09:00", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			_, err := model.ParseTime(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("ParseTime(%q) error=%v wantErr=%v", tt.input, err, tt.wantErr)
+			if got := p.SpawnsSession(); got != tt.wantSpawn {
+				t.Errorf("SpawnsSession() = %v, want %v", got, tt.wantSpawn)
 			}
 		})
 	}
 }
 
-func TestFormatTime(t *testing.T) {
+func TestPrompt_Comparable(t *testing.T) {
 	t.Parallel()
+	// Registry.UpdateSessionPrompts relies on Prompt being comparable via ==
+	// (through slices.Equal) to short-circuit no-op updates.
+	a := model.NewPrompt("continue", false)
+	b := model.NewPrompt("continue", false)
+	c := model.NewPrompt("continue", true)
 
-	t.Run("round trip", func(t *testing.T) {
-		t.Parallel()
-		const original = "2026-05-20 14:30"
-		parsed, err := model.ParseTime(original)
-		if err != nil {
-			t.Fatalf("ParseTime() error = %v", err)
-		}
-		if got := model.FormatTime(parsed); got != original {
-			t.Fatalf("FormatTime() = %q, want %q", got, original)
-		}
-	})
-
-	t.Run("utc preservation", func(t *testing.T) {
-		t.Parallel()
-		ts := time.Date(2026, time.May, 20, 14, 30, 0, 0, time.UTC)
-		formatted := model.FormatTime(ts)
-		parsed, err := model.ParseTime(formatted)
-		if err != nil {
-			t.Fatalf("ParseTime() error = %v", err)
-		}
-		if !parsed.Equal(ts) {
-			t.Fatalf("parsed=%v want=%v", parsed, ts)
-		}
-	})
-}
-
-func TestNormalizeEmail(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		email string
-		want  string
-	}{
-		{
-			name:  "trim and lowercase",
-			email: " ALICE@EXAMPLE.COM ",
-			want:  "alice@example.com",
-		},
-		{
-			name:  "already normalized",
-			email: "alice@example.com",
-			want:  "alice@example.com",
-		},
-		{
-			name:  "empty",
-			email: "",
-			want:  "",
-		},
+	if a != b {
+		t.Error("identical prompts should compare equal")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			u := model.NewUser(tt.email, "Alice")
-			if got := u.Email(); got != tt.want {
-				t.Fatalf("Email() = %q, want %q", got, tt.want)
-			}
-		})
+	if a == c {
+		t.Error("prompts differing only in SpawnsSession should not compare equal")
+	}
+	if !slices.Equal([]model.Prompt{a}, []model.Prompt{b}) {
+		t.Error("slices.Equal should treat identical prompt slices as equal")
 	}
 }
