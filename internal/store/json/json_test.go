@@ -117,7 +117,7 @@ func TestLoad_UnreadableFile_ReturnsWrappedError(t *testing.T) {
 	// other than os.ErrNotExist, exercising the "other I/O error" branch
 	// rather than the first-run "file does not exist" branch.
 	path := filepath.Join(t.TempDir(), "registry.json")
-	must(t, os.Mkdir(path, 0o755))
+	must(t, os.Mkdir(path, 0o750))
 
 	_, err := storejson.New(path).Load()
 	if err == nil {
@@ -463,13 +463,14 @@ func TestSave_Deterministic(t *testing.T) {
 	// on repeated saves regardless of internal map iteration order.
 	st, path := newStore(t)
 	reg := seedRegistry(t)
+	cleanPath := filepath.Clean(path)
 
 	must(t, st.Save(reg))
-	first, err := os.ReadFile(path)
+	first, err := os.ReadFile(cleanPath)
 	must(t, err)
 
 	must(t, st.Save(reg))
-	second, err := os.ReadFile(path)
+	second, err := os.ReadFile(cleanPath)
 	must(t, err)
 
 	if !bytes.Equal(first, second) {
@@ -504,7 +505,7 @@ func TestSave_WriteTempFileFails(t *testing.T) {
 	// Pre-creating the ".tmp" path as a directory makes os.WriteFile fail
 	// when Save tries to open it for writing as a regular file.
 	st, path := newStore(t)
-	must(t, os.Mkdir(path+".tmp", 0o755))
+	must(t, os.Mkdir(path+".tmp", 0o750))
 
 	if err := st.Save(model.NewRegistry()); err == nil {
 		t.Fatal("expected an error writing to a path occupied by a directory")
@@ -517,7 +518,7 @@ func TestSave_RenameFails_RemovesTempFile(t *testing.T) {
 	// os.Rename fail — a regular file cannot replace a directory. Save
 	// must still remove the temp file it wrote before returning the error.
 	st, path := newStore(t)
-	must(t, os.Mkdir(path, 0o755))
+	must(t, os.Mkdir(path, 0o750))
 
 	err := st.Save(model.NewRegistry())
 	if err == nil {
@@ -525,6 +526,25 @@ func TestSave_RenameFails_RemovesTempFile(t *testing.T) {
 	}
 	if _, statErr := os.Stat(path + ".tmp"); !os.IsNotExist(statErr) {
 		t.Error("temp file should have been removed after the failed rename")
+	}
+}
+
+func TestSave_MarshalFails(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	// time.Time.MarshalJSON fails for years outside [0, 9999]. Every other
+	// DTO field is a plain string, bool, or slice of those, so this is the
+	// only reachable way to make json.Marshal fail on a *model.Registry.
+	outOfRange := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	must(t, reg.PauseAccount(acc, outOfRange))
+
+	s, _ := newStore(t)
+	if err := s.Save(reg); err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }
 

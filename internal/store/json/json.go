@@ -135,17 +135,32 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 		}
 	}
 
+	if err := loadAccounts(dto, reg); err != nil {
+		return nil, err
+	}
+	if err := loadSessions(dto, reg); err != nil {
+		return nil, err
+	}
+
+	return reg, nil
+}
+
+// loadAccounts resolves and attaches Accounts to the Registry using the
+// flat DTO representation. It requires Users, Providers, and Projects to
+// be fully populated in the Registry beforehand. This step also applies
+// active pause states and assigns associated Projects to each Account.
+func loadAccounts(dto *registryDTO, reg *model.Registry) error {
 	for _, adto := range dto.Accounts {
 		u := reg.User(adto.UserEmail)
 		p := reg.Provider(adto.ProviderName)
 		acc, err := reg.AddAccount(u, p)
 		if err != nil {
-			return nil, fmt.Errorf("store: load account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
+			return fmt.Errorf("store: load account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
 		}
 
 		if adto.PauseUntil != nil && !adto.PauseUntil.IsZero() {
 			if err := reg.PauseAccount(acc, *adto.PauseUntil); err != nil {
-				return nil, fmt.Errorf("store: restore pause state for account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
+				return fmt.Errorf("store: restore pause state for account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
 			}
 			// acc must be re-read because PauseAccount replaces the registry's Account via Copy-on-Write
 			acc = reg.Account(u, p)
@@ -154,24 +169,31 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 		for _, pName := range adto.Projects {
 			proj := reg.Project(pName)
 			if err := reg.AddProjectToAccount(acc, proj); err != nil {
-				return nil, fmt.Errorf("store: assign project %q to account %q|%q: %w", pName, adto.UserEmail, adto.ProviderName, err)
+				return fmt.Errorf("store: assign project %q to account %q|%q: %w", pName, adto.UserEmail, adto.ProviderName, err)
 			}
 		}
 	}
+	return nil
+}
 
+// loadSessions resolves and appends Sessions to their respective Accounts
+// within the Registry. It requires Accounts and Projects to be fully
+// populated beforehand. This step converts flat prompt queues into model
+// instances and triggers ephemeral ID assignment for each Session.
+func loadSessions(dto *registryDTO, reg *model.Registry) error {
 	for i, sdto := range dto.Sessions {
 		u := reg.User(sdto.UserEmail)
 		p := reg.Provider(sdto.ProviderName)
 		acc := reg.Account(u, p)
 		if acc == nil {
-			return nil, fmt.Errorf("store: load session at index %d: account %q|%q not found", i, sdto.UserEmail, sdto.ProviderName)
+			return fmt.Errorf("store: load session at index %d: account %q|%q not found", i, sdto.UserEmail, sdto.ProviderName)
 		}
 
 		var proj *model.Project
 		if sdto.ProjectName != "" {
 			proj = reg.Project(sdto.ProjectName)
 			if proj == nil {
-				return nil, fmt.Errorf("store: load session at index %d: project %q not found", i, sdto.ProjectName)
+				return fmt.Errorf("store: load session at index %d: project %q not found", i, sdto.ProjectName)
 			}
 		}
 
@@ -182,11 +204,10 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 
 		// AddSession automatically assigns the next incrementing ephemeral ID.
 		if _, err := reg.AddSession(acc, proj, sdto.Topic, queue); err != nil {
-			return nil, fmt.Errorf("store: load session at index %d: %w", i, err)
+			return fmt.Errorf("store: load session at index %d: %w", i, err)
 		}
 	}
-
-	return reg, nil
+	return nil
 }
 
 // ── Save ──────────────────────────────────────────────────────────────────────

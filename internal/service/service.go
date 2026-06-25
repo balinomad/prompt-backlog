@@ -26,6 +26,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -57,7 +58,7 @@ func New(st store.Store) (*Service, error) {
 		return nil, fmt.Errorf("new service: load: %w", err)
 	}
 	if reg == nil {
-		return nil, fmt.Errorf("new service: store returned a nil registry")
+		return nil, errors.New("new service: store returned a nil registry")
 	}
 	return &Service{
 		reg: reg,
