@@ -5,13 +5,13 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-  workflow_dispatch: {}
 
 # Cancel in-progress runs on the same branch when a new push arrives.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Secure default permissions mapping: prevent privilege escalation
 permissions:
   contents: read
 
@@ -45,7 +45,7 @@ jobs:
   # Static analysis gate. Linter set and settings are defined in .golangci.yml.
   # gosec is enabled there; this job is the binding CI enforcement point.
   lint:
-    name: golangci-lint
+    name: Lint Execution
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -58,7 +58,8 @@ jobs:
           # default cache to prevent interference.
           cache: false
 
-      - uses: golangci/golangci-lint-action@v7
+      - name: Execute golangci-lint
+        uses: golangci/golangci-lint-action@v9
         with:
           # Pin to a specific v2 release for reproducibility.
           # Update deliberately; do not use 'latest' in production pipelines.
@@ -142,13 +143,15 @@ jobs:
 
       - name: Run tests with race detector (Linux)
         if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: "1"
         run: go test -race -count=1 -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Run tests (macOS / Windows)
         if: runner.os != 'Linux'
         run: go test -count=1 -shuffle=on ./...
 
-      # - name: Upload coverage to Codecov
+      # - name: Upload coveragee reports to Codecov
       #   if: matrix.os == 'ubuntu-latest' && matrix.go == 'go.mod'
       #   uses: codecov/codecov-action@v5
       #   with:
