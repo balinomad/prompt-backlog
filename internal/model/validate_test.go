@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
 )
 
@@ -91,27 +92,27 @@ func TestValidateUser(t *testing.T) {
 		{
 			name: "invalid email missing at",
 			in:   model.NewUser("alice.example.com", "Alice"),
-			want: []error{model.ErrEmailInvalid},
+			want: []error{apperr.ErrEmailInvalid},
 		},
 		{
 			name: "invalid email missing local",
 			in:   model.NewUser("@example.com", "Alice"),
-			want: []error{model.ErrEmailInvalid},
+			want: []error{apperr.ErrEmailInvalid},
 		},
 		{
 			name: "invalid email missing domain",
 			in:   model.NewUser("alice@", "Alice"),
-			want: []error{model.ErrEmailInvalid},
+			want: []error{apperr.ErrEmailInvalid},
 		},
 		{
 			name: "invalid email double at",
 			in:   model.NewUser("alice@@example.com", "Alice"),
-			want: []error{model.ErrEmailInvalid},
+			want: []error{apperr.ErrEmailInvalid},
 		},
 		{
 			name: "invalid email missing dot in domain",
 			in:   model.NewUser("alice@example", "Alice"),
-			want: []error{model.ErrEmailInvalid},
+			want: []error{apperr.ErrEmailInvalid},
 		},
 		{
 			name: "normalized email",
@@ -329,35 +330,35 @@ func TestErrorCategories(t *testing.T) {
 		err    error
 		target error
 	}{
-		{"provider not found", model.ErrProviderNotFound, model.ErrNotFound},
-		{"provider exists", model.ErrProviderExists, model.ErrExists},
-		{"provider stale", model.ErrProviderStale, model.ErrStale},
-		{"provider nil", model.ErrProviderNil, model.ErrNil},
+		{"provider not found", model.ErrProviderNotFound, apperr.ErrNotFound},
+		{"provider exists", model.ErrProviderExists, apperr.ErrExists},
+		{"provider stale", model.ErrProviderStale, apperr.ErrStale},
+		{"provider nil", model.ErrProviderNil, apperr.ErrNil},
 
-		{"user not found", model.ErrUserNotFound, model.ErrNotFound},
-		{"user exists", model.ErrUserExists, model.ErrExists},
-		{"user stale", model.ErrUserStale, model.ErrStale},
-		{"user nil", model.ErrUserNil, model.ErrNil},
+		{"user not found", model.ErrUserNotFound, apperr.ErrNotFound},
+		{"user exists", model.ErrUserExists, apperr.ErrExists},
+		{"user stale", model.ErrUserStale, apperr.ErrStale},
+		{"user nil", model.ErrUserNil, apperr.ErrNil},
 
-		{"project not found", model.ErrProjectNotFound, model.ErrNotFound},
-		{"project exists", model.ErrProjectExists, model.ErrExists},
-		{"project stale", model.ErrProjectStale, model.ErrStale},
-		{"project nil", model.ErrProjectNil, model.ErrNil},
-		{"projects unsupported", model.ErrProjectsUnsupported, model.ErrUnsupported},
+		{"project not found", model.ErrProjectNotFound, apperr.ErrNotFound},
+		{"project exists", model.ErrProjectExists, apperr.ErrExists},
+		{"project stale", model.ErrProjectStale, apperr.ErrStale},
+		{"project nil", model.ErrProjectNil, apperr.ErrNil},
+		{"projects unsupported", model.ErrProjectsUnsupported, apperr.ErrUnsupported},
 
-		{"account not found", model.ErrAccountNotFound, model.ErrNotFound},
-		{"account exists", model.ErrAccountExists, model.ErrExists},
-		{"account stale", model.ErrAccountStale, model.ErrStale},
-		{"account nil", model.ErrAccountNil, model.ErrNil},
+		{"account not found", model.ErrAccountNotFound, apperr.ErrNotFound},
+		{"account exists", model.ErrAccountExists, apperr.ErrExists},
+		{"account stale", model.ErrAccountStale, apperr.ErrStale},
+		{"account nil", model.ErrAccountNil, apperr.ErrNil},
 
-		{"session not found", model.ErrSessionNotFound, model.ErrNotFound},
-		{"session stale", model.ErrSessionStale, model.ErrStale},
-		{"session nil", model.ErrSessionNil, model.ErrNil},
+		{"session not found", model.ErrSessionNotFound, apperr.ErrNotFound},
+		{"session stale", model.ErrSessionStale, apperr.ErrStale},
+		{"session nil", model.ErrSessionNil, apperr.ErrNil},
 
-		{"email required", model.ErrEmailRequired, model.ErrRequired},
-		{"key required", model.ErrKeyRequired, model.ErrRequired},
-		{"name required", model.ErrNameRequired, model.ErrRequired},
-		{"text required", model.ErrTextRequired, model.ErrRequired},
+		{"email required", model.ErrEmailRequired, apperr.ErrRequired},
+		{"key required", model.ErrKeyRequired, apperr.ErrRequired},
+		{"name required", model.ErrNameRequired, apperr.ErrRequired},
+		{"text required", model.ErrTextRequired, apperr.ErrRequired},
 	}
 
 	for _, tt := range tests {

@@ -4,52 +4,42 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-)
 
-// Shared categories — for generic dispatch (e.g. mapping any registry
-// failure to an HTTP status) regardless of entity type.
-var (
-	ErrNotFound     = errors.New("not found")
-	ErrExists       = errors.New("already exists")
-	ErrStale        = errors.New("is stale")
-	ErrNil          = errors.New("is nil")
-	ErrRequired     = errors.New("required")
-	ErrEmailInvalid = errors.New("invalid email format")
-	ErrUnsupported  = errors.New("not supported")
+	"github.com/balinomad/llm-desk/internal/apperr"
 )
 
 // Entity-specific — wraps its category, so both checks succeed on the
-// same error: errors.Is(err, ErrProviderNotFound) and errors.Is(err, ErrNotFound).
+// same error: errors.Is(err, ErrProviderNotFound) and errors.Is(err, apperr.ErrNotFound).
 var (
-	ErrProviderNotFound = fmt.Errorf("provider %w", ErrNotFound)
-	ErrProviderExists   = fmt.Errorf("provider %w", ErrExists)
-	ErrProviderStale    = fmt.Errorf("provider %w", ErrStale)
-	ErrProviderNil      = fmt.Errorf("provider %w", ErrNil)
+	ErrProviderNotFound = fmt.Errorf("provider %w", apperr.ErrNotFound)
+	ErrProviderExists   = fmt.Errorf("provider %w", apperr.ErrExists)
+	ErrProviderStale    = fmt.Errorf("provider %w", apperr.ErrStale)
+	ErrProviderNil      = fmt.Errorf("provider %w", apperr.ErrNil)
 
-	ErrUserNotFound = fmt.Errorf("user %w", ErrNotFound)
-	ErrUserExists   = fmt.Errorf("user %w", ErrExists)
-	ErrUserStale    = fmt.Errorf("user %w", ErrStale)
-	ErrUserNil      = fmt.Errorf("user %w", ErrNil)
+	ErrUserNotFound = fmt.Errorf("user %w", apperr.ErrNotFound)
+	ErrUserExists   = fmt.Errorf("user %w", apperr.ErrExists)
+	ErrUserStale    = fmt.Errorf("user %w", apperr.ErrStale)
+	ErrUserNil      = fmt.Errorf("user %w", apperr.ErrNil)
 
-	ErrProjectNotFound     = fmt.Errorf("project %w", ErrNotFound)
-	ErrProjectExists       = fmt.Errorf("project %w", ErrExists)
-	ErrProjectStale        = fmt.Errorf("project %w", ErrStale)
-	ErrProjectNil          = fmt.Errorf("project %w", ErrNil)
-	ErrProjectsUnsupported = fmt.Errorf("projects %w", ErrUnsupported)
+	ErrProjectNotFound     = fmt.Errorf("project %w", apperr.ErrNotFound)
+	ErrProjectExists       = fmt.Errorf("project %w", apperr.ErrExists)
+	ErrProjectStale        = fmt.Errorf("project %w", apperr.ErrStale)
+	ErrProjectNil          = fmt.Errorf("project %w", apperr.ErrNil)
+	ErrProjectsUnsupported = fmt.Errorf("projects %w", apperr.ErrUnsupported)
 
-	ErrAccountNotFound = fmt.Errorf("account %w", ErrNotFound)
-	ErrAccountExists   = fmt.Errorf("account %w", ErrExists)
-	ErrAccountStale    = fmt.Errorf("account %w", ErrStale)
-	ErrAccountNil      = fmt.Errorf("account %w", ErrNil)
+	ErrAccountNotFound = fmt.Errorf("account %w", apperr.ErrNotFound)
+	ErrAccountExists   = fmt.Errorf("account %w", apperr.ErrExists)
+	ErrAccountStale    = fmt.Errorf("account %w", apperr.ErrStale)
+	ErrAccountNil      = fmt.Errorf("account %w", apperr.ErrNil)
 
-	ErrSessionNotFound = fmt.Errorf("session %w", ErrNotFound)
-	ErrSessionStale    = fmt.Errorf("session %w", ErrStale)
-	ErrSessionNil      = fmt.Errorf("session %w", ErrNil)
+	ErrSessionNotFound = fmt.Errorf("session %w", apperr.ErrNotFound)
+	ErrSessionStale    = fmt.Errorf("session %w", apperr.ErrStale)
+	ErrSessionNil      = fmt.Errorf("session %w", apperr.ErrNil)
 
-	ErrEmailRequired = fmt.Errorf("email %w", ErrRequired)
-	ErrKeyRequired   = fmt.Errorf("key %w", ErrRequired)
-	ErrNameRequired  = fmt.Errorf("name %w", ErrRequired)
-	ErrTextRequired  = fmt.Errorf("text %w", ErrRequired)
+	ErrEmailRequired = fmt.Errorf("email %w", apperr.ErrRequired)
+	ErrKeyRequired   = fmt.Errorf("key %w", apperr.ErrRequired)
+	ErrNameRequired  = fmt.Errorf("name %w", apperr.ErrRequired)
+	ErrTextRequired  = fmt.Errorf("text %w", apperr.ErrRequired)
 )
 
 // ValidateProvider returns an error when the provider is invalid.
@@ -73,7 +63,7 @@ func ValidateUser(u *User) error {
 	if u.email == "" {
 		errs = append(errs, ErrEmailRequired)
 	} else if !isValidEmail(u.email) {
-		errs = append(errs, ErrEmailInvalid)
+		errs = append(errs, apperr.ErrEmailInvalid)
 	}
 	if u.name == "" {
 		errs = append(errs, ErrNameRequired)

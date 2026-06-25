@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
 	storejson "github.com/balinomad/llm-desk/internal/store/json"
 )
@@ -216,7 +217,7 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		{
 			name:      "user invalid email",
 			json:      `{"users": [{"email": "alice.example.com", "name": "Alice"}]}`,
-			wantErrIs: []error{model.ErrEmailInvalid},
+			wantErrIs: []error{apperr.ErrEmailInvalid},
 		},
 		{
 			name: "duplicate user",

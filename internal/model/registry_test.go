@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
 )
 
@@ -302,7 +303,7 @@ func TestRegistry_AddUser(t *testing.T) {
 		{"success", func(*testing.T, *model.Registry) {}, model.NewUser("new@example.com", "New"), nil},
 		{"nil user", func(*testing.T, *model.Registry) {}, nil, model.ErrUserNil},
 		{"empty email", func(*testing.T, *model.Registry) {}, model.NewUser("", "Name"), model.ErrEmailRequired},
-		{"invalid email", func(*testing.T, *model.Registry) {}, model.NewUser("not-an-email", "Name"), model.ErrEmailInvalid},
+		{"invalid email", func(*testing.T, *model.Registry) {}, model.NewUser("not-an-email", "Name"), apperr.ErrEmailInvalid},
 		{"empty name", func(*testing.T, *model.Registry) {}, model.NewUser("alice@example.com", ""), model.ErrNameRequired},
 		{
 			"duplicate email",
