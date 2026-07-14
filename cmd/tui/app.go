@@ -3,10 +3,11 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/store"
+	"github.com/balinomad/llm-desk/internal/apperr"
+	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/rivo/tview"
 )
@@ -14,33 +15,33 @@ import (
 // Compile-time check that App implements views.App.
 var _ views.App = (*App)(nil)
 
-// App is the concrete host application. It owns the tview event loop, the
-// persistent store, and the in-memory registry. All views interact with it
-// exclusively through the views.App interface.
+// App is the concrete host application. It owns the tview event loop and the
+// application service layer. All views interact with it exclusively through
+// the views.App interface.
 type App struct {
 	tv        *tview.Application
-	store     store.Store
-	registry  model.Registry
+	svc       *service.Service
 	pages     *tview.Pages
 	prevFocus tview.Primitive // saved by ShowModal, restored by HideModal
 
 	statusBar *views.StatusBar
-	sessions  *views.SessionsPanel
+	accounts  *views.AccountsPanel
 	detail    *views.DetailPanel
 	providers *views.ProvidersPanel
+	projects  *views.ProjectsPanel
 }
 
-// New loads the registry from s and constructs the fully wired application.
-// Returns an error only when the store fails to load.
-func New(s store.Store) (*App, error) {
-	reg, err := s.Load()
-	if err != nil {
-		return nil, fmt.Errorf("load registry: %w", err)
+// New constructs the fully wired application around svc. The caller is
+// responsible for constructing svc (e.g. via service.New) and handling any
+// load error before calling New.
+// Returns an error if svc is nil.
+func New(svc *service.Service) (*App, error) {
+	if svc == nil {
+		return nil, fmt.Errorf("new app: service %w", apperr.ErrNil)
 	}
 	a := &App{
-		tv:       tview.NewApplication(),
-		store:    s,
-		registry: reg,
+		tv:  tview.NewApplication(),
+		svc: svc,
 	}
 	a.build()
 	return a, nil
@@ -56,21 +57,25 @@ func (a *App) Run() error {
 
 // ── views.App implementation ──────────────────────────────────────────────────
 
-// Registry returns the current in-memory registry.
+// Service returns the current application service layer.
 // Views read from this; mutations go through Mutate.
-func (a *App) Registry() model.Registry {
-	return a.registry
+func (a *App) Service() *service.Service {
+	return a.svc
 }
 
-// Mutate applies fn to the registry. If fn returns nil, the result is
+// Mutate applies fn to the service. If fn returns nil, the result is
 // persisted to disk and all views are refreshed. Views are refreshed
 // regardless of whether the save succeeded so the in-memory state is
 // always reflected. The save error, if any, is returned to the caller.
-func (a *App) Mutate(fn func(*model.Registry) error) error {
-	if err := fn(&a.registry); err != nil {
+// Returns an error if fn is nil.
+func (a *App) Mutate(fn func(*service.Service) error) error {
+	if fn == nil {
+		return fmt.Errorf("mutate: fn %w", apperr.ErrNil)
+	}
+	if err := fn(a.svc); err != nil {
 		return err
 	}
-	saveErr := a.store.Save(a.registry)
+	saveErr := a.svc.Save()
 	a.refreshAll()
 	if saveErr == nil {
 		a.statusBar.SetMessage("[green]saved ✓[-]")
@@ -80,10 +85,16 @@ func (a *App) Mutate(fn func(*model.Registry) error) error {
 
 // ShowModal displays p as a centred transparent overlay. The currently focused
 // primitive is saved so HideModal can restore it.
-func (a *App) ShowModal(p tview.Primitive) {
+// Returns an error if p is nil — including a non-nil interface wrapping a
+// nil concrete pointer, which a plain p == nil check would miss.
+func (a *App) ShowModal(p tview.Primitive) error {
+	if isNilPrimitive(p) {
+		return fmt.Errorf("show modal: primitive %w", apperr.ErrNil)
+	}
 	a.prevFocus = a.tv.GetFocus()
 	a.pages.AddPage("modal", p, true, true)
 	a.tv.SetFocus(p)
+	return nil
 }
 
 // HideModal removes the modal overlay and restores focus to the primitive
@@ -103,11 +114,18 @@ func (a *App) SwitchToProviders() {
 	a.tv.SetFocus(a.providers)
 }
 
-// SwitchToMain shows the main sessions + detail screen and returns focus to
-// the sessions list.
+// SwitchToMain shows the main accounts + detail screen and returns focus to
+// the accounts list.
 func (a *App) SwitchToMain() {
 	a.pages.SwitchToPage("main")
-	a.tv.SetFocus(a.sessions)
+	a.tv.SetFocus(a.accounts)
+}
+
+// SwitchToProjects refreshes and shows the projects management screen.
+func (a *App) SwitchToProjects() {
+	a.projects.Refresh()
+	a.pages.SwitchToPage("projects")
+	a.tv.SetFocus(a.projects)
 }
 
 // SetStatus displays msg in the right section of the status bar.
@@ -133,23 +151,25 @@ func (a *App) Quit() {
 // handles first-run state. Called exactly once from New.
 func (a *App) build() {
 	a.statusBar = views.NewStatusBar()
-	a.sessions = views.NewSessionsPanel(a)
+	a.accounts = views.NewAccountsPanel(a)
 	a.detail = views.NewDetailPanel(a)
 	a.providers = views.NewProvidersPanel(a)
+	a.projects = views.NewProjectsPanel(a)
 
-	// Wire session-list selection changes to the detail panel.
-	a.sessions.SetOnSelect(a.detail.SetSession)
+	// Wire account-list selection changes to the detail panel.
+	a.accounts.SetOnSelect(a.detail.SetAccount)
 
-	// Main split: sessions panel (1 part) beside detail panel (2 parts).
+	// Main split: accounts panel (1 part) beside detail panel (2 parts).
 	mainFlex := tview.NewFlex().
-		AddItem(a.sessions, 0, 1, true).
+		AddItem(a.accounts, 0, 1, true).
 		AddItem(a.detail, 0, 2, false)
 
 	// Pages for full-screen switching.
 	// The "modal" page is added/removed dynamically by ShowModal/HideModal.
 	a.pages = tview.NewPages().
 		AddPage("main", mainFlex, true, true).
-		AddPage("providers", a.providers, true, false)
+		AddPage("providers", a.providers, true, false).
+		AddPage("projects", a.projects, true, false)
 
 	// Root layout: content area above, status bar pinned to the bottom.
 	root := tview.NewFlex().
@@ -161,11 +181,11 @@ func (a *App) build() {
 
 	// Initial data load.
 	a.refreshAll()
-	a.tv.SetFocus(a.sessions)
+	a.tv.SetFocus(a.accounts)
 
 	// First-run: no providers means nothing can be done yet.
 	// Send the operator to the providers screen with a helpful prompt.
-	if len(a.registry.AllProviders()) == 0 {
+	if len(a.svc.Providers()) == 0 {
 		a.SwitchToProviders()
 		a.statusBar.SetMessage(
 			"No providers configured — press [::b]n[-::-] to add one.")
@@ -175,7 +195,24 @@ func (a *App) build() {
 // refreshAll repopulates every panel from the current in-memory registry.
 // Called after every successful mutation and when a modal is hidden.
 func (a *App) refreshAll() {
-	a.sessions.Refresh()
+	a.accounts.Refresh()
 	a.detail.Refresh()
 	a.providers.Refresh()
+	a.projects.Refresh()
+}
+
+// isNilPrimitive reports whether p is nil — including the case where p is a
+// non-nil interface wrapping a nil concrete pointer (e.g. a *tview.Flex(nil)
+// returned as a tview.Primitive), which p == nil does not detect.
+func isNilPrimitive(p tview.Primitive) bool {
+	if p == nil {
+		return true
+	}
+	v := reflect.ValueOf(p)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface:
+		return v.IsNil()
+	default:
+		return false
+	}
 }

@@ -17,19 +17,19 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(*mockApp)
+		setup     func(*testing.T, *mockApp)
 		wantCount int
 	}{
-		{"two providers", func(_ *mockApp) {}, 2},
-		{"empty registry", func(app *mockApp) {
-			app.registry = model.NewRegistry()
+		{"two providers", func(_ *testing.T, _ *mockApp) {}, 2},
+		{"empty registry", func(t *testing.T, app *mockApp) {
+			app.svc = newTestService(t, model.NewRegistry())
 		}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			tc.setup(app)
+			tc.setup(t, app)
 			p := NewProvidersPanel(app)
 			p.Refresh()
 			if got := p.list.GetItemCount(); got != tc.wantCount {
@@ -138,7 +138,7 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			app.registry = model.NewRegistry()
+			app.svc = newTestService(t, model.NewRegistry())
 			p := NewProvidersPanel(app)
 			p.Refresh()
 			p.handleKey(runeKey(tc.key))

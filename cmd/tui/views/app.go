@@ -2,7 +2,7 @@
 package views
 
 import (
-	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/rivo/tview"
 )
@@ -14,23 +14,25 @@ import (
 // This keeps views decoupled from the concrete App struct and testable in
 // isolation with a mock implementation.
 type App interface {
-	// Registry returns the current in-memory registry.
+	// Service returns the application service layer.
 	// Views read from this; mutations must go through Mutate.
-	Registry() model.Registry
+	Service() *service.Service
 
-	// Mutate applies fn to the registry and, if fn returns nil, persists the
-	// result to disk. It then refreshes all views regardless of whether the
-	// save succeeded.
-	// Two distinct errors may be returned:
+	// Mutate applies fn against the service and, if fn returns nil, persists
+	// the result to disk. It then refreshes all views regardless of whether
+	// the save succeeded.
+	// Three distinct errors may be returned:
+	//   - fn is nil: a caller bug; no mutation is attempted.
 	//   - fn's error: a domain or validation failure; the registry is unchanged.
 	//   - a save error: the mutation was applied in memory but not persisted.
 	// Callers display fn errors inline (e.g. inside a form); save errors are
 	// the caller's responsibility to surface, typically via SetStatus.
-	Mutate(fn func(*model.Registry) error) error
+	Mutate(fn func(*service.Service) error) error
 
 	// ShowModal displays p as a centered overlay above the current screen.
 	// Only one modal may be shown at a time; a second call replaces the first.
-	ShowModal(p tview.Primitive)
+	// Returns an error if p is nil.
+	ShowModal(p tview.Primitive) error
 
 	// HideModal removes the current modal overlay and restores focus to the
 	// component that was active before ShowModal was called.
@@ -39,7 +41,10 @@ type App interface {
 	// SwitchToProviders switches the display to the providers management screen.
 	SwitchToProviders()
 
-	// SwitchToMain switches the display back to the sessions + detail screen.
+	// SwitchToProjects switches the display to the projects management screen.
+	SwitchToProjects()
+
+	// SwitchToMain switches the display back to the accounts + detail screen.
 	SwitchToMain()
 
 	// SetStatus displays msg in the status bar. An empty string clears it.

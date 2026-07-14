@@ -1,6 +1,7 @@
 package views
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
@@ -15,75 +16,74 @@ func TestNewDetailPanel(t *testing.T) {
 	}
 }
 
-// ── SetSession / Refresh ──────────────────────────────────────────────────────
+// ── SetAccount / Refresh ──────────────────────────────────────────────────────
 
-func TestDetailPanel_SetSession_Nil(t *testing.T) {
+// newDetailTestApp returns a mock wired with a single account that has two
+// sessions attached, plus one granted project. Defined locally rather than
+// added to newMockApp in helpers_test.go: that shared fixture deliberately
+// carries no sessions, and this file is the only current caller that needs
+// them.
+//
+//	Account:  alice|claude, project "Alpha" granted
+//	Sessions: #1 "Architecture review" / Alpha / queue=[continue] (pending)
+//	          #2 untitled / no project / empty queue
+func newDetailTestApp(t *testing.T) (*mockApp, *model.Account) {
+	t.Helper()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
+	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
+	_, err = reg.AddSession(acc, reg.Project("Alpha"), "Architecture review",
+		[]model.Prompt{model.NewPrompt("continue", false)})
+	must(t, err)
+	_, err = reg.AddSession(acc, nil, "", nil)
+	must(t, err)
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	return app, acc
+}
+
+func TestDetailPanel_SetAccount_Nil(t *testing.T) {
 	t.Parallel()
 	p := NewDetailPanel(newMockApp(t))
-	p.SetSession(nil)
-	if p.session != nil {
-		t.Error("session should be nil after SetSession(nil)")
+	p.SetAccount(nil)
+	if p.account != nil {
+		t.Error("account should be nil after SetAccount(nil)")
 	}
 }
 
-func TestDetailPanel_SetSession_ItemCount(t *testing.T) {
+func TestDetailPanel_SetAccount_ItemCount(t *testing.T) {
 	t.Parallel()
-	// Alice/claude has Alpha + Beta (2 projects) + separator + LastQuestion = 4 rows.
-	app := newMockApp(t)
+	app, acc := newDetailTestApp(t)
 	p := NewDetailPanel(app)
-	p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
-	if got := p.projectsList.GetItemCount(); got != 4 {
-		t.Errorf("expected 4 list items, got %d", got)
+	p.SetAccount(acc)
+	if got := p.sessionsList.GetItemCount(); got != 2 {
+		t.Errorf("expected 2 list items, got %d", got)
 	}
 }
 
-func TestDetailPanel_Refresh_ClearsOnDeletedSession(t *testing.T) {
+func TestDetailPanel_Refresh_ClearsOnDeletedAccount(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	app := &mockApp{svc: newTestService(t, reg)}
+
 	p := NewDetailPanel(app)
-	p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
-	must(t, app.registry.RemoveSession("alice@example.com", "claude"))
+	p.SetAccount(acc)
+
+	must(t, reg.DeleteAccount(acc))
 	p.Refresh()
-	if p.session != nil {
-		t.Error("session should be nil after deletion from registry")
+	if p.account != nil {
+		t.Error("account should be nil after deletion from registry")
 	}
-	if p.projectsList.GetItemCount() != 0 {
-		t.Error("list should be empty after session deleted")
-	}
-}
-
-// ── selectedEntry ─────────────────────────────────────────────────────────────
-
-func TestDetailPanel_SelectedEntry(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	p := NewDetailPanel(app)
-	p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
-	last := p.projectsList.GetItemCount() - 1
-
-	cases := []struct {
-		name      string
-		index     int
-		wantProj  bool
-		wantLastQ bool
-	}{
-		{"first row is project", 0, true, false},
-		{"last row is last question", last, false, true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			p := NewDetailPanel(app)
-			p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
-			p.projectsList.SetCurrentItem(tc.index)
-			e := p.selectedEntry()
-			if (e.project != nil) != tc.wantProj {
-				t.Errorf("wantProj=%v, got project=%v", tc.wantProj, e.project)
-			}
-			if e.isLastQ != tc.wantLastQ {
-				t.Errorf("wantLastQ=%v, got %v", tc.wantLastQ, e.isLastQ)
-			}
-		})
+	if p.sessionsList.GetItemCount() != 0 {
+		t.Error("list should be empty after account deleted")
 	}
 }
 
@@ -98,17 +98,18 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 	}{
 		{"help", KeyHelp, HintsHelpOverlay},
 		{"quit", KeyQuit, HintsConfirmModal},
-		{"new project", KeyNew, HintsForm},
-		{"edit project", KeyEdit, HintsForm},
-		{"delete project", KeyDelete, HintsConfirmModal},
+		{"new session", KeyNew, HintsForm},
+		{"edit session", KeyEdit, HintsForm},
+		{"delete session", KeyDelete, HintsConfirmModal},
+		{"queue editor", KeyQueue, HintsQueueEditor},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app, acc := newDetailTestApp(t)
 			p := NewDetailPanel(app)
-			p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
-			p.projectsList.SetCurrentItem(0) // first project row
+			p.SetAccount(acc)
+			p.sessionsList.SetCurrentItem(0)
 			p.handleKey(runeKey(tc.key))
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", string(tc.key))
@@ -120,75 +121,75 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 	}
 }
 
-func TestDetailPanel_Edit_LastQuestion_ShowsForm(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	p := NewDetailPanel(app)
-	p.SetSession(app.registry.SessionAt("alice@example.com", "claude"))
-	last := p.projectsList.GetItemCount() - 1
-	p.projectsList.SetCurrentItem(last)
-	p.handleKey(runeKey(KeyEdit))
-	if app.modal == nil {
-		t.Error("expected modal for edit last question")
-	}
-	if app.hints != HintsForm {
-		t.Errorf("hints: got %q, want %q", app.hints, HintsForm)
-	}
-}
-
-func TestDetailPanel_Delete_NilLastQuestion_NoModal(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	p := NewDetailPanel(app)
-	s := app.registry.SessionAt("alice@example.com", "claude")
-	s.LastQuestion = nil
-	p.SetSession(s)
-
-	last := p.projectsList.GetItemCount() - 1
-	p.projectsList.SetCurrentItem(last)
-	p.handleKey(runeKey(KeyDelete))
-	if app.modal != nil {
-		t.Error("delete on nil LastQuestion should not open modal")
-	}
-}
-
-func TestDetailPanel_Toggle_MidAnswer(t *testing.T) {
+func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name           string
-		initialMid     bool
-		initialLQIsNil bool
-		wantMid        bool
+		name string
+		key  rune
 	}{
-		{"nil lq creates with mid=true", false, true, true},
-		{"true flips to false", true, false, false},
-		{"false flips to true", false, false, true},
+		{"edit", KeyEdit},
+		{"delete", KeyDelete},
+		{"queue", KeyQueue},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
-			s := app.registry.SessionAt("alice@example.com", "claude")
-			if tc.initialLQIsNil {
-				s.LastQuestion = nil
-			} else {
-				lq := model.NewLastQuestion(nil)
-				lq.MidAnswer = tc.initialMid
-				s.LastQuestion = lq
-			}
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			must(t, err)
+			app := &mockApp{svc: newTestService(t, reg)}
 
 			p := NewDetailPanel(app)
-			p.SetSession(s)
-			last := p.projectsList.GetItemCount() - 1
-			p.projectsList.SetCurrentItem(last)
+			p.SetAccount(acc)
+			p.handleKey(runeKey(tc.key))
+			if app.modal != nil {
+				t.Errorf("key %q with no sessions should not open a modal", string(tc.key))
+			}
+		})
+	}
+}
+
+func TestDetailPanel_Toggle_Continue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		initQueue   []model.Prompt
+		wantLen     int
+		wantPending bool
+	}{
+		{"empty queue gets continue appended", nil, 1, true},
+		{"pending continue gets removed", []model.Prompt{model.NewPrompt("continue", false)}, 0, false},
+		{"non-continue tail is kept, continue appended", []model.Prompt{model.NewPrompt("do X", false)}, 2, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			must(t, err)
+			sess, err := reg.AddSession(acc, nil, "topic", tc.initQueue)
+			must(t, err)
+			app := &mockApp{svc: newTestService(t, reg)}
+
+			p := NewDetailPanel(app)
+			p.SetAccount(acc)
+			p.sessionsList.SetCurrentItem(0)
 			p.handleKey(runeKey(KeyToggle))
 
-			updated := app.registry.SessionAt("alice@example.com", "claude")
-			if updated.LastQuestion == nil {
-				t.Fatal("LastQuestion should exist after toggle")
+			updated := app.svc.Session(sess.ID())
+			if updated == nil {
+				t.Fatal("session not found after toggle")
 			}
-			if updated.LastQuestion.MidAnswer != tc.wantMid {
-				t.Errorf("MidAnswer: got %v, want %v", updated.LastQuestion.MidAnswer, tc.wantMid)
+			q := updated.Queue()
+			if len(q) != tc.wantLen {
+				t.Fatalf("queue length: got %d, want %d", len(q), tc.wantLen)
+			}
+			if isContinuePending(q) != tc.wantPending {
+				t.Errorf("isContinuePending: got %v, want %v", isContinuePending(q), tc.wantPending)
 			}
 		})
 	}
@@ -196,56 +197,78 @@ func TestDetailPanel_Toggle_MidAnswer(t *testing.T) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func TestProjectItemText(t *testing.T) {
+func TestSessionItemText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name        string
-		description string
-		wantEqual   string // exact match expected when non-empty
-		wantNotEq   string // must differ from this when non-empty
+		name         string
+		topic        string
+		project      string
+		queue        []model.Prompt
+		wantContains []string
 	}{
-		{"no description returns name", "", "Alpha", ""},
-		{"description appended", "Backend rewrite", "", "Alpha"},
+		{"untitled no project no queue", "", "", nil, []string{"(untitled)", "queue: 0"}},
+		{"topic and project shown", "Architecture review", "Alpha", nil, []string{"Architecture review", "Alpha", "queue: 0"}},
+		{"pending continue reflected in count", "topic", "", []model.Prompt{model.NewPrompt("continue", false)}, []string{"queue: 1"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewProject("Alpha")
-			p.Description = tc.description
-			got := projectItemText(p)
-			if tc.wantEqual != "" && got != tc.wantEqual {
-				t.Errorf("got %q, want %q", got, tc.wantEqual)
-			}
-			if tc.wantNotEq != "" && got == tc.wantNotEq {
-				t.Errorf("expected text to differ from %q", tc.wantNotEq)
+			key := model.AccountKey{Email: "a@x.com", Provider: "p"}
+			s := model.NewSession(key, 1, tc.project, tc.topic, tc.queue)
+			got := sessionItemText(s)
+			for _, want := range tc.wantContains {
+				if !strings.Contains(got, want) {
+					t.Errorf("got %q, want it to contain %q", got, want)
+				}
 			}
 		})
 	}
 }
 
-func TestLastQuestionItemText(t *testing.T) {
+func TestIsContinuePending(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name      string
-		lq        *model.LastQuestion
-		wantEmpty bool
+		name  string
+		queue []model.Prompt
+		want  bool
 	}{
-		{"nil produces placeholder", nil, false},
-		{"topic only", func() *model.LastQuestion {
-			lq := model.NewLastQuestion(nil)
-			lq.Topic = "API design"
-			return lq
-		}(), false},
+		{"empty queue", nil, false},
+		{"last is continue", []model.Prompt{model.NewPrompt("continue", false)}, true},
+		{"last is not continue", []model.Prompt{model.NewPrompt("do X", false)}, false},
+		{"continue not last", []model.Prompt{model.NewPrompt("continue", false), model.NewPrompt("do X", false)}, false},
+		{"continue with spawnsSession true does not match", []model.Prompt{model.NewPrompt("continue", true)}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := lastQuestionItemText(tc.lq)
-			if tc.wantEmpty && got != "" {
-				t.Errorf("expected empty, got %q", got)
+			if got := isContinuePending(tc.queue); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
 			}
-			if !tc.wantEmpty && got == "" {
-				t.Error("expected non-empty text")
+		})
+	}
+}
+
+func TestToggleContinuePrompt(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		queue    []model.Prompt
+		wantLen  int
+		wantLast string
+	}{
+		{"appends to empty", nil, 1, "continue"},
+		{"removes trailing continue", []model.Prompt{model.NewPrompt("continue", false)}, 0, ""},
+		{"appends after other prompt", []model.Prompt{model.NewPrompt("do X", false)}, 2, "continue"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := toggleContinuePrompt(tc.queue)
+			if len(got) != tc.wantLen {
+				t.Fatalf("length: got %d, want %d", len(got), tc.wantLen)
+			}
+			if tc.wantLen > 0 && got[len(got)-1].Text() != tc.wantLast {
+				t.Errorf("last entry: got %q, want %q", got[len(got)-1].Text(), tc.wantLast)
 			}
 		})
 	}

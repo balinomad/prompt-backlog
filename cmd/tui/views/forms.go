@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -327,8 +328,8 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	initHasDeepResearch := false
 	if isEdit {
 		initName = provider.Name()
-		initHasProjects = provider.HasProjects
-		initHasDeepResearch = provider.HasDeepResearch
+		initHasProjects = provider.HasProjects()
+		initHasDeepResearch = provider.HasDeepResearch()
 	}
 
 	form := tview.NewForm()
@@ -365,14 +366,8 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 
 		if isEdit {
 			name := initName
-			if err := app.Mutate(func(r *model.Registry) error {
-				p := r.ProviderByName(name)
-				if p == nil {
-					return fmt.Errorf("provider %q not found", name)
-				}
-				p.HasProjects = hasProjects
-				p.HasDeepResearch = hasDeepResearch
-				return nil
+			if err := app.Mutate(func(s *service.Service) error {
+				return s.UpdateProvider(name, hasProjects, hasDeepResearch)
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
@@ -384,13 +379,13 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 				return
 			}
 			nameVal := strings.TrimSpace(nameField.GetText())
-			p := model.NewProvider(nameVal, hasProjects, hasDeepResearch)
-			if errs := model.ValidateProvider(p); len(errs) != 0 {
-				app.SetStatus("[red]" + model.FormatErrors(errs) + "[-]")
+
+			if err := app.Service().ValidateProvider(nameVal, hasProjects, hasDeepResearch); err != nil {
+				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
 			}
-			if err := app.Mutate(func(r *model.Registry) error {
-				return r.AddProvider(p)
+			if err := app.Mutate(func(s *service.Service) error {
+				return s.AddProvider(nameVal, hasProjects, hasDeepResearch)
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return

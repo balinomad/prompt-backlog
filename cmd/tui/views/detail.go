@@ -1,74 +1,56 @@
 package views
 
 import (
-	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// ── detailEntry ───────────────────────────────────────────────────────────────
-
-// detailEntry tracks what each row in the projects list represents.
-type detailEntry struct {
-	project *model.Project // non-nil for project rows
-	isLastQ bool           // true for the LastQuestion row
-	isSep   bool           // true for the visual separator (not selectable)
-}
-
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
 // DetailPanel occupies the right side of the screen. The upper section lists
-// the selected session's projects followed by its LastQuestion; the lower
-// section shows static session information (user, provider, next-prompt time).
+// the selected account's sessions (topic, project, queue); the lower section
+// shows static account information (user, provider, pause state, granted
+// projects).
 type DetailPanel struct {
 	*tview.Flex
-	projectsList *tview.List
+	sessionsList *tview.List
 	infoView     *tview.TextView
 	app          App
-	session      *model.Session // currently displayed session; may be nil
-	entries      []detailEntry  // parallel to projectsList items; rebuilt on Refresh
-	prevListIdx  int            // used to detect navigation direction for separator skip
-	refreshing   bool           // suppresses callbacks during Refresh
+	account      *model.Account   // currently displayed account; may be nil
+	sessions     []*model.Session // mirrors sessionsList items; rebuilt on Refresh
 }
 
-// NewDetailPanel constructs the detail panel. Call Refresh after the sessions
-// panel has provided an initial selection.
+// NewDetailPanel constructs the detail panel. Call Refresh after the
+// accounts panel has provided an initial selection.
 func NewDetailPanel(app App) *DetailPanel {
 	list := tview.NewList().ShowSecondaryText(false)
 	list.SetBorder(true)
-	list.SetTitle(" Projects ")
+	list.SetTitle(" Sessions ")
 
 	info := tview.NewTextView().SetDynamicColors(true)
 	info.SetBorder(true)
-	info.SetTitle(" Session ")
+	info.SetTitle(" Account ")
 
 	flex := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(list, 0, 1, true).
-		AddItem(info, 7, 0, false) // fixed 7-row info panel (5 lines + 2 border)
+		AddItem(info, 8, 0, false) // fixed 8-row info panel (4 content lines + border + spare)
 
 	p := &DetailPanel{
 		Flex:         flex,
-		projectsList: list,
+		sessionsList: list,
 		infoView:     info,
 		app:          app,
 	}
 
-	list.SetChangedFunc(func(index int, _, _ string, _ rune) {
-		if p.refreshing {
-			return
-		}
-		p.skipSeparator(index)
-	})
-
 	list.SetFocusFunc(func() {
-		app.SetHints(HintsProjectsPanel)
+		app.SetHints(HintsDetailPanel)
 	})
 
 	list.SetInputCapture(p.handleKey)
@@ -76,149 +58,123 @@ func NewDetailPanel(app App) *DetailPanel {
 	return p
 }
 
-// SetSession sets the session to display and refreshes the panel.
-// Called by the host App when the sessions panel selection changes.
-func (p *DetailPanel) SetSession(s *model.Session) {
-	p.session = s
+// SetAccount sets the account to display and refreshes the panel.
+// Called by the host App when the accounts panel selection changes.
+func (p *DetailPanel) SetAccount(acc *model.Account) {
+	p.account = acc
 	p.Refresh()
 }
 
-// Refresh repopulates the panel from the current registry state.
-// The session reference is re-validated against the registry so that a
-// deleted session gracefully clears the panel rather than showing stale data.
+// Selected returns the currently highlighted session, or nil when the list
+// is empty or no account is selected.
+func (p *DetailPanel) Selected() *model.Session {
+	idx := p.sessionsList.GetCurrentItem()
+	if idx < 0 || idx >= len(p.sessions) {
+		return nil
+	}
+	return p.sessions[idx]
+}
+
+// Refresh repopulates the panel from the current service state.
+// The account reference is re-validated against the registry so that a
+// deleted account gracefully clears the panel rather than showing stale data.
 func (p *DetailPanel) Refresh() {
-	reg := p.app.Registry()
+	svc := p.app.Service()
 
-	// Re-validate: look the session up by identity in case it was deleted.
-	var session *model.Session
-	if p.session != nil {
-		session = reg.SessionAt(
-			p.session.User().Email(),
-			p.session.Provider().Name(),
-		)
+	// Re-validate: look the account up by identity in case it was deleted.
+	var acc *model.Account
+	if p.account != nil {
+		resolved, err := svc.Account(p.account.UserEmail(), p.account.ProviderName())
+		if err == nil {
+			acc = resolved
+		}
 	}
-	p.session = session
+	p.account = acc
 
-	p.refreshing = true
-	p.rebuildList(reg, session)
-	p.refreshing = false
-
-	p.renderInfo(session)
-}
-
-// selectedEntry returns the detailEntry for the currently highlighted row,
-// or a zero-value entry when the list is empty or a separator is selected.
-func (p *DetailPanel) selectedEntry() detailEntry {
-	idx := p.projectsList.GetCurrentItem()
-	if idx < 0 || idx >= len(p.entries) {
-		return detailEntry{}
-	}
-	return p.entries[idx]
-}
-
-// ── Private: list population ──────────────────────────────────────────────────
-
-func (p *DetailPanel) rebuildList(reg model.Registry, session *model.Session) {
-	// Remember selection before clearing.
-	prevEntry := p.selectedEntry()
-
-	p.entries = nil
-	p.projectsList.Clear()
-
-	if session == nil {
-		return
+	// Remember selection by session ID before clearing
+	prevID, hadPrev := uint64(0), false
+	if s := p.Selected(); s != nil {
+		prevID, hadPrev = s.ID(), true
 	}
 
-	// Projects for this session, sorted by name.
-	projects := reg.ProjectsBySession(session)
-	sort.Slice(projects, func(i, j int) bool {
-		return projects[i].Name() < projects[j].Name()
-	})
-	for _, proj := range projects {
-		p.entries = append(p.entries, detailEntry{project: proj})
-		p.projectsList.AddItem(projectItemText(proj), "", 0, nil)
+	p.sessionsList.Clear()
+	p.sessions = nil
+	if acc != nil {
+		sessions, err := svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+		if err == nil {
+			p.sessions = sessions
+		}
+		for _, s := range p.sessions {
+			p.sessionsList.AddItem(sessionItemText(s), "", 0, nil)
+		}
 	}
 
-	// Separator.
-	sep := strings.Repeat("─", 38)
-	p.entries = append(p.entries, detailEntry{isSep: true})
-	p.projectsList.AddItem(sep, "", 0, nil)
-
-	// LastQuestion row.
-	p.entries = append(p.entries, detailEntry{isLastQ: true})
-	p.projectsList.AddItem(lastQuestionItemText(session.LastQuestion), "", 0, nil)
-
-	// Restore selection by matching type and name.
+	// Restore selection by session ID
 	restored := false
-	for i, e := range p.entries {
-		if e.isSep {
-			continue
-		}
-		if prevEntry.isLastQ && e.isLastQ {
-			p.projectsList.SetCurrentItem(i)
-			restored = true
-			break
-		}
-		if prevEntry.project != nil && e.project != nil &&
-			e.project.Name() == prevEntry.project.Name() {
-			p.projectsList.SetCurrentItem(i)
-			restored = true
-			break
-		}
-	}
-	if !restored {
-		// Default to first selectable entry.
-		for i, e := range p.entries {
-			if !e.isSep {
-				p.projectsList.SetCurrentItem(i)
+	if hadPrev {
+		for i, s := range p.sessions {
+			if s.ID() == prevID {
+				p.sessionsList.SetCurrentItem(i)
+				restored = true
 				break
 			}
 		}
 	}
-	p.prevListIdx = p.projectsList.GetCurrentItem()
-}
+	if !restored && len(p.sessions) > 0 {
+		p.sessionsList.SetCurrentItem(0)
+	}
 
-// skipSeparator is called by SetChangedFunc. When the newly selected index is
-// the separator, it advances or retreats one step depending on travel direction.
-func (p *DetailPanel) skipSeparator(index int) {
-	if index < 0 || index >= len(p.entries) {
-		return
-	}
-	if !p.entries[index].isSep {
-		p.prevListIdx = index
-		return
-	}
-	// Determine direction from previous index.
-	next := index + 1
-	if index < p.prevListIdx {
-		next = index - 1
-	}
-	if next >= 0 && next < len(p.entries) {
-		p.projectsList.SetCurrentItem(next)
-	}
+	p.renderInfo(acc)
 }
 
 // ── Private: rendering ────────────────────────────────────────────────────────
 
-func (p *DetailPanel) renderInfo(session *model.Session) {
-	if session == nil {
-		p.infoView.SetText("  (no session selected)")
+func (p *DetailPanel) renderInfo(acc *model.Account) {
+	if acc == nil {
+		p.infoView.SetText("  (no account selected)")
 		return
 	}
+	svc := p.app.Service()
+	email := acc.UserEmail()
+	provider := acc.ProviderName()
+
+	userName := email
+	if u := svc.User(email); u != nil {
+		userName = u.Name()
+	}
+
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "  [::b]User[-::-]     %s (%s)\n",
-		session.User().Name, session.User().Email())
-	fmt.Fprintf(&sb, "  [::b]Provider[-::-] %s\n", session.Provider().Name())
-	if t := session.NextPromptAt; t != nil {
-		timeStr, isPast := formatNextPromptAt(t)
+	fmt.Fprintf(&sb, "  [::b]User[-::-]     %s (%s)\n", userName, email)
+	fmt.Fprintf(&sb, "  [::b]Provider[-::-] %s\n", provider)
+
+	if pause := acc.PauseUntil(); !pause.IsZero() {
+		timeStr, isPast := formatPauseUntil(pause)
 		if isPast {
-			fmt.Fprintf(&sb, "  [::b]Next[-::-]     [red]%s (ready)[-]", timeStr)
+			fmt.Fprintf(&sb, "  [::b]Paused[-::-]   [red]%s (ready)[-]\n", timeStr)
 		} else {
-			fmt.Fprintf(&sb, "  [::b]Next[-::-]     %s", timeStr)
+			fmt.Fprintf(&sb, "  [::b]Paused[-::-]   %s\n", timeStr)
 		}
 	} else {
-		fmt.Fprintf(&sb, "  [::b]Next[-::-]     [green]available[-]")
+		fmt.Fprintf(&sb, "  [::b]Paused[-::-]   [green]available[-]\n")
 	}
+
+	projects, err := svc.AccountProjects(email, provider)
+	if err != nil {
+		// Account was already validated above; a resolution error here would
+		// indicate a concurrent deletion. Render with no projects rather
+		// than surfacing a status message from a passive read
+		projects = nil
+	}
+	if len(projects) == 0 {
+		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", dimText("none"))
+	} else {
+		names := make([]string, len(projects))
+		for i, proj := range projects {
+			names[i] = proj.Name()
+		}
+		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", strings.Join(names, ", "))
+	}
+
 	p.infoView.SetText(sb.String())
 }
 
@@ -228,121 +184,128 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	if event.Key() != tcell.KeyRune {
 		return event
 	}
-	entry := p.selectedEntry()
 
 	switch event.Rune() {
 	case KeyNew:
-		if p.session != nil {
-			p.app.SetHints(HintsForm)
-			p.app.ShowModal(NewProjectForm(p.app, nil, p.session, func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			}))
+		if p.account == nil {
+			return nil
 		}
+		modal := NewSessionForm(p.app, p.account, nil, func() {
+			p.app.SetHints(HintsDetailPanel)
+			p.app.HideModal()
+		})
+		if err := p.app.ShowModal(modal); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return nil
+		}
+		p.app.SetHints(HintsForm)
 		return nil
 
 	case KeyEdit:
-		switch {
-		case entry.project != nil:
-			p.app.SetHints(HintsForm)
-			p.app.ShowModal(NewProjectForm(p.app, entry.project, p.session, func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			}))
-		case entry.isLastQ:
-			p.app.SetHints(HintsForm)
-			p.app.ShowModal(NewLastQuestionForm(p.app, p.session, func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			}))
+		s := p.Selected()
+		if s == nil || p.account == nil {
+			return nil
 		}
+		modal := NewSessionForm(p.app, p.account, s, func() {
+			p.app.SetHints(HintsDetailPanel)
+			p.app.HideModal()
+		})
+		if err := p.app.ShowModal(modal); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return nil
+		}
+		p.app.SetHints(HintsForm)
 		return nil
 
 	case KeyDelete:
-		switch {
-		case entry.project != nil:
-			name := entry.project.Name()
-			p.app.SetHints(HintsConfirmModal)
-			p.app.ShowModal(NewConfirmModal(
-				fmt.Sprintf("Remove project\n%q?", name),
-				func() {
-					if err := p.app.Mutate(func(r *model.Registry) error {
-						return r.RemoveProject(name)
-					}); err != nil {
-						p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-					}
-					p.app.SetHints(HintsProjectsPanel)
-					p.app.HideModal()
-				},
-				func() {
-					p.app.SetHints(HintsProjectsPanel)
-					p.app.HideModal()
-				},
-			))
-		case entry.isLastQ && p.session != nil && p.session.LastQuestion != nil:
-			p.app.SetHints(HintsConfirmModal)
-			p.app.ShowModal(NewConfirmModal(
-				"Clear last question?",
-				func() {
-					email := p.session.User().Email()
-					provider := p.session.Provider().Name()
-					if err := p.app.Mutate(func(r *model.Registry) error {
-						s := r.SessionAt(email, provider)
-						if s == nil {
-							return errors.New("session not found")
-						}
-						s.LastQuestion = nil
-						return nil
-					}); err != nil {
-						p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-					}
-					p.app.SetHints(HintsProjectsPanel)
-					p.app.HideModal()
-				},
-				func() {
-					p.app.SetHints(HintsProjectsPanel)
-					p.app.HideModal()
-				},
-			))
+		s := p.Selected()
+		if s == nil || p.account == nil {
+			return nil
 		}
+		email := p.account.UserEmail()
+		provider := p.account.ProviderName()
+		id := s.ID()
+		label := s.Topic()
+		if label == "" {
+			label = fmt.Sprintf("session #%d", id)
+		}
+		modal := NewConfirmModal(
+			fmt.Sprintf("End session\n%q?", label),
+			func() {
+				if err := p.app.Mutate(func(svc *service.Service) error {
+					return svc.EndSession(email, provider, id)
+				}); err != nil {
+					p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				}
+				p.app.SetHints(HintsDetailPanel)
+				p.app.HideModal()
+			},
+			func() {
+				p.app.SetHints(HintsDetailPanel)
+				p.app.HideModal()
+			},
+		)
+		if err := p.app.ShowModal(modal); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return nil
+		}
+		p.app.SetHints(HintsConfirmModal)
+		return nil
+
+	case KeyQueue:
+		s := p.Selected()
+		if s == nil || p.account == nil {
+			return nil
+		}
+		modal := NewQueueEditor(p.app, p.account, s, func() {
+			p.app.SetHints(HintsDetailPanel)
+			p.app.HideModal()
+		})
+		if err := p.app.ShowModal(modal); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return nil
+		}
+		p.app.SetHints(HintsQueueEditor)
 		return nil
 
 	case KeyToggle:
-		// Toggle MidAnswer on the LastQuestion only.
-		if entry.isLastQ && p.session != nil {
-			email := p.session.User().Email()
-			provider := p.session.Provider().Name()
-			if err := p.app.Mutate(func(r *model.Registry) error {
-				s := r.SessionAt(email, provider)
-				if s == nil {
-					return errors.New("session not found")
-				}
-				if s.LastQuestion == nil {
-					s.LastQuestion = model.NewLastQuestion(nil)
-				}
-				s.LastQuestion.MidAnswer = !s.LastQuestion.MidAnswer
-				return nil
-			}); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			}
+		s := p.Selected()
+		if s == nil || p.account == nil {
+			return nil
+		}
+		email := p.account.UserEmail()
+		provider := p.account.ProviderName()
+		id := s.ID()
+		queue := toggleContinuePrompt(s.Queue())
+		if err := p.app.Mutate(func(svc *service.Service) error {
+			return svc.UpdateSessionPrompts(email, provider, id, queue)
+		}); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		}
 		return nil
 
 	case KeyHelp:
+		if err := p.app.ShowModal(NewHelpOverlay(p.app)); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return nil
+		}
 		p.app.SetHints(HintsHelpOverlay)
-		p.app.ShowModal(NewHelpOverlay(p.app))
 		return nil
 
 	case KeyQuit:
-		p.app.SetHints(HintsConfirmModal)
-		p.app.ShowModal(NewConfirmModal(
+		modal := NewConfirmModal(
 			"Quit llm-desk?",
 			func() { p.app.Quit() },
 			func() {
-				p.app.SetHints(HintsProjectsPanel)
+				p.app.SetHints(HintsDetailPanel)
 				p.app.HideModal()
 			},
-		))
+		)
+		if err := p.app.ShowModal(modal); err != nil {
+			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return nil
+		}
+		p.app.SetHints(HintsConfirmModal)
 		return nil
 	}
 	return event
@@ -350,35 +313,44 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
-// projectItemText formats a project row for the list.
-func projectItemText(p *model.Project) string {
-	name := p.Name()
-	if p.Description != "" {
-		return fmt.Sprintf("%-28s  %s", name, dimText(truncate(p.Description, 20)))
+// sessionItemText formats a session row for the list: topic, project, and
+// queue length. A pending trailing "continue" prompt — the queue-based
+// equivalent of the old mid-answer flag — is highlighted in yellow.
+func sessionItemText(s *model.Session) string {
+	topic := truncate(s.Topic(), 26)
+	if topic == "" {
+		topic = dimText("(untitled)")
 	}
-	return name
+	proj := truncate(s.ProjectName(), 14)
+	if proj == "" {
+		proj = dimText("—")
+	}
+	queue := s.Queue()
+	info := fmt.Sprintf("queue: %d", len(queue))
+	if isContinuePending(queue) {
+		info = fmt.Sprintf("[yellow]%s ↻[-]", info)
+	}
+	return fmt.Sprintf("%-28s  %-16s  %s", topic, proj, info)
 }
 
-// lastQuestionItemText formats the LastQuestion row for the list.
-// When lq is nil, a placeholder is shown.
-func lastQuestionItemText(lq *model.LastQuestion) string {
-	if lq == nil {
-		return dimText("(no last question)")
+// isContinuePending reports whether queue's final entry is the "continue"
+// convenience prompt toggled by KeyToggle.
+func isContinuePending(queue []model.Prompt) bool {
+	if len(queue) == 0 {
+		return false
 	}
-	var parts []string
-	if lq.Topic != "" {
-		parts = append(parts, lq.Topic)
+	return queue[len(queue)-1] == model.NewPrompt("continue", false)
+}
+
+// toggleContinuePrompt returns queue with a trailing "continue" prompt
+// appended, or removed if already present. Prompt is comparable via == —
+// see model.TestPrompt_Comparable — so equality here is exact-field, not
+// pointer, comparison.
+func toggleContinuePrompt(queue []model.Prompt) []model.Prompt {
+	if isContinuePending(queue) {
+		return queue[:len(queue)-1]
 	}
-	if lq.MidAnswer {
-		parts = append(parts, "[yellow][mid-answer][-]")
-	}
-	if lq.NextPrompt != "" {
-		parts = append(parts, dimText("→ "+truncate(lq.NextPrompt, 24)))
-	}
-	if len(parts) == 0 {
-		return dimText("(last question: no details)")
-	}
-	return strings.Join(parts, "  ")
+	return append(queue, model.NewPrompt("continue", false))
 }
 
 // truncate shortens s to maxRunes, appending "…" when truncated.

@@ -2,10 +2,10 @@ package views
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/llm-desk/internal/service"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -60,13 +60,10 @@ func NewProvidersPanel(app App) *ProvidersPanel {
 	return p
 }
 
-// Refresh repopulates the list from the current registry state.
+// Refresh repopulates the list from the current service state.
 func (p *ProvidersPanel) Refresh() {
-	reg := p.app.Registry()
-	all := reg.AllProviders()
-	sort.Slice(all, func(i, j int) bool {
-		return all[i].Name() < all[j].Name()
-	})
+	svc := p.app.Service()
+	all := svc.Providers() // already sorted by name
 
 	var prevName string
 	if prov := p.selectedProvider(); prov != nil {
@@ -115,8 +112,8 @@ func (p *ProvidersPanel) renderInfo(prov *model.Provider) {
 	}
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "  [::b]Name[-::-]            %s\n", prov.Name())
-	fmt.Fprintf(&sb, "  [::b]Projects[-::-]        %s\n", boolTag(prov.HasProjects))
-	fmt.Fprintf(&sb, "  [::b]Deep research[-::-]   %s", boolTag(prov.HasDeepResearch))
+	fmt.Fprintf(&sb, "  [::b]Projects[-::-]        %s\n", boolTag(prov.HasProjects()))
+	fmt.Fprintf(&sb, "  [::b]Deep research[-::-]   %s", boolTag(prov.HasDeepResearch()))
 	p.infoView.SetText(sb.String())
 }
 
@@ -160,10 +157,10 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 			name := prov.Name()
 			p.app.SetHints(HintsConfirmModal)
 			p.app.ShowModal(NewConfirmModal(
-				fmt.Sprintf("Remove provider %q?\nAll sessions using it must be removed first.", name),
+				fmt.Sprintf("Remove provider %q?\nAll accounts using it must be removed first.", name),
 				func() {
-					if err := p.app.Mutate(func(r *model.Registry) error {
-						return r.RemoveProvider(name)
+					if err := p.app.Mutate(func(s *service.Service) error {
+						return s.DeleteProvider(name)
 					}); err != nil {
 						p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 					}
@@ -203,10 +200,10 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 // providerItemText formats a provider row for the list.
 func providerItemText(p *model.Provider) string {
 	var tags []string
-	if p.HasProjects {
+	if p.HasProjects() {
 		tags = append(tags, "[green]projects[-]")
 	}
-	if p.HasDeepResearch {
+	if p.HasDeepResearch() {
 		tags = append(tags, "[cyan]deep-research[-]")
 	}
 	if len(tags) == 0 {

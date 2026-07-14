@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/balinomad/llm-desk/internal/service"
 	"github.com/balinomad/llm-desk/internal/store"
 	"github.com/balinomad/llm-desk/internal/store/json"
 )
@@ -29,7 +30,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	app, err := New(s)
+	svc, err := service.New(s)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
+		os.Exit(1)
+	}
+
+	app, err := New(svc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
 		os.Exit(1)

@@ -9,20 +9,29 @@ import (
 // app.SetHints in their focus handlers. Key names are bold via tview color tags.
 
 const (
-	// HintsSessionsPanel is shown when the sessions list has focus.
-	HintsSessionsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]r[-::-] providers  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+	// HintsAccountsPanel is shown when the accounts list has focus.
+	HintsAccountsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
+		"  [::b]r[-::-] providers  [::b]p[-::-] projects  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
 
-	// HintsProjectsPanel is shown when the projects list has focus.
-	HintsProjectsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]Space[-::-] toggle  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+	// HintsDetailPanel is shown when the sessions sub-list in the detail panel
+	// has focus.
+	HintsDetailPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] end" +
+		"  [::b]u[-::-] queue  [::b]Space[-::-] continue  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
 
 	// HintsProvidersPanel is shown when the providers screen has focus.
 	HintsProvidersPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
 		"  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
 
+	// HintsProjectsPanel is shown when the projects screen has focus.
+	HintsProjectsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
+		"  [::b]g[-::-] grant  [::b]x[-::-] revoke  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+
 	// HintsForm is shown when a form modal is open.
 	HintsForm = "[::b]Ctrl+S[-::-] save  [::b]Esc[-::-] cancel"
+
+	// HintsQueueEditor is shown when the queue editor modal is open.
+	HintsQueueEditor = "[::b]n[-::-] add  [::b]e[-::-] edit  [::b]d[-::-] del" +
+		"  [::b]K[-::-] up  [::b]J[-::-] down  [::b]Esc[-::-] close"
 
 	// HintsConfirmModal is shown when a confirmation dialog is open.
 	HintsConfirmModal = "[::b]Enter[-::-] confirm  [::b]Esc[-::-] cancel"
@@ -45,11 +54,11 @@ type StatusBar struct {
 }
 
 // NewStatusBar constructs an empty StatusBar. The hint line defaults to the
-// sessions panel hints; the message section is empty.
+// accounts panel hints; the message section is empty.
 func NewStatusBar() *StatusBar {
 	hints := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText(HintsSessionsPanel)
+		SetText(HintsAccountsPanel)
 
 	message := tview.NewTextView().
 		SetDynamicColors(true).
