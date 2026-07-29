@@ -1,11 +1,8 @@
 package views
 
 import (
-	"errors"
 	"fmt"
-	"sort"
 	"strings"
-
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
@@ -31,159 +28,102 @@ func addCtrlS(form *tview.Form, save func()) {
 
 // ── Session form ──────────────────────────────────────────────────────────────
 
-// NewSessionForm returns a form for creating or editing a session.
-// When session is nil a new session is created; otherwise the session is edited.
-// The form is wrapped in a centred modal overlay ready for app.ShowModal.
-func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primitive {
-	reg := app.Registry()
-
-	// Build sorted provider list for the dropdown.
-	allProviders := reg.AllProviders()
-	if len(allProviders) == 0 {
-		return errorModal("No providers configured.\nAdd a provider before creating a session.", onClose)
+// NewSessionForm returns a form for creating or editing a session under
+// account. Account is a structural prerequisite of Session — AddSession
+// requires a live account — so the form always receives one directly
+// rather than resolving it itself; the caller (DetailPanel) already holds
+// it, and it is never created here. When session is nil a new session is
+// created; otherwise the session is edited. Queue editing is out of scope
+// for this form — see NewQueueEditor.
+func NewSessionForm(app App, account *model.Account, session *model.Session, onClose func()) tview.Primitive {
+	if account == nil {
+		return errorModal("No account selected.", onClose)
 	}
-	sort.Slice(allProviders, func(i, j int) bool {
-		return allProviders[i].Name() < allProviders[j].Name()
-	})
-	providerNames := make([]string, len(allProviders))
-	for i, p := range allProviders {
-		providerNames[i] = p.Name()
+
+	svc := app.Service()
+	email := account.UserEmail()
+	provider := account.ProviderName()
+
+	// Build "none" + sorted granted-project dropdown. This is a read used
+	// only to populate the list; account is already known valid, so an
+	// error here degrades to "no granted projects" rather than blocking
+	// form construction, matching the read-degrades pattern already used
+	// in projects.go's renderInfo.
+	granted, err := svc.AccountProjects(email, provider)
+	if err != nil {
+		granted = nil
+	}
+	projectNames := make([]string, 0, len(granted)+1)
+	projectNames = append(projectNames, "none")
+	for _, p := range granted {
+		projectNames = append(projectNames, p.Name())
 	}
 
 	isEdit := session != nil
 
-	// Determine initial field values.
-	initEmail, initName, initProvider, initNext := "", "", providerNames[0], ""
-	initProviderIdx := 0
+	initTopic := ""
+	initProjectIdx := 0
 	if isEdit {
-		initEmail = session.User().Email()
-		initName = session.User().Name
-		initProvider = session.Provider().Name()
-		initProviderIdx = sort.SearchStrings(providerNames, initProvider)
-		if session.NextPromptAt != nil {
-			initNext = model.FormatTime(*session.NextPromptAt)
+		initTopic = session.Topic()
+		if session.ProjectName() != "" {
+			for i, name := range projectNames {
+				if name == session.ProjectName() {
+					initProjectIdx = i
+					break
+				}
+			}
 		}
 	}
 
 	form := tview.NewForm()
 	form.SetBorder(true)
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Session: %s / %s ", initEmail, initProvider))
+		form.SetTitle(fmt.Sprintf(" Edit Session: %s / %s ", email, provider))
 	} else {
 		form.SetTitle(" New Session ")
 	}
 
-	// ── Fields ────────────────────────────────────────────────────────────────
-
-	if isEdit {
-		// Email and provider are immutable in edit mode; show as read-only text.
-		form.AddInputField("Email (fixed)", initEmail, 40, func(_ string, _ rune) bool { return false }, nil)
-		form.AddInputField("Provider (fixed)", initProvider, 40, func(_ string, _ rune) bool { return false }, nil)
-	} else {
-		form.AddInputField("Email", initEmail, 40, nil, nil)
-		form.AddDropDown("Provider", providerNames, initProviderIdx, nil)
-	}
-	form.AddInputField("Name", initName, 40, nil, nil)
-	form.AddInputField("Next prompt at", initNext, 20, nil, nil)
-	form.AddInputField("Next prompt at", initNext, 20, nil, nil)
-
-	nextField, ok := form.GetFormItemByLabel("Next prompt at").(*tview.InputField)
-	if !ok {
-		// We just added this field, so this should theoretically never happen.
-		// If it does, abort form creation and show an error modal.
-		return errorModal("Internal error: failed to initialize form fields.", onClose)
-	}
-	nextField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
-
-	// ── Save logic ────────────────────────────────────────────────────────────
+	form.AddDropDown("Project", projectNames, initProjectIdx, nil)
+	form.AddInputField("Topic", initTopic, 40, nil, nil)
 
 	save := func() {
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		projectDropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
 		if !ok {
-			app.SetStatus("[red]internal error: Name field missing[-]")
+			app.SetStatus("[red]internal error: Project dropdown missing[-]")
 			return
 		}
-		nameVal := strings.TrimSpace(nameField.GetText())
+		_, projectName := projectDropDown.GetCurrentOption()
+		if projectName == "none" {
+			projectName = ""
+		}
 
-		nextPromtField, ok := form.GetFormItemByLabel("Next prompt at").(*tview.InputField)
+		topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
 		if !ok {
-			app.SetStatus("[red]internal error: Next prompt field missing[-]")
+			app.SetStatus("[red]internal error: Topic field missing[-]")
 			return
 		}
-		nextVal := strings.TrimSpace(nextPromtField.GetText())
-
-		// Parse the optional timestamp.
-		var nextTime *time.Time
-		if nextVal != "" {
-			t, err := model.ParseTime(nextVal)
-			if err != nil {
-				app.SetStatus(fmt.Sprintf("[red]next prompt at: use format %s[-]", model.TimeFormat))
-				return
-			}
-			nextTime = &t
-		}
+		topicVal := strings.TrimSpace(topicField.GetText())
 
 		if isEdit {
-			// Edit: update Name and NextPromptAt only.
-			if strings.TrimSpace(nameVal) == "" {
-				app.SetStatus("[red]name: required[-]")
-				return
-			}
-			email := initEmail
-			provider := initProvider
-			if err := app.Mutate(func(r *model.Registry) error {
-				u := r.UserByEmail(email)
-				if u == nil {
-					return fmt.Errorf("user %q not found", email)
+			id := session.ID()
+			// Sanctioned multi-call batch: this edit touches two fields on
+			// the same aggregate, committed as one save (Service.Save's
+			// docstring permits this explicitly).
+			if err := app.Mutate(func(s *service.Service) error {
+				if err := s.UpdateSessionTopic(email, provider, id, topicVal); err != nil {
+					return err
 				}
-				u.Name = nameVal
-				s := r.SessionAt(email, provider)
-				if s == nil {
-					return errors.New("session not found")
-				}
-				s.NextPromptAt = nextTime
-				return nil
+				return s.UpdateSessionProject(email, provider, id, projectName)
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
 			}
 		} else {
-			// New: create user (if absent) and session.
-			emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
-			if !ok {
-				app.SetStatus("[red]internal error: Email field missing[-]")
-				return
-			}
-			emailVal := strings.TrimSpace(emailField.GetText())
-
-			providerDropDown, ok := form.GetFormItemByLabel("Provider").(*tview.DropDown)
-			if !ok {
-				app.SetStatus("[red]internal error: Provider dropdown missing[-]")
-				return
-			}
-			_, providerName := providerDropDown.GetCurrentOption()
-
-			if errs := model.ValidateUser(model.NewUser(emailVal, nameVal)); len(errs) != 0 {
-				app.SetStatus("[red]" + model.FormatErrors(errs) + "[-]")
-				return
-			}
-			if err := app.Mutate(func(r *model.Registry) error {
-				u := r.UserByEmail(emailVal)
-				if u == nil {
-					u = model.NewUser(emailVal, nameVal)
-					if err := r.AddUser(u); err != nil {
-						return err
-					}
-				} else {
-					u.Name = nameVal
-				}
-				p := r.ProviderByName(providerName)
-				if p == nil {
-					return fmt.Errorf("provider %q not found", providerName)
-				}
-				s := model.NewSession(u, p)
-				s.NextPromptAt = nextTime
-				return r.AddSession(s)
+			if err := app.Mutate(func(s *service.Service) error {
+				// userName is unused: account is always already-resolved
+				// here, so StartSession's on-demand user path never fires.
+				_, err := s.StartSession(email, "", provider, projectName, topicVal, nil)
+				return err
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
@@ -197,34 +137,25 @@ func NewSessionForm(app App, session *model.Session, onClose func()) tview.Primi
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	height := 16
-	if isEdit {
-		height = 14
-	}
-	return centeredModal(form, 64, height)
+	return centeredModal(form, 64, 11)
 }
 
 // ── Project form ──────────────────────────────────────────────────────────────
 
-// NewProjectForm returns a form for creating or editing a project.
-// When project is nil a new project is created and, if session is non-nil,
-// immediately attached to that session. Otherwise the project is edited.
-func NewProjectForm(app App, project *model.Project, session *model.Session, onClose func()) tview.Primitive {
+// NewProjectForm returns a form for creating or editing a project. Project
+// has no structural prerequisites, so the form touches no other
+// aggregate: no account or session parameter, and creation never grants
+// the project to anything — granting is a separate action, see
+// NewGrantForm. When project is nil a new project is created; otherwise
+// the project is edited.
+func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primitive {
 	isEdit := project != nil
-
-	// Pre-flight: for a new project attached to a session, reject immediately
-	// if the provider does not support projects rather than letting the form fail on save
-	if !isEdit && session != nil {
-		if errs := model.ValidateProjectAssignment(session); len(errs) != 0 {
-			return errorModal(model.FormatErrors(errs), onClose)
-		}
-	}
 
 	initName, initDesc, initInstr := "", "", ""
 	if isEdit {
 		initName = project.Name()
-		initDesc = project.Description
-		initInstr = project.Instructions
+		initDesc = project.Description()
+		initInstr = project.Instructions()
 	}
 
 	form := tview.NewForm()
@@ -261,14 +192,8 @@ func NewProjectForm(app App, project *model.Project, session *model.Session, onC
 
 		if isEdit {
 			name := initName
-			if err := app.Mutate(func(r *model.Registry) error {
-				p := r.ProjectByName(name)
-				if p == nil {
-					return fmt.Errorf("project %q not found", name)
-				}
-				p.Description = descVal
-				p.Instructions = instrVal
-				return nil
+			if err := app.Mutate(func(s *service.Service) error {
+				return s.UpdateProject(name, descVal, instrVal)
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
@@ -281,25 +206,12 @@ func NewProjectForm(app App, project *model.Project, session *model.Session, onC
 			}
 			nameVal := strings.TrimSpace(nameField.GetText())
 
-			if errs := model.ValidateProject(model.NewProject(nameVal)); len(errs) != 0 {
-				app.SetStatus("[red]" + model.FormatErrors(errs) + "[-]")
+			if err := app.Service().ValidateProject(nameVal, descVal, instrVal); err != nil {
+				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
 			}
-			if err := app.Mutate(func(r *model.Registry) error {
-				p := model.NewProject(nameVal)
-				p.Description = descVal
-				p.Instructions = instrVal
-				if err := r.AddProject(p); err != nil {
-					return err
-				}
-				if session != nil {
-					s := r.SessionAt(session.User().Email(), session.Provider().Name())
-					if s == nil {
-						return errors.New("session not found")
-					}
-					return r.AttachProject(nameVal, s)
-				}
-				return nil
+			if err := app.Mutate(func(s *service.Service) error {
+				return s.AddProject(nameVal, descVal, instrVal)
 			}); err != nil {
 				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 				return
@@ -402,102 +314,181 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	return centeredModal(form, 64, 12)
 }
 
-// ── Last question form ────────────────────────────────────────────────────────
+// ── Account form ──────────────────────────────────────────────────────────────
 
-// NewLastQuestionForm returns a form for editing the session's LastQuestion.
-// If session.LastQuestion is nil, a new one is created on save.
-func NewLastQuestionForm(app App, session *model.Session, onClose func()) tview.Primitive {
-	if session == nil {
-		return errorModal("No session selected.", onClose)
+// NewAccountForm returns a form for creating or editing an account. User is
+// a structural prerequisite of Account — AddAccount requires a live user —
+// so create mode resolves or creates the user on demand via
+// Service.CreateAccount, the strict-account counterpart to StartSession's
+// on-demand path. Edit mode changes only the account's own mutable field
+// (pause state); it does not touch the underlying user's name, since that
+// belongs to a different aggregate and would be a different form's job.
+// Provider is a required precondition but is never created implicitly: if
+// none exist, an error modal is returned instead of an empty dropdown.
+// When account is nil a new account is created; otherwise it is edited.
+func NewAccountForm(app App, account *model.Account, onClose func()) tview.Primitive {
+	isEdit := account != nil
+
+	if !isEdit {
+		if providers := app.Service().Providers(); len(providers) == 0 {
+			return errorModal("No providers configured.\nAdd a provider before creating an account.", onClose)
+		}
 	}
 
-	reg := app.Registry()
-
-	// Build project dropdown: "none" + sorted session projects.
-	sessionProjects := reg.ProjectsBySession(session)
-	sort.Slice(sessionProjects, func(i, j int) bool {
-		return sessionProjects[i].Name() < sessionProjects[j].Name()
-	})
-	projectOptions := make([]string, 0, len(sessionProjects)+1)
-	projectOptions = append(projectOptions, "none")
-	for _, p := range sessionProjects {
-		projectOptions = append(projectOptions, p.Name())
-	}
-
-	lq := session.LastQuestion
-	initProjectIdx := 0
-	initTopic := ""
-	initMidAnswer := false
-	initNextPrompt := ""
-	if lq != nil {
-		initTopic = lq.Topic
-		initMidAnswer = lq.MidAnswer
-		initNextPrompt = lq.NextPrompt
-		if lq.Project() != nil {
-			for i, name := range projectOptions {
-				if name == lq.Project().Name() {
-					initProjectIdx = i
-					break
-				}
-			}
+	var email, provider, initPause string
+	if isEdit {
+		email = account.UserEmail()
+		provider = account.ProviderName()
+		if !account.PauseUntil().IsZero() {
+			initPause = model.FormatTime(account.PauseUntil())
 		}
 	}
 
 	form := tview.NewForm()
-	form.SetBorder(true).SetTitle(" Last Question ")
+	form.SetBorder(true)
+	if isEdit {
+		form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", email, provider))
+	} else {
+		form.SetTitle(" New Account ")
+	}
 
-	form.AddDropDown("Project", projectOptions, initProjectIdx, nil)
-	form.AddInputField("Topic", initTopic, 40, nil, nil)
-	form.AddCheckbox("Mid-answer", initMidAnswer, nil)
-	form.AddInputField("Next prompt", initNextPrompt, 40, nil, nil)
+	if isEdit {
+		form.AddInputField("Email (fixed)", email, 40, func(_ string, _ rune) bool { return false }, nil)
+		form.AddInputField("Provider (fixed)", provider, 40, func(_ string, _ rune) bool { return false }, nil)
+		form.AddInputField("Pause until", initPause, 20, nil, nil)
+
+		pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+		if !ok {
+			// We just added this field, so this should theoretically never happen.
+			return errorModal("Internal error: failed to initialize form fields.", onClose)
+		}
+		pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
+	} else {
+		providers := app.Service().Providers() // already sorted by name; non-empty, checked above
+		providerNames := make([]string, len(providers))
+		for i, p := range providers {
+			providerNames[i] = p.Name()
+		}
+		form.AddInputField("Email", "", 40, nil, nil)
+		form.AddDropDown("Provider", providerNames, 0, nil)
+		form.AddInputField("Name", "", 40, nil, nil)
+	}
 
 	save := func() {
-		projectDropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
-		if !ok {
-			app.SetStatus("[red]internal error: project dropdown missing[-]")
-			return
-		}
-		_, projectName := projectDropDown.GetCurrentOption()
-
-		topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
-		if !ok {
-			app.SetStatus("[red]internal error: topic field missing[-]")
-			return
-		}
-		topic := strings.TrimSpace(topicField.GetText())
-
-		midAnswerCheckbox, ok := form.GetFormItemByLabel("Mid-answer").(*tview.Checkbox)
-		if !ok {
-			app.SetStatus("[red]internal error: mid-answer checkbox missing[-]")
-			return
-		}
-		midAnswer := midAnswerCheckbox.IsChecked()
-
-		nextPromptField, ok := form.GetFormItemByLabel("Next prompt").(*tview.InputField)
-		if !ok {
-			app.SetStatus("[red]internal error: next prompt field missing[-]")
-			return
-		}
-		nextPrompt := strings.TrimSpace(nextPromptField.GetText())
-
-		email := session.User().Email()
-		provider := session.Provider().Name()
-
-		if err := app.Mutate(func(r *model.Registry) error {
-			s := r.SessionAt(email, provider)
-			if s == nil {
-				return errors.New("session not found")
+		if isEdit {
+			field, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+			if !ok {
+				app.SetStatus("[red]internal error: Pause until field missing[-]")
+				return
 			}
-			var proj *model.Project
-			if projectName != "none" {
-				proj = r.ProjectByName(projectName)
+			val := strings.TrimSpace(field.GetText())
+
+			var until time.Time
+			if val != "" {
+				t, err := model.ParseTime(val)
+				if err != nil {
+					app.SetStatus(fmt.Sprintf("[red]pause until: use format %s[-]", model.TimeFormat))
+					return
+				}
+				until = t
 			}
-			lq := model.NewLastQuestion(proj)
-			lq.Topic = topic
-			lq.MidAnswer = midAnswer
-			lq.NextPrompt = nextPrompt
-			s.LastQuestion = lq
-			return nil
+
+			if err := app.Mutate(func(s *service.Service) error {
+				return s.PauseAccount(email, provider, until)
+			}); err != nil {
+				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				return
+			}
+		} else {
+			emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+			if !ok {
+				app.SetStatus("[red]internal error: Email field missing[-]")
+				return
+			}
+			emailVal := strings.TrimSpace(emailField.GetText())
+
+			providerDropDown, ok := form.GetFormItemByLabel("Provider").(*tview.DropDown)
+			if !ok {
+				app.SetStatus("[red]internal error: Provider dropdown missing[-]")
+				return
+			}
+			_, providerVal := providerDropDown.GetCurrentOption()
+
+			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+			if !ok {
+				app.SetStatus("[red]internal error: Name field missing[-]")
+				return
+			}
+			nameVal := strings.TrimSpace(nameField.GetText())
+
+			if err := app.Mutate(func(s *service.Service) error {
+				_, err := s.CreateAccount(emailVal, nameVal, providerVal)
+				return err
+			}); err != nil {
+				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				return
+			}
+		}
+		onClose()
+	}
+
+	form.AddButton("Save", save)
+	form.AddButton("Cancel", onClose)
+	form.SetCancelFunc(onClose)
+	addCtrlS(form, save)
+
+	height := 14
+	if isEdit {
+		height = 13
+	}
+	return centeredModal(form, 64, height)
+}
+
+// ── Grant / Revoke forms ──────────────────────────────────────────────────────
+
+// NewGrantForm returns a form for granting project's access to an account.
+// This is not an entity-creation form — both project and account already
+// exist; it manages the many-to-many link between them, which is why it
+// legitimately references both aggregates by name (AddProjectToAccount is
+// itself keyed on both sides of an existing pair, unlike a create-form
+// composing an on-demand prerequisite).
+func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primitive {
+	if project == nil {
+		return errorModal("No project selected.", onClose)
+	}
+
+	accounts := app.Service().Accounts() // already sorted by composite key
+	if len(accounts) == 0 {
+		return errorModal("No accounts exist yet.\nCreate an account before granting project access.", onClose)
+	}
+	labels := make([]string, len(accounts))
+	for i, a := range accounts {
+		labels[i] = fmt.Sprintf("%s/%s", a.UserEmail(), a.ProviderName())
+	}
+
+	form := tview.NewForm()
+	form.SetBorder(true)
+	form.SetTitle(fmt.Sprintf(" Grant %q to Account ", project.Name()))
+
+	form.AddDropDown("Account", labels, 0, nil)
+
+	save := func() {
+		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
+		if !ok {
+			app.SetStatus("[red]internal error: Account dropdown missing[-]")
+			return
+		}
+		idx, _ := dropDown.GetCurrentOption()
+		if idx < 0 || idx >= len(accounts) {
+			app.SetStatus("[red]internal error: invalid account selection[-]")
+			return
+		}
+		email := accounts[idx].UserEmail()
+		acctProvider := accounts[idx].ProviderName()
+		name := project.Name()
+
+		if err := app.Mutate(func(s *service.Service) error {
+			return s.GrantProject(email, acctProvider, name)
 		}); err != nil {
 			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 			return
@@ -510,5 +501,60 @@ func NewLastQuestionForm(app App, session *model.Session, onClose func()) tview.
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 14)
+	return centeredModal(form, 64, 10)
+}
+
+// NewRevokeForm returns a form for revoking project's access from an
+// account currently granted it. See NewGrantForm for why this form
+// legitimately references both aggregates.
+func NewRevokeForm(app App, project *model.Project, onClose func()) tview.Primitive {
+	if project == nil {
+		return errorModal("No project selected.", onClose)
+	}
+
+	accounts, err := app.Service().ProjectAccounts(project.Name())
+	if err != nil || len(accounts) == 0 {
+		return errorModal(fmt.Sprintf("Project %q is not granted to any account.", project.Name()), onClose)
+	}
+	labels := make([]string, len(accounts))
+	for i, a := range accounts {
+		labels[i] = fmt.Sprintf("%s/%s", a.UserEmail(), a.ProviderName())
+	}
+
+	form := tview.NewForm()
+	form.SetBorder(true)
+	form.SetTitle(fmt.Sprintf(" Revoke %q from Account ", project.Name()))
+
+	form.AddDropDown("Account", labels, 0, nil)
+
+	save := func() {
+		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
+		if !ok {
+			app.SetStatus("[red]internal error: Account dropdown missing[-]")
+			return
+		}
+		idx, _ := dropDown.GetCurrentOption()
+		if idx < 0 || idx >= len(accounts) {
+			app.SetStatus("[red]internal error: invalid account selection[-]")
+			return
+		}
+		email := accounts[idx].UserEmail()
+		acctProvider := accounts[idx].ProviderName()
+		name := project.Name()
+
+		if err := app.Mutate(func(s *service.Service) error {
+			return s.RevokeProject(email, acctProvider, name)
+		}); err != nil {
+			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return
+		}
+		onClose()
+	}
+
+	form.AddButton("Save", save)
+	form.AddButton("Cancel", onClose)
+	form.SetCancelFunc(onClose)
+	addCtrlS(form, save)
+
+	return centeredModal(form, 64, 10)
 }

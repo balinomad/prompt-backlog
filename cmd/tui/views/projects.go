@@ -172,7 +172,7 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 
 	case KeyNew:
-		modal := NewProjectForm(p.app, nil, nil, func() {
+		modal := NewProjectForm(p.app, nil, func() {
 			p.app.SetHints(HintsProjectsPanel)
 			p.app.HideModal()
 		})
@@ -185,7 +185,7 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 	case KeyEdit:
 		if proj := p.selectedProject(); proj != nil {
-			modal := NewProjectForm(p.app, proj, nil, func() {
+			modal := NewProjectForm(p.app, proj, func() {
 				p.app.SetHints(HintsProjectsPanel)
 				p.app.HideModal()
 			})

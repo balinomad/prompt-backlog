@@ -1,14 +1,14 @@
 # llm-desk
 
-`llm-desk` is a terminal-based session manager for operators running multiple LLM conversations in parallel across providers such as Claude, ChatGPT, and Gemini. When a session hits a rate limit, `llm-desk` tells you when you can resume, where you left off, and what to ask next — so you can switch to another project immediately and lose no context.
+`llm-desk` is a terminal-based session manager for operators running multiple LLM conversations in parallel across providers such as Claude, ChatGPT, and Gemini. Rate-limit state is tracked per account, so `llm-desk` tells you when an account is available again; each active session keeps its own topic and a queue of prompts to resume from, so you can switch to another account immediately and lose no context.
 
 ## Features
 
-- Track rate-limit reset times and next-prompt context per session
-- Log topic, mid-answer state, and next prompt for each session's last question
-- Attach sessions to projects with per-project instructions and descriptions
-- Many-to-many session ↔ project relationships; project support is per-provider
-- Manage providers, users, sessions, and projects from a keyboard-driven terminal interface
+- Track rate-limit reset times (`PauseUntil`) per account, independent of how many sessions run under it
+- Multiple ephemeral sessions per account, each with a topic and a queue of pending prompts
+- Grant projects to accounts, with per-project instructions and descriptions; a session may reference one granted project
+- Many-to-many account ↔ project relationships; project support is per-provider
+- Manage providers, accounts, sessions, and projects from a keyboard-driven terminal interface
 - Atomic JSON persistence; no hidden default data path
 
 ## Requirements
@@ -35,24 +35,27 @@ The `--data` / `-d` flag is required. If the file does not exist, an empty regis
 
 ## Data Model
 
-Four entity types managed by the registry:
+Five entity types managed by the registry:
 
 - **Provider** — an LLM service (e.g. `claude`, `chatgpt`). Flags: `HasProjects`, `HasDeepResearch`.
-- **User** — identified by email address. Display name is mutable.
-- **Session** — a (user, provider) pair. Tracks when the session is available again (`NextPromptAt`) and the last question's topic, mid-answer state, next prompt, and optional project context.
-- **Project** — a named context with description and instructions. Attached to sessions many-to-many; only sessions on providers with `HasProjects` can receive attachments.
+- **User** — identified by email address. Display name is mutable. Not managed through its own screen; created on demand when an account for a new email is created.
+- **Account** — a unique (user, provider) pairing. The owner of sessions and the holder of pause state (`PauseUntil`) for rate-limit tracking. One account exists per (user, provider) pair.
+- **Session** — an ephemeral conversation instance under an account; multiple sessions may exist per account at once. Tracks a topic, an optional project (must be granted to the account), and a queue of pending prompts, each optionally flagged to spawn a new session. Session IDs are surrogate keys, not persisted — renumbered sequentially on each load.
+- **Project** — a named context with description and instructions. Granted to accounts many-to-many; only accounts on providers with `HasProjects` can receive grants. A session may reference one project from among those granted to its account.
 
-Removing a provider or user requires removing all sessions that reference them first — no cascades.
+Removing an account requires ending all its sessions and revoking all its granted projects first. Removing a provider or user requires removing every account that references it first. No cascading deletes anywhere in the chain.
 
 ## Architecture
 
-| Path                   | Responsibility                                        |
-| ---------------------- | ----------------------------------------------------- |
-| `internal/model/`      | Domain types, `Registry`, validation — no I/O         |
-| `internal/store/`      | `Store` interface, shared across all `cmd/` frontends |
-| `internal/store/json/` | JSON file store (imported as `storejson`)             |
-| `cmd/tui/`             | `tview`-based terminal UI                             |
-| `cmd/tui/views/`       | Panels, forms, and modals                             |
+| Path                   | Responsibility                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `internal/model/`      | Domain types, `Registry`, validation — no I/O                                                                |
+| `internal/apperr/`     | Generic error-category sentinels shared across every layer                                                   |
+| `internal/service/`    | Application layer: resolves UI input into domain entities, delegates to `Registry`                           |
+| `internal/store/`      | `Store` interface, shared across all `cmd/` frontends                                                        |
+| `internal/store/json/` | JSON file store (imported as `storejson`)                                                                    |
+| `cmd/tui/`             | `tview`-based terminal UI                                                                                    |
+| `cmd/tui/views/`       | Panels, forms, and modals; reads and mutates only through `service.Service`, never `model.Registry` directly |
 
 Serialisation is handled entirely by the store layer using internal DTO types. Model structs carry no JSON tags.
 
@@ -64,7 +67,9 @@ llm-desk/
 │   └── tui/
 │       └── views/
 ├── internal/
+│   ├── apperr/
 │   ├── model/
+│   ├── service/
 │   └── store/
 │       └── json/
 └── go.mod

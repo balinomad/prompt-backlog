@@ -7,89 +7,268 @@ import (
 	"github.com/rivo/tview"
 )
 
-// ── NewSessionForm ────────────────────────────────────────────────────────────
+// ── Shared assertion helper ────────────────────────────────────────────────────
 
-func TestNewSessionForm_NoProviders_ReturnsErrorModal(t *testing.T) {
-	t.Parallel()
-	// An empty registry has no providers; the form cannot be constructed.
-	app := &mockApp{registry: model.NewRegistry()}
-	result := NewSessionForm(app, nil, func() {})
-	if _, ok := result.(*tview.Modal); !ok {
-		t.Error("expected error modal when no providers configured")
+// assertFormOrModal checks that result is a *tview.Modal when wantModal is
+// true, or a *tview.Flex (a centred form) when false. Shared by every form
+// constructor's precondition-shape test in this file.
+func assertFormOrModal(t *testing.T, result tview.Primitive, wantModal bool) {
+	t.Helper()
+	_, isModal := result.(*tview.Modal)
+	if wantModal {
+		if !isModal {
+			t.Errorf("expected error modal, got %T", result)
+		}
+		return
+	}
+	if _, ok := result.(*tview.Flex); !ok {
+		t.Errorf("expected centred form, got %T", result)
 	}
 }
 
-func TestNewSessionForm_WithProviders_ReturnsForm(t *testing.T) {
+// ── NewSessionForm ────────────────────────────────────────────────────────────
+
+func TestNewSessionForm(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
-	result := NewSessionForm(app, nil, func() {})
-	if _, ok := result.(*tview.Flex); !ok {
-		t.Error("expected centred form when providers are available")
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (app *mockApp, account *model.Account, session *model.Session)
+		wantModal bool
+	}{
+		{
+			name: "nil account",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				return newMockApp(t), nil, nil
+			},
+			wantModal: true,
+		},
+		{
+			name: "create mode",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				app, acc := newDetailTestApp(t)
+				return app, acc, nil
+			},
+			wantModal: false,
+		},
+		{
+			name: "edit mode",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				app, acc := newDetailTestApp(t)
+				sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+				must(t, err)
+				return app, acc, sessions[0]
+			},
+			wantModal: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc, sess := tc.setup(t)
+			result := NewSessionForm(app, acc, sess, func() {})
+			assertFormOrModal(t, result, tc.wantModal)
+		})
 	}
 }
 
 // ── NewProjectForm ────────────────────────────────────────────────────────────
 
-func TestNewProjectForm_IncompatibleProvider_ReturnsErrorModal(t *testing.T) {
-	t.Parallel()
-	// bob/chatgpt has HasProjects=false — pre-flight must fire.
-	app := newMockApp(t)
-	s := app.registry.SessionAt("bob@example.com", "chatgpt")
-	result := NewProjectForm(app, nil, s, func() {})
-	if _, ok := result.(*tview.Modal); !ok {
-		t.Error("expected error modal for provider without project support")
-	}
-}
-
+// NewProjectForm no longer takes a session parameter (Project has no
+// structural prerequisites), so the old provider-incompatibility pre-flight
+// rejection — tied to attach-on-create, which no longer exists — has no
+// analog here. project=nil is a valid input meaning "create mode", not a
+// missing precondition, so there is no error-modal path to test.
 func TestNewProjectForm_ReturnsForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name         string
-		userEmail    string // empty = nil session
-		providerName string
-		projectName  string // empty = nil (new mode), non-empty = edit mode
+		name        string
+		projectName string // empty = nil project = create mode
 	}{
-		{"compatible provider", "alice@example.com", "claude", ""},
-		{"nil session", "", "", ""},
-		{"edit mode bypasses provider check", "bob@example.com", "chatgpt", "Orphan"},
+		{"create mode", ""},
+		{"edit mode", "Alpha"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			var s *model.Session
-			if tc.userEmail != "" {
-				s = app.registry.SessionAt(tc.userEmail, tc.providerName)
-			}
 			var proj *model.Project
 			if tc.projectName != "" {
-				proj = app.registry.ProjectByName(tc.projectName)
+				proj = app.svc.Project(tc.projectName)
 			}
-			result := NewProjectForm(app, proj, s, func() {})
-			if _, ok := result.(*tview.Flex); !ok {
-				t.Errorf("expected centred form for case %q", tc.name)
-			}
+			result := NewProjectForm(app, proj, func() {})
+			assertFormOrModal(t, result, false)
 		})
 	}
 }
 
-// ── NewLastQuestionForm ───────────────────────────────────────────────────────
+// ── NewProviderForm ───────────────────────────────────────────────────────────
 
-func TestNewLastQuestionForm_NilSession_ReturnsErrorModal(t *testing.T) {
+// NewProviderForm's body is unchanged from the prior session; it had no
+// dedicated test coverage before this rewrite.
+func TestNewProviderForm_ReturnsForm(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
-	result := NewLastQuestionForm(app, nil, func() {})
-	if _, ok := result.(*tview.Modal); !ok {
-		t.Error("expected error modal for nil session")
+	cases := []struct {
+		name         string
+		providerName string // empty = nil provider = create mode
+	}{
+		{"create mode", ""},
+		{"edit mode", "claude"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newMockApp(t)
+			var prov *model.Provider
+			if tc.providerName != "" {
+				prov = app.svc.Provider(tc.providerName)
+			}
+			result := NewProviderForm(app, prov, func() {})
+			assertFormOrModal(t, result, false)
+		})
 	}
 }
 
-func TestNewLastQuestionForm_WithSession_ReturnsForm(t *testing.T) {
+// ── NewAccountForm ────────────────────────────────────────────────────────────
+
+func TestNewAccountForm(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
-	s := app.registry.SessionAt("alice@example.com", "claude")
-	result := NewLastQuestionForm(app, s, func() {})
-	if _, ok := result.(*tview.Flex); !ok {
-		t.Error("expected centred form when session is valid")
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (*mockApp, *model.Account)
+		wantModal bool
+	}{
+		{
+			name: "no providers",
+			setup: func(t *testing.T) (*mockApp, *model.Account) {
+				t.Helper()
+				app := newMockApp(t)
+				app.svc = newTestService(t, model.NewRegistry())
+				return app, nil
+			},
+			wantModal: true,
+		},
+		{
+			name: "create mode",
+			setup: func(t *testing.T) (*mockApp, *model.Account) {
+				t.Helper()
+				return newMockApp(t), nil
+			},
+			wantModal: false,
+		},
+		{
+			name: "edit mode",
+			setup: func(t *testing.T) (*mockApp, *model.Account) {
+				t.Helper()
+				app := newMockApp(t)
+				acc, err := app.svc.Account("alice@example.com", "claude")
+				must(t, err)
+				return app, acc
+			},
+			wantModal: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc := tc.setup(t)
+			result := NewAccountForm(app, acc, func() {})
+			assertFormOrModal(t, result, tc.wantModal)
+		})
+	}
+}
+
+// ── NewGrantForm / NewRevokeForm ──────────────────────────────────────────────
+
+func TestNewGrantForm(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (*mockApp, *model.Project)
+		wantModal bool
+	}{
+		{
+			name: "nil project",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				return newMockApp(t), nil
+			},
+			wantModal: true,
+		},
+		{
+			name: "no accounts exist",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				reg := model.NewRegistry()
+				must(t, reg.AddProject(model.NewProject("Solo", "", "")))
+				app := newMockApp(t)
+				app.svc = newTestService(t, reg)
+				return app, app.svc.Project("Solo")
+			},
+			wantModal: true,
+		},
+		{
+			name: "accounts available",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				app := newMockApp(t)
+				return app, app.svc.Project("Orphan")
+			},
+			wantModal: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, proj := tc.setup(t)
+			result := NewGrantForm(app, proj, func() {})
+			assertFormOrModal(t, result, tc.wantModal)
+		})
+	}
+}
+
+func TestNewRevokeForm(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (*mockApp, *model.Project)
+		wantModal bool
+	}{
+		{
+			name: "nil project",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				return newMockApp(t), nil
+			},
+			wantModal: true,
+		},
+		{
+			name: "project not granted to any account",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				app := newMockApp(t)
+				return app, app.svc.Project("Orphan")
+			},
+			wantModal: true,
+		},
+		{
+			name: "project granted",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				app := newMockApp(t)
+				return app, app.svc.Project("Alpha")
+			},
+			wantModal: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, proj := tc.setup(t)
+			result := NewRevokeForm(app, proj, func() {})
+			assertFormOrModal(t, result, tc.wantModal)
+		})
 	}
 }

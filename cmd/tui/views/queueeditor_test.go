@@ -1,0 +1,322 @@
+package views
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/rivo/tview"
+)
+
+// ── Test fixture ──────────────────────────────────────────────────────────────
+
+// newQueueTestApp returns a mock wired with a single account holding one
+// session whose queue has three prompts, in order: "first" (no spawn),
+// "second" (spawns), "third" (no spawn). Defined locally for the same
+// reason newDetailTestApp is: this file is the only current caller that
+// needs a session with a specific, multi-entry queue shape.
+func newQueueTestApp(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+	t.Helper()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	sess, err := reg.AddSession(acc, nil, "topic", []model.Prompt{
+		model.NewPrompt("first", false),
+		model.NewPrompt("second", true),
+		model.NewPrompt("third", false),
+	})
+	must(t, err)
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	return app, acc, sess
+}
+
+// ── NewQueueEditor: preconditions and list population ─────────────────────────
+
+func TestNewQueueEditor(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (app *mockApp, account *model.Account, session *model.Session)
+		wantModal bool
+		wantItems int
+	}{
+		{
+			name: "nil account",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				app, _, sess := newQueueTestApp(t)
+				return app, nil, sess
+			},
+			wantModal: true,
+		},
+		{
+			name: "nil session",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				app, acc, _ := newQueueTestApp(t)
+				return app, acc, nil
+			},
+			wantModal: true,
+		},
+		{
+			name: "session no longer exists",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				app, acc, sess := newQueueTestApp(t)
+				must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+				return app, acc, sess // sess is now a stale pointer to a deleted session
+			},
+			wantModal: true,
+		},
+		{
+			name: "returns list",
+			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
+				t.Helper()
+				return newQueueTestApp(t)
+			},
+			wantModal: false,
+			wantItems: 3,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc, sess := tc.setup(t)
+			result := NewQueueEditor(app, acc, sess, func() {})
+			if tc.wantModal {
+				if _, ok := result.(*tview.Modal); !ok {
+					t.Errorf("expected error modal, got %T", result)
+				}
+				return
+			}
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			if got := list.GetItemCount(); got != tc.wantItems {
+				t.Errorf("item count: got %d, want %d", got, tc.wantItems)
+			}
+		})
+	}
+}
+
+// ── Key handling: opens the right modal ────────────────────────────────────────
+
+func TestQueueEditor_Keys_ShowModal(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		key       rune
+		wantHints string
+	}{
+		{"new", KeyNew, HintsForm},
+		{"edit", KeyEdit, HintsForm},
+		{"delete", KeyDelete, HintsConfirmModal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc, sess := newQueueTestApp(t)
+			result := NewQueueEditor(app, acc, sess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			capture := list.GetInputCapture()
+			if capture == nil {
+				t.Fatal("expected non-nil input capture")
+			}
+			capture(runeKey(tc.key))
+			if app.modal == nil {
+				t.Errorf("key %q: expected modal to be shown", string(tc.key))
+			}
+			if app.hints != tc.wantHints {
+				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+			}
+		})
+	}
+}
+
+func TestQueueEditor_EmptyQueue_NoModal(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		key  rune
+	}{
+		{"edit", KeyEdit},
+		{"delete", KeyDelete},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc := newDetailTestApp(t)
+			sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+			must(t, err)
+			emptySess := sessions[1] // untitled session, nil queue, per newDetailTestApp's doc
+			result := NewQueueEditor(app, acc, emptySess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			capture := list.GetInputCapture()
+			capture(runeKey(tc.key))
+			if app.modal != nil {
+				t.Errorf("key %q with empty queue should not open a modal", string(tc.key))
+			}
+		})
+	}
+}
+
+// ── Reorder: commits immediately, no modal involved ───────────────────────────
+
+func TestQueueEditor_Reorder(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		key       rune
+		startIdx  int
+		wantOrder []string
+		wantIdx   int
+	}{
+		{
+			name:      "move up from first item is a no-op",
+			key:       KeyMoveUp,
+			startIdx:  0,
+			wantOrder: []string{"first", "second", "third"},
+			wantIdx:   0,
+		},
+		{
+			name:      "move up swaps with previous",
+			key:       KeyMoveUp,
+			startIdx:  1,
+			wantOrder: []string{"second", "first", "third"},
+			wantIdx:   0,
+		},
+		{
+			name:      "move down from last item is a no-op",
+			key:       KeyMoveDown,
+			startIdx:  2,
+			wantOrder: []string{"first", "second", "third"},
+			wantIdx:   2,
+		},
+		{
+			name:      "move down swaps with next",
+			key:       KeyMoveDown,
+			startIdx:  0,
+			wantOrder: []string{"second", "first", "third"},
+			wantIdx:   1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc, sess := newQueueTestApp(t)
+			result := NewQueueEditor(app, acc, sess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			list.SetCurrentItem(tc.startIdx)
+
+			capture := list.GetInputCapture()
+			capture(runeKey(tc.key))
+
+			if got := list.GetCurrentItem(); got != tc.wantIdx {
+				t.Errorf("selected index after reorder: got %d, want %d", got, tc.wantIdx)
+			}
+
+			updated := app.svc.Session(sess.ID())
+			if updated == nil {
+				t.Fatal("session not found after reorder")
+			}
+			queue := updated.Queue()
+			if len(queue) != len(tc.wantOrder) {
+				t.Fatalf("queue length: got %d, want %d", len(queue), len(tc.wantOrder))
+			}
+			for i, want := range tc.wantOrder {
+				if queue[i].Text() != want {
+					t.Errorf("queue[%d] = %q, want %q", i, queue[i].Text(), want)
+				}
+			}
+		})
+	}
+}
+
+func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	result := NewQueueEditor(app, acc, sess, func() {})
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+
+	// Remove the session out from under the editor so the next commit's
+	// UpdateSessionPrompts call fails at resolveSession.
+	must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+
+	list.SetCurrentItem(1)
+	capture := list.GetInputCapture()
+	capture(runeKey(KeyMoveUp))
+
+	if app.status == "" {
+		t.Error("expected a status message reporting the commit failure")
+	}
+}
+
+// ── newPromptForm ──────────────────────────────────────────────────────────────
+
+func TestNewPromptForm_ReturnsForm(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		idx   int // -1 = new
+		queue []model.Prompt
+	}{
+		{"new prompt", -1, nil},
+		{"edit existing prompt", 0, []model.Prompt{model.NewPrompt("existing", false)}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newMockApp(t)
+			commit := func([]model.Prompt) bool { return true }
+			result := newPromptForm(app, tc.queue, tc.idx, commit, func() {})
+			if _, ok := result.(*tview.Flex); !ok {
+				t.Errorf("expected centred form, got %T", result)
+			}
+		})
+	}
+}
+
+// ── promptItemText ──────────────────────────────────────────────────────────────
+
+func TestPromptItemText(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		text         string
+		spawns       bool
+		wantContains string
+		wantEqual    string
+	}{
+		{"no spawn returns plain text", "continue", false, "", "continue"},
+		{"spawns appends marker", "start fresh", true, "new session", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := model.NewPrompt(tc.text, tc.spawns)
+			got := promptItemText(p)
+			if tc.wantEqual != "" && got != tc.wantEqual {
+				t.Errorf("got %q, want %q", got, tc.wantEqual)
+			}
+			if tc.wantContains != "" && !strings.Contains(got, tc.wantContains) {
+				t.Errorf("got %q, want it to contain %q", got, tc.wantContains)
+			}
+		})
+	}
+}

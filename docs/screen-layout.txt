@@ -1,17 +1,81 @@
-┌─ Claude Session Manager ─────────────────────────────────────────────┐
-│                                                                      │
-│  ┌─ Sessions ─────────────┐  ┌─ Projects ────────────────────────┐   │
-│  │ ▶ alice@example.com    │  │  ● Project Alpha   [mid-answer]   │   │
-│  │   bob@example.com      │  │    Project Beta                   │   │
-│  │   charlie@example.com  │  │  ─────────────────────────────    │   │
-│  │                        │  │  Last Q             [mid-answer]  │   │
-│  │                        │  └───────────────────────────────────┘   │
-│  │                        │  ┌─ Session Detail ──────────────────┐   │
-│  │                        │  │  Name:   Alice Smith              │   │
-│  │                        │  │  Email:  alice@example.com        │   │
-│  │                        │  │  Next:   2026-05-20 09:00         │   │
-│  └────────────────────────┘  └───────────────────────────────────┘   │
-│                                                                      │
-│  [n]ew  [e]dit  [d]elete  [Space]toggle  [Tab]switch focus  [?]help  │
-│  [q]quit                                                  saved ✓    │
-└──────────────────────────────────────────────────────────────────────┘
+llm-desk has four distinct views. The main screen (accounts + session
+detail) is always one of the three full-screen pages; providers and
+projects are the other two, reached from the accounts list via `r` / `p`
+and returned from via `Esc` or the same key. The queue editor is a modal
+opened from session detail via `u`, not a fourth page.
+
+── Main screen (accounts list + session detail) ──────────────────────────────
+
+┌ llm-desk ───────────────────────────────────────────────────────────────┐
+│                                                                         │
+│  ┌ Accounts ──────────────────┐  ┌ Sessions ─────────────────────────┐  │
+│  │▶ alice@example.com / claude│  │▶ Architecture review   Alpha   q:1│  │
+│  │  bob@example.com / chatgpt │  │  (untitled)            —       q:0│  │
+│  │  carol@example.com / claude│  └───────────────────────────────────┘  │
+│  │                            │  ┌ Account ──────────────────────────┐  │
+│  │                            │  │User:     Alice (alice@example.com)│  │
+│  │                            │  │Provider: claude                   │  │
+│  │                            │  │Paused:   available                │  │
+│  │                            │  │Projects: Alpha, Beta              │  │
+│  └────────────────────────────┘  └───────────────────────────────────┘  │
+│                                                                         │
+│  n new  e edit  d del  r providers  p projects  Tab focus  ? help       │
+│  q quit                                                          saved ✓│
+└─────────────────────────────────────────────────────────────────────────┘
+
+Accounts (left) lists every (user, provider) pair, soonest-available first;
+a past-due pause time is shown in red. Session detail (right) splits into
+the selected account's sessions (top, "q:N" = queue length) and a fixed
+account-info panel (bottom).
+
+── Providers screen ────────────────────────────────────────────────────────
+
+┌ Providers screen ──────────────────────────────────────────────────┐
+│                                                                    │
+│  ┌ Providers ───────────────────────────────────────────────────┐  │
+│  │▶ claude    projects  deep-research                           │  │
+│  │  chatgpt                                                     │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌ Provider Details ────────────────────────────────────────────┐  │
+│  │Name:          claude                                         │  │
+│  │Projects:      yes                                            │  │
+│  │Deep research: yes                                            │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+│  n new  e edit  d del  Tab focus  ? help  q quit  (Esc/r: back)    │
+└────────────────────────────────────────────────────────────────────┘
+
+── Projects screen ─────────────────────────────────────────────────────────
+
+┌ Projects screen ───────────────────────────────────────────────────┐
+│                                                                    │
+│  ┌ Projects ────────────────────────────────────────────────────┐  │
+│  │▶ Alpha                                                       │  │
+│  │  Beta                                                        │  │
+│  │  Orphan             unattached                               │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌ Project Details ─────────────────────────────────────────────┐  │
+│  │Name:         Alpha                                           │  │
+│  │Description:  Backend rewrite                                 │  │
+│  │Instructions: Use Go interfaces                               │  │
+│  │Accounts:     alice@example.com/claude                        │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+│  n new  e edit  d del  g grant  x revoke  ? help  (Esc/p: back)    │
+└────────────────────────────────────────────────────────────────────┘
+
+A project with zero granted accounts is flagged "unattached" rather than
+hidden or shown in a separate list.
+
+── Queue editor (modal, opened from session detail) ──────────────────────────
+
+┌ Queue: session #1 ──────────────────────────┐
+│▶ first                                      │
+│  second   → new session                     │
+│  third                                      │
+│                                             │
+│n add  e edit  d del  K up  J down  Esc close│
+└─────────────────────────────────────────────┘
+
+Every action here — add, edit, delete, reorder — commits immediately; there
+is no separate save step for the editor as a whole.

@@ -13,8 +13,8 @@ func TestNewStatusBar(t *testing.T) {
 func TestStatusBar_DefaultHints(t *testing.T) {
 	t.Parallel()
 	sb := NewStatusBar()
-	if got := sb.hintsView.GetText(false); got != HintsSessionsPanel {
-		t.Errorf("default hints: got %q, want HintsSessionsPanel", got)
+	if got := sb.hintsView.GetText(false); got != HintsAccountsPanel {
+		t.Errorf("default hints: got %q, want HintsAccountsPanel", got)
 	}
 }
 
@@ -32,9 +32,11 @@ func TestStatusBar_SetHints(t *testing.T) {
 		name  string
 		hints string
 	}{
-		{"sessions panel", HintsSessionsPanel},
+		{"accounts panel", HintsAccountsPanel},
+		{"detail panel", HintsDetailPanel},
 		{"projects panel", HintsProjectsPanel},
 		{"providers panel", HintsProvidersPanel},
+		{"queue editor", HintsQueueEditor},
 		{"form", HintsForm},
 		{"confirm modal", HintsConfirmModal},
 		{"help overlay", HintsHelpOverlay},
@@ -57,9 +59,11 @@ func TestStatusBar_AllHintsConstantsNonEmpty(t *testing.T) {
 		name  string
 		value string
 	}{
-		{"HintsSessionsPanel", HintsSessionsPanel},
+		{"HintsAccountsPanel", HintsAccountsPanel},
+		{"HintsDetailPanel", HintsDetailPanel},
 		{"HintsProjectsPanel", HintsProjectsPanel},
 		{"HintsProvidersPanel", HintsProvidersPanel},
+		{"HintsQueueEditor", HintsQueueEditor},
 		{"HintsForm", HintsForm},
 		{"HintsConfirmModal", HintsConfirmModal},
 		{"HintsHelpOverlay", HintsHelpOverlay},

@@ -16,13 +16,18 @@
 // checks, no more (uniqueness is still Add*'s job, composable separately
 // via the read methods below).
 //
-// A single method, in "Workflows" at the end of this file, is not a 1:1
-// wrapper: StartSession composes more than one Registry call — creating
-// the user and/or account on demand — because the caller has no reason to
-// know whether those prerequisites already exist. That composition is
-// this package's actual reason to exist as a layer distinct from
-// Registry; everywhere else, Service is deliberately thin, and that
-// thinness is correct, not a shortcut.
+// Two methods, in "Workflows" at the end of this file, are not 1:1
+// wrappers: StartSession and CreateAccount both compose more than one
+// Registry call, each creating the user on demand via the shared
+// resolveOrCreateUser helper — because the caller has no reason to know
+// whether the user already exists. They diverge on the account itself:
+// StartSession resolves-or-creates it, since the caller only wants a
+// session and doesn't care whether the account backing it is new;
+// CreateAccount requires it be newly created, since that is the explicit
+// action the caller invoked. That composition is this package's actual
+// reason to exist as a layer distinct from Registry; everywhere else,
+// Service is deliberately thin, and that thinness is correct, not a
+// shortcut.
 package service
 
 import (
@@ -433,6 +438,21 @@ func (s *Service) EndSession(userEmail, providerName string, id uint64) error {
 
 // ── Workflows (cross-aggregate) ────────────────────────────────────────────────
 
+// resolveOrCreateUser returns the user for email, creating one with name if
+// none exists yet. An existing user's name is left untouched. Shared by
+// every Workflows entry point that treats the user as an on-demand
+// prerequisite rather than a strict precondition.
+func (s *Service) resolveOrCreateUser(email, name string) (*model.User, error) {
+	if u := s.reg.User(email); u != nil {
+		return u, nil
+	}
+	u := model.NewUser(email, name)
+	if err := s.reg.AddUser(u); err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+	return u, nil
+}
+
 // ensureAccount returns the account for (userEmail, providerName), creating
 // the user and/or the account first if either does not yet exist. userName
 // is used only when a new user must be created; an existing user's name is
@@ -446,12 +466,9 @@ func (s *Service) ensureAccount(userEmail, userName, providerName string) (*mode
 		return nil, err
 	}
 
-	u := s.reg.User(userEmail)
-	if u == nil {
-		u = model.NewUser(userEmail, userName)
-		if err := s.reg.AddUser(u); err != nil {
-			return nil, fmt.Errorf("create user: %w", err)
-		}
+	u, err := s.resolveOrCreateUser(userEmail, userName)
+	if err != nil {
+		return nil, err
 	}
 
 	if acc := s.reg.Account(u, p); acc != nil {
@@ -482,4 +499,26 @@ func (s *Service) StartSession(userEmail, userName, providerName, projectName, t
 	}
 
 	return s.reg.AddSession(acc, p, topic, queue)
+}
+
+// CreateAccount is the entry point for the "new account" UI action. The
+// user is resolved or created on demand via resolveOrCreateUser, the same
+// helper StartSession uses, so the caller never needs to know whether it
+// already exists. Unlike ensureAccount, the account itself is never
+// resolved leniently: this is an explicit creation, so an account that
+// already exists for (userEmail, providerName) is reported as
+// model.ErrAccountExists rather than returned silently. It does not
+// create a session — StartSession is the only entry point for that.
+func (s *Service) CreateAccount(userEmail, userName, providerName string) (*model.Account, error) {
+	u, err := s.resolveOrCreateUser(userEmail, userName)
+	if err != nil {
+		return nil, fmt.Errorf("create account: %w", err)
+	}
+
+	p, err := s.resolveProvider("create account", providerName)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.reg.AddAccount(u, p)
 }

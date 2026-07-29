@@ -53,7 +53,7 @@ func NewHelpOverlay(app App) tview.Primitive {
 
 	text.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == KeyCancel {
-			app.SetHints(HintsSessionsPanel)
+			app.SetHints(HintsAccountsPanel)
 			app.HideModal()
 			return nil
 		}
@@ -110,14 +110,38 @@ const helpText = `
   [::b]Tab[-::-]               Rotate focus forward
   [::b]Shift+Tab[-::-]         Rotate focus backward
 
-[::b]Actions[-::-]
-  [::b]n[-::-]                 New item
-  [::b]e[-::-]                 Edit selected item
-  [::b]d[-::-]                 Delete selected item
-  [::b]Space[-::-]             Toggle mid-answer flag
-
-[::b]Screens[-::-]
+[::b]Accounts list[-::-]
+  [::b]n[-::-]                 New account
+  [::b]e[-::-]                 Edit selected account
+  [::b]d[-::-]                 Delete selected account
   [::b]r[-::-]                 Providers screen
+  [::b]p[-::-]                 Projects screen
+
+[::b]Session detail[-::-]
+  [::b]n[-::-]                 New session
+  [::b]e[-::-]                 Edit selected session
+  [::b]d[-::-]                 End selected session
+  [::b]u[-::-]                 Open queue editor
+  [::b]Space[-::-]             Toggle "continue" prompt
+
+[::b]Providers screen[-::-]
+  [::b]n[-::-]                 New provider
+  [::b]e[-::-]                 Edit selected provider
+  [::b]d[-::-]                 Delete selected provider
+
+[::b]Projects screen[-::-]
+  [::b]n[-::-]                 New project
+  [::b]e[-::-]                 Edit selected project
+  [::b]d[-::-]                 Delete selected project
+  [::b]g[-::-]                 Grant to an account
+  [::b]x[-::-]                 Revoke from an account
+
+[::b]Queue editor[-::-]
+  [::b]n[-::-]                 New prompt
+  [::b]e[-::-]                 Edit selected prompt
+  [::b]d[-::-]                 Delete selected prompt
+  [::b]K[-::-]                 Move prompt up
+  [::b]J[-::-]                 Move prompt down
 
 [::b]Forms[-::-]
   [::b]Ctrl+S[-::-]            Save
