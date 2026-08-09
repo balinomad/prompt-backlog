@@ -187,128 +187,124 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 	switch event.Rune() {
 	case KeyNew:
-		if p.account == nil {
-			return nil
-		}
-		modal := NewSessionForm(p.app, p.account, nil, func() {
-			p.app.SetHints(HintsDetailPanel)
-			p.app.HideModal()
-		})
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsForm)
-		return nil
-
+		return p.handleNew()
 	case KeyEdit:
-		s := p.Selected()
-		if s == nil || p.account == nil {
-			return nil
-		}
-		modal := NewSessionForm(p.app, p.account, s, func() {
-			p.app.SetHints(HintsDetailPanel)
-			p.app.HideModal()
-		})
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsForm)
-		return nil
-
+		return p.handleEdit()
 	case KeyDelete:
-		s := p.Selected()
-		if s == nil || p.account == nil {
-			return nil
-		}
-		email := p.account.UserEmail()
-		provider := p.account.ProviderName()
-		id := s.ID()
-		label := s.Topic()
-		if label == "" {
-			label = fmt.Sprintf("session #%d", id)
-		}
-		modal := NewConfirmModal(
-			fmt.Sprintf("End session\n%q?", label),
-			func() {
-				if err := p.app.Mutate(func(svc *service.Service) error {
-					return svc.EndSession(email, provider, id)
-				}); err != nil {
-					p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				}
-				p.app.SetHints(HintsDetailPanel)
-				p.app.HideModal()
-			},
-			func() {
-				p.app.SetHints(HintsDetailPanel)
-				p.app.HideModal()
-			},
-		)
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsConfirmModal)
-		return nil
-
+		return p.handleDelete()
 	case KeyQueue:
-		s := p.Selected()
-		if s == nil || p.account == nil {
-			return nil
-		}
-		modal := NewQueueEditor(p.app, p.account, s, func() {
-			p.app.SetHints(HintsDetailPanel)
-			p.app.HideModal()
-		})
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsQueueEditor)
-		return nil
-
+		return p.handleQueue()
 	case KeyToggle:
-		s := p.Selected()
-		if s == nil || p.account == nil {
-			return nil
-		}
-		email := p.account.UserEmail()
-		provider := p.account.ProviderName()
-		id := s.ID()
-		queue := toggleContinuePrompt(s.Queue())
-		if err := p.app.Mutate(func(svc *service.Service) error {
-			return svc.UpdateSessionPrompts(email, provider, id, queue)
-		}); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		}
-		return nil
-
+		return p.handleToggle()
 	case KeyHelp:
-		if err := p.app.ShowModal(NewHelpOverlay(p.app)); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsHelpOverlay)
-		return nil
-
+		return showHelp(p.app, HintsDetailPanel)
 	case KeyQuit:
-		modal := NewConfirmModal(
-			"Quit llm-desk?",
-			func() { p.app.Quit() },
-			func() {
-				p.app.SetHints(HintsDetailPanel)
-				p.app.HideModal()
-			},
-		)
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsConfirmModal)
-		return nil
+		return confirmQuit(p.app, HintsDetailPanel)
 	}
 	return event
+}
+
+func (p *DetailPanel) handleNew() *tcell.EventKey {
+	if p.account == nil {
+		return nil
+	}
+	modal := NewSessionForm(p.app, p.account, nil, func() {
+		p.app.SetHints(HintsDetailPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *DetailPanel) handleEdit() *tcell.EventKey {
+	s := p.Selected()
+	if s == nil || p.account == nil {
+		return nil
+	}
+	modal := NewSessionForm(p.app, p.account, s, func() {
+		p.app.SetHints(HintsDetailPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *DetailPanel) handleDelete() *tcell.EventKey {
+	s := p.Selected()
+	if s == nil || p.account == nil {
+		return nil
+	}
+	email := p.account.UserEmail()
+	provider := p.account.ProviderName()
+	id := s.ID()
+	label := s.Topic()
+	if label == "" {
+		label = fmt.Sprintf("session #%d", id)
+	}
+	modal := NewConfirmModal(
+		fmt.Sprintf("End session\n%q?", label),
+		func() {
+			if err := p.app.Mutate(func(svc *service.Service) error {
+				return svc.EndSession(email, provider, id)
+			}); err != nil {
+				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			}
+			p.app.SetHints(HintsDetailPanel)
+			p.app.HideModal()
+		},
+		func() {
+			p.app.SetHints(HintsDetailPanel)
+			p.app.HideModal()
+		},
+	)
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsConfirmModal)
+	return nil
+}
+
+func (p *DetailPanel) handleQueue() *tcell.EventKey {
+	s := p.Selected()
+	if s == nil || p.account == nil {
+		return nil
+	}
+	modal := NewQueueEditor(p.app, p.account, s, func() {
+		p.app.SetHints(HintsDetailPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsQueueEditor)
+	return nil
+}
+
+func (p *DetailPanel) handleToggle() *tcell.EventKey {
+	s := p.Selected()
+	if s == nil || p.account == nil {
+		return nil
+	}
+	email := p.account.UserEmail()
+	provider := p.account.ProviderName()
+	id := s.ID()
+	queue := toggleContinuePrompt(s.Queue())
+	if err := p.app.Mutate(func(svc *service.Service) error {
+		return svc.UpdateSessionPrompts(email, provider, id, queue)
+	}); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+	}
+	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────

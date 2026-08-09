@@ -122,93 +122,85 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 	switch event.Rune() {
 	case KeyNew:
-		modal := NewAccountForm(p.app, nil, func() {
-			p.app.SetHints(HintsAccountsPanel)
-			p.app.HideModal()
-		})
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsForm)
-		return nil
-
+		return p.handleNew()
 	case KeyEdit:
-		if a := p.Selected(); a != nil {
-			modal := NewAccountForm(p.app, a, func() {
-				p.app.SetHints(HintsAccountsPanel)
-				p.app.HideModal()
-			})
-			if err := p.app.ShowModal(modal); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			p.app.SetHints(HintsForm)
-		}
-		return nil
-
+		return p.handleEdit()
 	case KeyDelete:
-		if a := p.Selected(); a != nil {
-			email := a.UserEmail()
-			provider := a.ProviderName()
-			label := fmt.Sprintf("%s / %s", email, provider)
-			modal := NewConfirmModal(
-				fmt.Sprintf("Remove account\n%s?\nAll its sessions and project grants must be removed first.", label),
-				func() {
-					if err := p.app.Mutate(func(s *service.Service) error {
-						return s.DeleteAccount(email, provider)
-					}); err != nil {
-						p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-					}
-					p.app.SetHints(HintsAccountsPanel)
-					p.app.HideModal()
-				},
-				func() {
-					p.app.SetHints(HintsAccountsPanel)
-					p.app.HideModal()
-				},
-			)
-			if err := p.app.ShowModal(modal); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			p.app.SetHints(HintsConfirmModal)
-		}
-		return nil
-
+		return p.handleDelete()
 	case KeyProviders:
 		p.app.SwitchToProviders()
 		return nil
-
 	case KeyProjects:
 		p.app.SwitchToProjects()
 		return nil
-
 	case KeyHelp:
-		if err := p.app.ShowModal(NewHelpOverlay(p.app)); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsHelpOverlay)
-		return nil
-
+		return showHelp(p.app, HintsAccountsPanel)
 	case KeyQuit:
-		modal := NewConfirmModal(
-			"Quit llm-desk?",
-			func() { p.app.Quit() },
-			func() {
-				p.app.SetHints(HintsAccountsPanel)
-				p.app.HideModal()
-			},
-		)
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsConfirmModal)
-		return nil
+		return confirmQuit(p.app, HintsAccountsPanel)
 	}
 	return event
+}
+
+func (p *AccountsPanel) handleNew() *tcell.EventKey {
+	modal := NewAccountForm(p.app, nil, func() {
+		p.app.SetHints(HintsAccountsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *AccountsPanel) handleEdit() *tcell.EventKey {
+	a := p.Selected()
+	if a == nil {
+		return nil
+	}
+	modal := NewAccountForm(p.app, a, func() {
+		p.app.SetHints(HintsAccountsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *AccountsPanel) handleDelete() *tcell.EventKey {
+	a := p.Selected()
+	if a == nil {
+		return nil
+	}
+	email := a.UserEmail()
+	provider := a.ProviderName()
+	label := fmt.Sprintf("%s / %s", email, provider)
+	modal := NewConfirmModal(
+		fmt.Sprintf("Remove account\n%s?\nAll its sessions and project grants must be removed first.", label),
+		func() {
+			if err := p.app.Mutate(func(s *service.Service) error {
+				return s.DeleteAccount(email, provider)
+			}); err != nil {
+				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			}
+			p.app.SetHints(HintsAccountsPanel)
+			p.app.HideModal()
+		},
+		func() {
+			p.app.SetHints(HintsAccountsPanel)
+			p.app.HideModal()
+		},
+	)
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsConfirmModal)
+	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────

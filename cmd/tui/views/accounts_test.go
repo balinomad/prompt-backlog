@@ -42,6 +42,7 @@ func TestAccountsPanel_Refresh(t *testing.T) {
 		{
 			name: "empty registry",
 			setup: func(t *testing.T, app *mockApp) {
+				t.Helper()
 				reg := model.NewRegistry()
 				must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
 				app.svc = newTestService(t, reg)

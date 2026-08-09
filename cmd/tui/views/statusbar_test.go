@@ -88,10 +88,10 @@ func TestStatusBar_SetMessage(t *testing.T) {
 		{"non-empty message", "save failed"},
 		{"empty clears message", ""},
 	}
-	sb := NewStatusBar()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			sb := NewStatusBar()
 			sb.SetMessage(tc.msg)
 			if got := sb.messageView.GetText(false); got != tc.msg {
 				t.Errorf("SetMessage(%q): got %q", tc.msg, got)

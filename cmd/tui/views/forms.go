@@ -40,40 +40,12 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 		return errorModal("No account selected.", onClose)
 	}
 
-	svc := app.Service()
 	email := account.UserEmail()
 	provider := account.ProviderName()
 
-	// Build "none" + sorted granted-project dropdown. This is a read used
-	// only to populate the list; account is already known valid, so an
-	// error here degrades to "no granted projects" rather than blocking
-	// form construction, matching the read-degrades pattern already used
-	// in projects.go's renderInfo.
-	granted, err := svc.AccountProjects(email, provider)
-	if err != nil {
-		granted = nil
-	}
-	projectNames := make([]string, 0, len(granted)+1)
-	projectNames = append(projectNames, "none")
-	for _, p := range granted {
-		projectNames = append(projectNames, p.Name())
-	}
-
+	projectNames := sessionFormProjectNames(app, email, provider)
 	isEdit := session != nil
-
-	initTopic := ""
-	initProjectIdx := 0
-	if isEdit {
-		initTopic = session.Topic()
-		if session.ProjectName() != "" {
-			for i, name := range projectNames {
-				if name == session.ProjectName() {
-					initProjectIdx = i
-					break
-				}
-			}
-		}
-	}
+	initTopic, initProjectIdx := sessionFormInitial(session, projectNames)
 
 	form := tview.NewForm()
 	form.SetBorder(true)
@@ -137,7 +109,45 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 11)
+	return centeredModal(form, 11)
+}
+
+// sessionFormProjectNames returns NewSessionForm's Project dropdown
+// options: "none" followed by the account's granted projects. A
+// resolution error degrades to "no granted projects" rather than
+// blocking form construction, matching the read-degrades pattern already
+// used in projects.go's renderInfo — account is already known valid.
+func sessionFormProjectNames(app App, email, provider string) []string {
+	granted, err := app.Service().AccountProjects(email, provider)
+	if err != nil {
+		granted = nil
+	}
+	names := make([]string, 0, len(granted)+1)
+	names = append(names, "none")
+	for _, p := range granted {
+		names = append(names, p.Name())
+	}
+	return names
+}
+
+// sessionFormInitial returns the initial Topic text and Project dropdown
+// index for editing session, matching session's project against
+// projectNames by name. Returns ("", 0) for a nil session (create mode)
+// or a session with no project assigned.
+func sessionFormInitial(session *model.Session, projectNames []string) (string, int) {
+	if session == nil {
+		return "", 0
+	}
+	topic := session.Topic()
+	if session.ProjectName() == "" {
+		return topic, 0
+	}
+	for i, name := range projectNames {
+		if name == session.ProjectName() {
+			return topic, i
+		}
+	}
+	return topic, 0
 }
 
 // ── Project form ──────────────────────────────────────────────────────────────
@@ -225,7 +235,7 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 13)
+	return centeredModal(form, 13)
 }
 
 // ── Provider form ─────────────────────────────────────────────────────────────
@@ -311,7 +321,7 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 12)
+	return centeredModal(form, 12)
 }
 
 // ── Account form ──────────────────────────────────────────────────────────────
@@ -327,107 +337,64 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 // none exist, an error modal is returned instead of an empty dropdown.
 // When account is nil a new account is created; otherwise it is edited.
 func NewAccountForm(app App, account *model.Account, onClose func()) tview.Primitive {
-	isEdit := account != nil
-
-	if !isEdit {
-		if providers := app.Service().Providers(); len(providers) == 0 {
-			return errorModal("No providers configured.\nAdd a provider before creating an account.", onClose)
-		}
+	if account != nil {
+		return accountEditForm(app, account, onClose)
 	}
+	if providers := app.Service().Providers(); len(providers) == 0 {
+		return errorModal("No providers configured.\nAdd a provider before creating an account.", onClose)
+	}
+	return accountCreateForm(app, onClose)
+}
 
-	var email, provider, initPause string
-	if isEdit {
-		email = account.UserEmail()
-		provider = account.ProviderName()
-		if !account.PauseUntil().IsZero() {
-			initPause = model.FormatTime(account.PauseUntil())
-		}
+// accountEditForm builds the edit-mode account form: pause state only.
+// The underlying user's name is a different aggregate's field and is not
+// touched here — see NewAccountForm's doc comment.
+func accountEditForm(app App, account *model.Account, onClose func()) tview.Primitive {
+	email := account.UserEmail()
+	provider := account.ProviderName()
+	var initPause string
+	if !account.PauseUntil().IsZero() {
+		initPause = model.FormatTime(account.PauseUntil())
 	}
 
 	form := tview.NewForm()
 	form.SetBorder(true)
-	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", email, provider))
-	} else {
-		form.SetTitle(" New Account ")
-	}
+	form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", email, provider))
 
-	if isEdit {
-		form.AddInputField("Email (fixed)", email, 40, func(_ string, _ rune) bool { return false }, nil)
-		form.AddInputField("Provider (fixed)", provider, 40, func(_ string, _ rune) bool { return false }, nil)
-		form.AddInputField("Pause until", initPause, 20, nil, nil)
+	form.AddInputField("Email (fixed)", email, 40, func(_ string, _ rune) bool { return false }, nil)
+	form.AddInputField("Provider (fixed)", provider, 40, func(_ string, _ rune) bool { return false }, nil)
+	form.AddInputField("Pause until", initPause, 20, nil, nil)
 
-		pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
-		if !ok {
-			// We just added this field, so this should theoretically never happen.
-			return errorModal("Internal error: failed to initialize form fields.", onClose)
-		}
-		pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
-	} else {
-		providers := app.Service().Providers() // already sorted by name; non-empty, checked above
-		providerNames := make([]string, len(providers))
-		for i, p := range providers {
-			providerNames[i] = p.Name()
-		}
-		form.AddInputField("Email", "", 40, nil, nil)
-		form.AddDropDown("Provider", providerNames, 0, nil)
-		form.AddInputField("Name", "", 40, nil, nil)
+	pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+	if !ok {
+		// We just added this field, so this should theoretically never happen.
+		return errorModal("Internal error: failed to initialize form fields.", onClose)
 	}
+	pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
 
 	save := func() {
-		if isEdit {
-			field, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
-			if !ok {
-				app.SetStatus("[red]internal error: Pause until field missing[-]")
-				return
-			}
-			val := strings.TrimSpace(field.GetText())
+		field, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Pause until field missing[-]")
+			return
+		}
+		val := strings.TrimSpace(field.GetText())
 
-			var until time.Time
-			if val != "" {
-				t, err := model.ParseTime(val)
-				if err != nil {
-					app.SetStatus(fmt.Sprintf("[red]pause until: use format %s[-]", model.TimeFormat))
-					return
-				}
-				until = t
+		var until time.Time
+		if val != "" {
+			t, err := model.ParseTime(val)
+			if err != nil {
+				app.SetStatus(fmt.Sprintf("[red]pause until: use format %s[-]", model.TimeFormat))
+				return
 			}
+			until = t
+		}
 
-			if err := app.Mutate(func(s *service.Service) error {
-				return s.PauseAccount(email, provider, until)
-			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return
-			}
-		} else {
-			emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
-			if !ok {
-				app.SetStatus("[red]internal error: Email field missing[-]")
-				return
-			}
-			emailVal := strings.TrimSpace(emailField.GetText())
-
-			providerDropDown, ok := form.GetFormItemByLabel("Provider").(*tview.DropDown)
-			if !ok {
-				app.SetStatus("[red]internal error: Provider dropdown missing[-]")
-				return
-			}
-			_, providerVal := providerDropDown.GetCurrentOption()
-
-			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
-			if !ok {
-				app.SetStatus("[red]internal error: Name field missing[-]")
-				return
-			}
-			nameVal := strings.TrimSpace(nameField.GetText())
-
-			if err := app.Mutate(func(s *service.Service) error {
-				_, err := s.CreateAccount(emailVal, nameVal, providerVal)
-				return err
-			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return
-			}
+		if err := app.Mutate(func(s *service.Service) error {
+			return s.PauseAccount(email, provider, until)
+		}); err != nil {
+			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return
 		}
 		onClose()
 	}
@@ -437,11 +404,70 @@ func NewAccountForm(app App, account *model.Account, onClose func()) tview.Primi
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	height := 14
-	if isEdit {
-		height = 13
+	return centeredModal(form, 13)
+}
+
+// accountCreateForm builds the create-mode account form. Provider must
+// already exist and is non-empty — checked by NewAccountForm before this
+// is reached. The user is resolved or created on demand by
+// Service.CreateAccount.
+func accountCreateForm(app App, onClose func()) tview.Primitive {
+	providers := app.Service().Providers() // already sorted by name; non-empty, checked by caller
+	providerNames := make([]string, len(providers))
+	for i, p := range providers {
+		providerNames[i] = p.Name()
 	}
-	return centeredModal(form, 64, height)
+
+	form := tview.NewForm()
+	form.SetBorder(true)
+	form.SetTitle(" New Account ")
+
+	form.AddInputField("Email", "", 40, nil, nil)
+	form.AddDropDown("Provider", providerNames, 0, nil)
+	form.AddInputField("Name", "", 40, nil, nil)
+
+	save := func() {
+		emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Email field missing[-]")
+			return
+		}
+		emailVal := strings.TrimSpace(emailField.GetText())
+
+		providerDropDown, ok := form.GetFormItemByLabel("Provider").(*tview.DropDown)
+		if !ok {
+			app.SetStatus("[red]internal error: Provider dropdown missing[-]")
+			return
+		}
+		_, providerVal := providerDropDown.GetCurrentOption()
+
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Name field missing[-]")
+			return
+		}
+		nameVal := strings.TrimSpace(nameField.GetText())
+
+		if err := app.Service().ValidateAccount(emailVal, providerVal); err != nil {
+			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return
+		}
+		if err := app.Mutate(func(s *service.Service) error {
+			_, err := s.CreateAccount(emailVal, nameVal, providerVal)
+			return err
+		}); err != nil {
+			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return
+		}
+		onClose()
+	}
+
+	form.AddButton("Save", save)
+	form.AddButton("Cancel", onClose)
+	form.SetCancelFunc(onClose)
+	addCtrlS(form, save)
+
+	return centeredModal(form, 14)
 }
 
 // ── Grant / Revoke forms ──────────────────────────────────────────────────────
@@ -501,7 +527,7 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 10)
+	return centeredModal(form, 10)
 }
 
 // NewRevokeForm returns a form for revoking project's access from an
@@ -556,5 +582,5 @@ func NewRevokeForm(app App, project *model.Project, onClose func()) tview.Primit
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 10)
+	return centeredModal(form, 10)
 }

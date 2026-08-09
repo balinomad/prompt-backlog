@@ -133,66 +133,78 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case KeyProviders:
 		p.app.SwitchToMain()
 		return nil
-
 	case KeyNew:
-		p.app.SetHints(HintsForm)
-		p.app.ShowModal(NewProviderForm(p.app, nil, func() {
-			p.app.SetHints(HintsProvidersPanel)
-			p.app.HideModal()
-		}))
-		return nil
-
+		return p.handleNew()
 	case KeyEdit:
-		if prov := p.selectedProvider(); prov != nil {
-			p.app.SetHints(HintsForm)
-			p.app.ShowModal(NewProviderForm(p.app, prov, func() {
-				p.app.SetHints(HintsProvidersPanel)
-				p.app.HideModal()
-			}))
-		}
-		return nil
-
+		return p.handleEdit()
 	case KeyDelete:
-		if prov := p.selectedProvider(); prov != nil {
-			name := prov.Name()
-			p.app.SetHints(HintsConfirmModal)
-			p.app.ShowModal(NewConfirmModal(
-				fmt.Sprintf("Remove provider %q?\nAll accounts using it must be removed first.", name),
-				func() {
-					if err := p.app.Mutate(func(s *service.Service) error {
-						return s.DeleteProvider(name)
-					}); err != nil {
-						p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-					}
-					p.app.SetHints(HintsProvidersPanel)
-					p.app.HideModal()
-				},
-				func() {
-					p.app.SetHints(HintsProvidersPanel)
-					p.app.HideModal()
-				},
-			))
-		}
-		return nil
-
+		return p.handleDelete()
 	case KeyHelp:
-		p.app.SetHints(HintsHelpOverlay)
-		p.app.ShowModal(NewHelpOverlay(p.app))
-		return nil
-
+		return showHelp(p.app, HintsProvidersPanel)
 	case KeyQuit:
-		p.app.SetHints(HintsConfirmModal)
-		p.app.ShowModal(NewConfirmModal(
-			"Quit llm-desk?",
-			func() { p.app.Quit() },
-			func() {
-				p.app.SetHints(HintsProvidersPanel)
-				p.app.HideModal()
-			},
-		))
-		return nil
+		return confirmQuit(p.app, HintsProvidersPanel)
 	}
 	return event
+}
+
+func (p *ProvidersPanel) handleNew() *tcell.EventKey {
+	modal := NewProviderForm(p.app, nil, func() {
+		p.app.SetHints(HintsProvidersPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *ProvidersPanel) handleEdit() *tcell.EventKey {
+	prov := p.selectedProvider()
+	if prov == nil {
+		return nil
+	}
+	modal := NewProviderForm(p.app, prov, func() {
+		p.app.SetHints(HintsProvidersPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
+	prov := p.selectedProvider()
+	if prov == nil {
+		return nil
+	}
+	name := prov.Name()
+	modal := NewConfirmModal(
+		fmt.Sprintf("Remove provider %q?\nAll accounts using it must be removed first.", name),
+		func() {
+			if err := p.app.Mutate(func(s *service.Service) error {
+				return s.DeleteProvider(name)
+			}); err != nil {
+				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			}
+			p.app.SetHints(HintsProvidersPanel)
+			p.app.HideModal()
+		},
+		func() {
+			p.app.SetHints(HintsProvidersPanel)
+			p.app.HideModal()
+		},
+	)
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsConfirmModal)
+	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────

@@ -317,6 +317,14 @@ func (s *Service) AccountSessions(userEmail, providerName string) ([]*model.Sess
 	return s.reg.AccountSessions(acc), nil
 }
 
+// ValidateAccount reports whether (email, provider) would form a valid
+// account, without inserting anything. Checks presence only — email
+// format is validated separately when the underlying user is created
+// (see model.ValidateUser via CreateAccount/StartSession).
+func (s *Service) ValidateAccount(email, provider string) error {
+	return model.ValidateAccount(model.NewAccount(email, provider))
+}
+
 // AddAccount inserts an account into the registry.
 // Returns an error if the user or provider is not registered. This is the
 // strict counterpart to StartSession's on-demand creation — use this when

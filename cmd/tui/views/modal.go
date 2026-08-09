@@ -1,6 +1,8 @@
 package views
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -41,11 +43,35 @@ func NewConfirmModal(message string, onConfirm, onCancel func()) tview.Primitive
 	return modal
 }
 
+// confirmQuit opens the "Quit llm-desk?" confirmation modal, shared by
+// every panel's KeyQuit case. returnHints is the hint line restored if the
+// operator cancels, so each panel returns to its own hint line rather than
+// a neighbour's.
+func confirmQuit(app App, returnHints string) *tcell.EventKey {
+	modal := NewConfirmModal(
+		"Quit llm-desk?",
+		func() { app.Quit() },
+		func() {
+			app.SetHints(returnHints)
+			app.HideModal()
+		},
+	)
+	if err := app.ShowModal(modal); err != nil {
+		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	app.SetHints(HintsConfirmModal)
+	return nil
+}
+
 // ── Help overlay ──────────────────────────────────────────────────────────────
 
-// NewHelpOverlay returns a scrollable keyboard-reference overlay.
-// Esc closes the overlay by calling app.HideModal.
-func NewHelpOverlay(app App) tview.Primitive {
+// NewHelpOverlay returns a scrollable keyboard-reference overlay. Esc
+// closes it via app.HideModal and restores returnHints — the hint line
+// the caller was showing before the overlay opened — so each panel
+// returns to its own hint line rather than a neighbour's. Mirrors
+// confirmQuit's returnHints parameter for the same underlying problem.
+func NewHelpOverlay(app App, returnHints string) tview.Primitive {
 	text := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
@@ -53,7 +79,7 @@ func NewHelpOverlay(app App) tview.Primitive {
 
 	text.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == KeyCancel {
-			app.SetHints(HintsAccountsPanel)
+			app.SetHints(returnHints)
 			app.HideModal()
 			return nil
 		}
@@ -77,6 +103,18 @@ func NewHelpOverlay(app App) tview.Primitive {
 		AddItem(nil, 0, 1, false)
 }
 
+// showHelp opens the help overlay, shared by every panel's KeyHelp case.
+// returnHints is the hint line restored when the overlay closes, so each
+// panel returns to its own hint line rather than a neighbour's.
+func showHelp(app App, returnHints string) *tcell.EventKey {
+	if err := app.ShowModal(NewHelpOverlay(app, returnHints)); err != nil {
+		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	app.SetHints(HintsHelpOverlay)
+	return nil
+}
+
 // ── Error modal ───────────────────────────────────────────────────────────────
 
 // errorModal returns a simple message modal for conditions where a form
@@ -88,9 +126,10 @@ func errorModal(message string, onClose func()) tview.Primitive {
 // ── centeredModal ─────────────────────────────────────────────────────────────
 
 // centeredModal wraps content in a transparent flex overlay so that it
-// appears centred on screen. width and height are the dimensions of the
-// inner content, not the overlay.
-func centeredModal(content tview.Primitive, width, height int) tview.Primitive {
+// appears centred on screen at a fixed width of 64 columns. height is the
+// vertical dimension of the inner content, not the overlay.
+func centeredModal(content tview.Primitive, height int) tview.Primitive {
+	const width = 64
 	return tview.NewFlex().
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().

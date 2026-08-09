@@ -23,6 +23,7 @@ func TestProjectsPanel_Refresh(t *testing.T) {
 	}{
 		{"three projects", func(_ *testing.T, _ *mockApp) {}, 3},
 		{"empty registry", func(t *testing.T, app *mockApp) {
+			t.Helper()
 			app.svc = newTestService(t, model.NewRegistry())
 		}, 0},
 	}
@@ -46,8 +47,8 @@ func TestProjectsPanel_Refresh_SortedByName(t *testing.T) {
 	p := NewProjectsPanel(app)
 	p.Refresh()
 
-	var names []string
 	itemCount := p.list.GetItemCount()
+	names := make([]string, 0, itemCount)
 	for i := range itemCount {
 		main, _ := p.list.GetItemText(i)
 		names = append(names, main)

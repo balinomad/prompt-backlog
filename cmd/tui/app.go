@@ -210,7 +210,7 @@ func isNilPrimitive(p tview.Primitive) bool {
 	}
 	v := reflect.ValueOf(p)
 	switch v.Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface:
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface:
 		return v.IsNil()
 	default:
 		return false

@@ -22,6 +22,7 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 	}{
 		{"two providers", func(_ *testing.T, _ *mockApp) {}, 2},
 		{"empty registry", func(t *testing.T, app *mockApp) {
+			t.Helper()
 			app.svc = newTestService(t, model.NewRegistry())
 		}, 0},
 	}
@@ -45,8 +46,8 @@ func TestProvidersPanel_Refresh_SortedByName(t *testing.T) {
 	p := NewProvidersPanel(app)
 	p.Refresh()
 
-	var names []string
 	itemCount := p.list.GetItemCount()
+	names := make([]string, 0, itemCount)
 	for i := range itemCount {
 		main, _ := p.list.GetItemText(i)
 		names = append(names, main)

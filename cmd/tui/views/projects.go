@@ -172,111 +172,115 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 
 	case KeyNew:
-		modal := NewProjectForm(p.app, nil, func() {
-			p.app.SetHints(HintsProjectsPanel)
-			p.app.HideModal()
-		})
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsForm)
-		return nil
-
+		return p.handleNew()
 	case KeyEdit:
-		if proj := p.selectedProject(); proj != nil {
-			modal := NewProjectForm(p.app, proj, func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			})
-			if err := p.app.ShowModal(modal); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			p.app.SetHints(HintsForm)
-		}
-		return nil
-
+		return p.handleEdit()
 	case KeyDelete:
-		if proj := p.selectedProject(); proj != nil {
-			name := proj.Name()
-			modal := NewConfirmModal(
-				fmt.Sprintf("Delete project %q?\nIt must not be granted to any account.", name),
-				func() {
-					if err := p.app.Mutate(func(s *service.Service) error {
-						return s.DeleteProject(name)
-					}); err != nil {
-						p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-					}
-					p.app.SetHints(HintsProjectsPanel)
-					p.app.HideModal()
-				},
-				func() {
-					p.app.SetHints(HintsProjectsPanel)
-					p.app.HideModal()
-				},
-			)
-			if err := p.app.ShowModal(modal); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			p.app.SetHints(HintsConfirmModal)
-		}
-		return nil
-
+		return p.handleDelete()
 	case KeyGrant:
-		if proj := p.selectedProject(); proj != nil {
-			modal := NewGrantForm(p.app, proj, func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			})
-			if err := p.app.ShowModal(modal); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			p.app.SetHints(HintsForm)
-		}
-		return nil
-
+		return p.handleGrant()
 	case KeyRevoke:
-		if proj := p.selectedProject(); proj != nil {
-			modal := NewRevokeForm(p.app, proj, func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			})
-			if err := p.app.ShowModal(modal); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			p.app.SetHints(HintsForm)
-		}
-		return nil
-
+		return p.handleRevoke()
 	case KeyHelp:
-		if err := p.app.ShowModal(NewHelpOverlay(p.app)); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsHelpOverlay)
-		return nil
-
+		return showHelp(p.app, HintsProjectsPanel)
 	case KeyQuit:
-		modal := NewConfirmModal(
-			"Quit llm-desk?",
-			func() { p.app.Quit() },
-			func() {
-				p.app.SetHints(HintsProjectsPanel)
-				p.app.HideModal()
-			},
-		)
-		if err := p.app.ShowModal(modal); err != nil {
-			p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return nil
-		}
-		p.app.SetHints(HintsConfirmModal)
-		return nil
+		return confirmQuit(p.app, HintsProjectsPanel)
 	}
 	return event
+}
+
+func (p *ProjectsPanel) handleNew() *tcell.EventKey {
+	modal := NewProjectForm(p.app, nil, func() {
+		p.app.SetHints(HintsProjectsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *ProjectsPanel) handleEdit() *tcell.EventKey {
+	proj := p.selectedProject()
+	if proj == nil {
+		return nil
+	}
+	modal := NewProjectForm(p.app, proj, func() {
+		p.app.SetHints(HintsProjectsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
+	proj := p.selectedProject()
+	if proj == nil {
+		return nil
+	}
+	name := proj.Name()
+	modal := NewConfirmModal(
+		fmt.Sprintf("Delete project %q?\nIt must not be granted to any account.", name),
+		func() {
+			if err := p.app.Mutate(func(s *service.Service) error {
+				return s.DeleteProject(name)
+			}); err != nil {
+				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			}
+			p.app.SetHints(HintsProjectsPanel)
+			p.app.HideModal()
+		},
+		func() {
+			p.app.SetHints(HintsProjectsPanel)
+			p.app.HideModal()
+		},
+	)
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsConfirmModal)
+	return nil
+}
+
+func (p *ProjectsPanel) handleGrant() *tcell.EventKey {
+	proj := p.selectedProject()
+	if proj == nil {
+		return nil
+	}
+	modal := NewGrantForm(p.app, proj, func() {
+		p.app.SetHints(HintsProjectsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
+}
+
+func (p *ProjectsPanel) handleRevoke() *tcell.EventKey {
+	proj := p.selectedProject()
+	if proj == nil {
+		return nil
+	}
+	modal := NewRevokeForm(p.app, proj, func() {
+		p.app.SetHints(HintsProjectsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
+	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────

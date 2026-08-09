@@ -12,6 +12,23 @@ import (
 	"github.com/rivo/tview"
 )
 
+// queueEditor holds the mutable state behind one NewQueueEditor view: the
+// live queue snapshot and the list rendering it. Key handling is
+// implemented as methods, not a closure passed to SetInputCapture, so
+// each case is scored for cyclomatic complexity on its own rather than
+// folded into NewQueueEditor.
+type queueEditor struct {
+	app      App
+	account  *model.Account
+	session  *model.Session
+	onClose  func()
+	email    string
+	provider string
+	id       uint64
+	queue    []model.Prompt
+	list     *tview.List
+}
+
 // NewQueueEditor returns a view for managing a session's prompt queue:
 // listing, adding, editing, deleting, and reordering prompts. Every action
 // commits immediately via Service.UpdateSessionPrompts — there is no
@@ -41,145 +58,170 @@ func NewQueueEditor(app App, account *model.Account, session *model.Session, onC
 		return errorModal("No session selected.", onClose)
 	}
 
-	email := account.UserEmail()
-	provider := account.ProviderName()
 	id := session.ID()
-
 	live := app.Service().Session(id)
 	if live == nil {
 		return errorModal("Session no longer exists.", onClose)
 	}
-	queue := live.Queue()
 
-	list := tview.NewList().ShowSecondaryText(false)
-	list.SetBorder(true)
-	list.SetTitle(fmt.Sprintf(" Queue: session #%d ", id))
-
-	rebuildList := func() {
-		list.Clear()
-		for _, p := range queue {
-			list.AddItem(promptItemText(p), "", 0, nil)
-		}
-	}
-	rebuildList()
-
-	// reopen returns to a freshly (re)constructed list view, re-fetching
-	// the session so a just-committed change is reflected. See the
-	// function doc for why this goes through HideModal+ShowModal rather
-	// than an in-place refresh.
-	reopen := func() {
-		app.HideModal()
-		if err := app.ShowModal(NewQueueEditor(app, account, session, onClose)); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return
-		}
-		app.SetHints(HintsQueueEditor)
+	qe := &queueEditor{
+		app:      app,
+		account:  account,
+		session:  session,
+		onClose:  onClose,
+		email:    account.UserEmail(),
+		provider: account.ProviderName(),
+		id:       id,
+		queue:    live.Queue(),
 	}
 
-	// commit persists newQueue and reports success. Callers that cannot
-	// introduce a new validation failure by construction — delete removes
-	// an already-valid entry; reorder only permutes already-valid entries
-	// — may ignore the result, since there is nothing for the operator to
-	// fix. Callers that accept new free-text input (add/edit) must check
-	// it, to keep the form open for a retry on failure.
-	commit := func(newQueue []model.Prompt) bool {
-		if err := app.Mutate(func(s *service.Service) error {
-			return s.UpdateSessionPrompts(email, provider, id, newQueue)
-		}); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return false
-		}
-		return true
+	qe.list = tview.NewList().ShowSecondaryText(false)
+	qe.list.SetBorder(true)
+	qe.list.SetTitle(fmt.Sprintf(" Queue: session #%d ", id))
+	qe.rebuildList()
+	qe.list.SetInputCapture(qe.handleKey)
+
+	return qe.list
+}
+
+// rebuildList repopulates qe.list from qe.queue.
+func (qe *queueEditor) rebuildList() {
+	qe.list.Clear()
+	for _, p := range qe.queue {
+		qe.list.AddItem(promptItemText(p), "", 0, nil)
 	}
+}
 
-	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == KeyCancel {
-			onClose()
-			return nil
-		}
-		if event.Key() != tcell.KeyRune {
-			return event
-		}
+// reopen returns to a freshly (re)constructed queue editor, re-fetching
+// the session so a just-committed change is reflected. See NewQueueEditor's
+// doc comment for why this goes through HideModal+ShowModal rather than an
+// in-place refresh.
+func (qe *queueEditor) reopen() {
+	qe.app.HideModal()
+	if err := qe.app.ShowModal(NewQueueEditor(qe.app, qe.account, qe.session, qe.onClose)); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return
+	}
+	qe.app.SetHints(HintsQueueEditor)
+}
 
-		switch event.Rune() {
-		case KeyNew:
-			modal := newPromptForm(app, queue, -1, commit, reopen)
-			app.HideModal()
-			if err := app.ShowModal(modal); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			app.SetHints(HintsForm)
-			return nil
+// commit persists newQueue and reports success. Callers that cannot
+// introduce a new validation failure by construction — delete removes an
+// already-valid entry; reorder only permutes already-valid entries — may
+// ignore the result, since there is nothing for the operator to fix.
+// Callers that accept new free-text input (add/edit) must check it, to
+// keep the form open for a retry on failure.
+func (qe *queueEditor) commit(newQueue []model.Prompt) bool {
+	if err := qe.app.Mutate(func(s *service.Service) error {
+		return s.UpdateSessionPrompts(qe.email, qe.provider, qe.id, newQueue)
+	}); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return false
+	}
+	return true
+}
 
-		case KeyEdit:
-			idx := list.GetCurrentItem()
-			if idx < 0 || idx >= len(queue) {
-				return nil
-			}
-			modal := newPromptForm(app, queue, idx, commit, reopen)
-			app.HideModal()
-			if err := app.ShowModal(modal); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			app.SetHints(HintsForm)
-			return nil
-
-		case KeyDelete:
-			idx := list.GetCurrentItem()
-			if idx < 0 || idx >= len(queue) {
-				return nil
-			}
-			label := queue[idx].Text()
-			modal := NewConfirmModal(
-				fmt.Sprintf("Delete prompt\n%q?", label),
-				func() {
-					commit(slices.Delete(slices.Clone(queue), idx, idx+1))
-					reopen()
-				},
-				reopen,
-			)
-			app.HideModal()
-			if err := app.ShowModal(modal); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-				return nil
-			}
-			app.SetHints(HintsConfirmModal)
-			return nil
-
-		case KeyMoveUp:
-			idx := list.GetCurrentItem()
-			if idx <= 0 || idx >= len(queue) {
-				return nil
-			}
-			newQueue := slices.Clone(queue)
-			newQueue[idx-1], newQueue[idx] = newQueue[idx], newQueue[idx-1]
-			if commit(newQueue) {
-				queue = newQueue
-				rebuildList()
-				list.SetCurrentItem(idx - 1)
-			}
-			return nil
-
-		case KeyMoveDown:
-			idx := list.GetCurrentItem()
-			if idx < 0 || idx >= len(queue)-1 {
-				return nil
-			}
-			newQueue := slices.Clone(queue)
-			newQueue[idx], newQueue[idx+1] = newQueue[idx+1], newQueue[idx]
-			if commit(newQueue) {
-				queue = newQueue
-				rebuildList()
-				list.SetCurrentItem(idx + 1)
-			}
-			return nil
-		}
+func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == KeyCancel {
+		qe.onClose()
+		return nil
+	}
+	if event.Key() != tcell.KeyRune {
 		return event
-	})
+	}
 
-	return list
+	switch event.Rune() {
+	case KeyNew:
+		return qe.handleNew()
+	case KeyEdit:
+		return qe.handleEdit()
+	case KeyDelete:
+		return qe.handleDelete()
+	case KeyMoveUp:
+		return qe.handleMoveUp()
+	case KeyMoveDown:
+		return qe.handleMoveDown()
+	}
+	return event
+}
+
+func (qe *queueEditor) handleNew() *tcell.EventKey {
+	modal := newPromptForm(qe.app, qe.queue, -1, qe.commit, qe.reopen)
+	qe.app.HideModal()
+	if err := qe.app.ShowModal(modal); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	qe.app.SetHints(HintsForm)
+	return nil
+}
+
+func (qe *queueEditor) handleEdit() *tcell.EventKey {
+	idx := qe.list.GetCurrentItem()
+	if idx < 0 || idx >= len(qe.queue) {
+		return nil
+	}
+	modal := newPromptForm(qe.app, qe.queue, idx, qe.commit, qe.reopen)
+	qe.app.HideModal()
+	if err := qe.app.ShowModal(modal); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	qe.app.SetHints(HintsForm)
+	return nil
+}
+
+func (qe *queueEditor) handleDelete() *tcell.EventKey {
+	idx := qe.list.GetCurrentItem()
+	if idx < 0 || idx >= len(qe.queue) {
+		return nil
+	}
+	label := qe.queue[idx].Text()
+	modal := NewConfirmModal(
+		fmt.Sprintf("Delete prompt\n%q?", label),
+		func() {
+			qe.commit(slices.Delete(slices.Clone(qe.queue), idx, idx+1))
+			qe.reopen()
+		},
+		qe.reopen,
+	)
+	qe.app.HideModal()
+	if err := qe.app.ShowModal(modal); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	qe.app.SetHints(HintsConfirmModal)
+	return nil
+}
+
+func (qe *queueEditor) handleMoveUp() *tcell.EventKey {
+	idx := qe.list.GetCurrentItem()
+	if idx <= 0 || idx >= len(qe.queue) {
+		return nil
+	}
+	newQueue := slices.Clone(qe.queue)
+	newQueue[idx-1], newQueue[idx] = newQueue[idx], newQueue[idx-1]
+	if qe.commit(newQueue) {
+		qe.queue = newQueue
+		qe.rebuildList()
+		qe.list.SetCurrentItem(idx - 1)
+	}
+	return nil
+}
+
+func (qe *queueEditor) handleMoveDown() *tcell.EventKey {
+	idx := qe.list.GetCurrentItem()
+	if idx < 0 || idx >= len(qe.queue)-1 {
+		return nil
+	}
+	newQueue := slices.Clone(qe.queue)
+	newQueue[idx], newQueue[idx+1] = newQueue[idx+1], newQueue[idx]
+	if qe.commit(newQueue) {
+		qe.queue = newQueue
+		qe.rebuildList()
+		qe.list.SetCurrentItem(idx + 1)
+	}
+	return nil
 }
 
 // newPromptForm returns a small form for adding (idx == -1) or editing
@@ -242,13 +284,13 @@ func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.P
 	form.SetCancelFunc(onDone)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 64, 11)
+	return centeredModal(form, 11)
 }
 
 // promptItemText formats a prompt row for the queue list.
 func promptItemText(p model.Prompt) string {
 	if p.SpawnsSession() {
-		return fmt.Sprintf("%s  [cyan]→ new session[-]", p.Text())
+		return p.Text() + "  [cyan]→ new session[-]"
 	}
 	return p.Text()
 }
