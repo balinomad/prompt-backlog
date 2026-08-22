@@ -12,3 +12,9 @@
 - [ ] `model.Registry`'s multi-result read getters (`ProjectSessions`, `AccountSessions`, `AccountProjects`, `ProjectAccounts`) return nil on stale/missing input by design, so callers don't error-check reads — revisit only if the service layer needs to distinguish "not found" from "found, zero results".
 - [ ] Black box test everywhere.
 - [ ] Apply DRY everywhere when it makes sense.
+
+## Skills (future — not started; existing functionality takes priority first)
+
+- [ ] I want to attach a boolean field to provider that indicates if it supports skills.
+- [ ] We can extend the model with skills, and connect them to sessions. We also need a mechanism to register which version of the skill was installed with which session.
+- Decided so far: `Skill` is an independent entity, like `Project` — named, exists on its own, then attached to sessions. No further design until this section is actually picked up.
