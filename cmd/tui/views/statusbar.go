@@ -8,36 +8,80 @@ import (
 // Pre-defined hint lines for each focus context. Views pass these to
 // app.SetHints in their focus handlers. Key names are bold via tview color tags.
 
-const (
+var (
 	// HintsAccountsPanel is shown when the accounts list has focus.
-	HintsAccountsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]r[-::-] providers  [::b]p[-::-] projects  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+	HintsAccountsPanel = hints{
+		{string(KeyNew), "new"},
+		{string(KeyEdit), "edit"},
+		{string(KeyDelete), "del"},
+		{string(KeyProviders), "providers"},
+		{string(KeyProjects), "projects"},
+		{"Tab", "focus"},
+		{string(KeyHelp), "help"},
+		{string(KeyQuit), "quit"},
+	}.String()
 
 	// HintsDetailPanel is shown when the sessions sub-list in the detail panel
 	// has focus.
-	HintsDetailPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] end" +
-		"  [::b]u[-::-] queue  [::b]Space[-::-] continue  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+	HintsDetailPanel = hints{
+		{string(KeyNew), "new"},
+		{string(KeyEdit), "edit"},
+		{string(KeyDelete), "end"},
+		{string(KeyQueue), "queue"},
+		{"Space", "continue"},
+		{"Tab", "focus"},
+		{string(KeyHelp), "help"},
+		{string(KeyQuit), "quit"},
+	}.String()
 
 	// HintsProvidersPanel is shown when the providers screen has focus.
-	HintsProvidersPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+	HintsProvidersPanel = hints{
+		{string(KeyNew), "new"},
+		{string(KeyEdit), "edit"},
+		{string(KeyDelete), "del"},
+		{"Tab", "focus"},
+		{string(KeyHelp), "help"},
+		{string(KeyQuit), "quit"},
+	}.String()
 
 	// HintsProjectsPanel is shown when the projects screen has focus.
-	HintsProjectsPanel = "[::b]n[-::-] new  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]g[-::-] grant  [::b]x[-::-] revoke  [::b]Tab[-::-] focus  [::b]?[-::-] help  [::b]q[-::-] quit"
+	HintsProjectsPanel = hints{
+		{string(KeyNew), "new"},
+		{string(KeyEdit), "edit"},
+		{string(KeyDelete), "del"},
+		{string(KeyGrant), "grant"},
+		{string(KeyRevoke), "revoke"},
+		{"Tab", "focus"},
+		{string(KeyHelp), "help"},
+		{string(KeyQuit), "quit"},
+	}.String()
 
 	// HintsForm is shown when a form modal is open.
-	HintsForm = "[::b]Ctrl+S[-::-] save  [::b]Esc[-::-] cancel"
+	HintsForm = hints{
+		{"Ctrl+S", "save"},
+		{"Esc", "cancel"},
+	}.String()
 
 	// HintsQueueEditor is shown when the queue editor modal is open.
-	HintsQueueEditor = "[::b]n[-::-] add  [::b]e[-::-] edit  [::b]d[-::-] del" +
-		"  [::b]K[-::-] up  [::b]J[-::-] down  [::b]Esc[-::-] close"
+	HintsQueueEditor = hints{
+		{string(KeyNew), "add"},
+		{string(KeyEdit), "edit"},
+		{string(KeyDelete), "del"},
+		{string(KeyMoveUp), "up"},
+		{string(KeyMoveDown), "down"},
+		{"Esc", "close"},
+	}.String()
 
 	// HintsConfirmModal is shown when a confirmation dialog is open.
-	HintsConfirmModal = "[::b]Enter[-::-] confirm  [::b]Esc[-::-] cancel"
+	HintsConfirmModal = hints{
+		{"Enter", "confirm"},
+		{"Esc", "cancel"},
+	}.String()
 
 	// HintsHelpOverlay is shown when the help overlay is open.
-	HintsHelpOverlay = "[::b]Esc[-::-] close"
+	HintsHelpOverlay = hints{
+		{"Esc", "close"},
+	}.String()
 )
 
 // ── StatusBar ─────────────────────────────────────────────────────────────────

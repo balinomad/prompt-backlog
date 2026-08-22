@@ -631,7 +631,8 @@ func TestRoundTrip_Accounts(t *testing.T) {
 	if !aliceClaude.PauseUntil().IsZero() {
 		t.Error("alice/claude PauseUntil() should be zero")
 	}
-	projects := loaded.AccountProjects(aliceClaude)
+	projects, err := loaded.AccountProjects(aliceClaude)
+	must(t, err)
 	names := make([]string, len(projects))
 	for i, p := range projects {
 		names[i] = p.Name()
@@ -651,7 +652,9 @@ func TestRoundTrip_Accounts(t *testing.T) {
 	if !bobChatgpt.PauseUntil().Equal(wantPause) {
 		t.Errorf("PauseUntil() = %v, want %v", bobChatgpt.PauseUntil(), wantPause)
 	}
-	if len(loaded.AccountProjects(bobChatgpt)) != 0 {
+	bobProjects, err := loaded.AccountProjects(bobChatgpt)
+	must(t, err)
+	if len(bobProjects) != 0 {
 		t.Error("bob/chatgpt should have no assigned projects")
 	}
 }
@@ -664,7 +667,8 @@ func TestRoundTrip_Sessions(t *testing.T) {
 	must(t, err)
 
 	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
-	sessions := loaded.AccountSessions(aliceClaude)
+	sessions, err := loaded.AccountSessions(aliceClaude)
+	must(t, err)
 	if len(sessions) != 1 {
 		t.Fatalf("alice/claude sessions: got %d, want 1", len(sessions))
 	}
@@ -687,7 +691,8 @@ func TestRoundTrip_Sessions(t *testing.T) {
 	}
 
 	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Provider("chatgpt"))
-	bobSessions := loaded.AccountSessions(bobChatgpt)
+	bobSessions, err := loaded.AccountSessions(bobChatgpt)
+	must(t, err)
 	if len(bobSessions) != 1 {
 		t.Fatalf("bob/chatgpt sessions: got %d, want 1", len(bobSessions))
 	}

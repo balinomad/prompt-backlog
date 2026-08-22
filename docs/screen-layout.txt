@@ -19,7 +19,7 @@ opened from session detail via `u`, not a fourth page.
 │  │                            │  │Projects: Alpha, Beta              │  │
 │  └────────────────────────────┘  └───────────────────────────────────┘  │
 │                                                                         │
-│  n new  e edit  d del  r providers  p projects  Tab focus  ? help       │
+│  n new  e edit  d del  r providers  p projects  Tab focus  h help       │
 │  q quit                                                          saved ✓│
 └─────────────────────────────────────────────────────────────────────────┘
 
@@ -42,7 +42,7 @@ account-info panel (bottom).
 │  │Deep research: yes                                            │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
-│  n new  e edit  d del  Tab focus  ? help  q quit  (Esc/r: back)    │
+│  n new  e edit  d del  Tab focus  h help  q quit  (Esc/r: back)    │
 └────────────────────────────────────────────────────────────────────┘
 
 ── Projects screen ─────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ account-info panel (bottom).
 │  │Accounts:     alice@example.com/claude                        │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
-│  n new  e edit  d del  g grant  x revoke  ? help  (Esc/p: back)    │
+│  n new  e edit  d del  g grant  x revoke  h help  (Esc/p: back)    │
 └────────────────────────────────────────────────────────────────────┘
 
 A project with zero granted accounts is flagged "unattached" rather than

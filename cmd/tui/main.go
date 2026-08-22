@@ -19,31 +19,31 @@ func main() {
 	flag.Parse()
 
 	if dataPath == "" {
-		fmt.Fprintf(os.Stderr, "llm-desk: -data flag is required\n")
+		fmt.Fprintf(os.Stderr, "%s: -data flag is required\n", AppName)
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	s, err := openStore(dataPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
 		os.Exit(1)
 	}
 
 	svc, err := service.New(s)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
 		os.Exit(1)
 	}
 
 	app, err := New(svc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
 		os.Exit(1)
 	}
 
 	if err := app.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "llm-desk: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
 		os.Exit(1)
 	}
 }

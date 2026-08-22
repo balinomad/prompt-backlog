@@ -349,20 +349,19 @@ func (r *Registry) UpdateProject(current, next *Project) error {
 	return nil
 }
 
-// ProjectAccounts returns all accounts where this project is assigned, sorted by key string.
-func (r *Registry) ProjectAccounts(p *Project) []*Account {
+// ProjectAccounts returns all accounts where this project is assigned,
+// sorted by key string. Returns ErrProjectNil, ErrProjectNotFound, or
+// ErrProjectStale if p does not resolve. A non-nil, empty slice with a
+// nil error means p resolved but has no assigned accounts.
+func (r *Registry) ProjectAccounts(p *Project) ([]*Account, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if err := r.verifyProject(p); err != nil {
-		return nil
+		return nil, fmt.Errorf("project accounts: %w", err)
 	}
 
 	m := r.projectAccounts[p.name]
-	if len(m) == 0 {
-		return nil
-	}
-
 	result := make([]*Account, 0, len(m))
 	for accKey := range m {
 		if acc := r.accounts[accKey]; acc != nil {
@@ -370,23 +369,22 @@ func (r *Registry) ProjectAccounts(p *Project) []*Account {
 		}
 	}
 	slices.SortFunc(result, func(a, b *Account) int { return cmp.Compare(a.key.String(), b.key.String()) })
-	return result
+	return result, nil
 }
 
-// ProjectSessions returns all sessions for a specific project, sorted by ID.
-func (r *Registry) ProjectSessions(p *Project) []*Session {
+// ProjectSessions returns all sessions for a specific project, sorted by
+// ID. Returns ErrProjectNil, ErrProjectNotFound, or ErrProjectStale if p
+// does not resolve. A non-nil, empty slice with a nil error means p
+// resolved but has no sessions.
+func (r *Registry) ProjectSessions(p *Project) ([]*Session, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if err := r.verifyProject(p); err != nil {
-		return nil
+		return nil, fmt.Errorf("project sessions: %w", err)
 	}
 
 	m := r.projectSessions[p.name]
-	if len(m) == 0 {
-		return nil
-	}
-
 	result := make([]*Session, 0, len(m))
 	for sessID := range m {
 		if sess := r.sessions[sessID]; sess != nil {
@@ -394,7 +392,7 @@ func (r *Registry) ProjectSessions(p *Project) []*Session {
 		}
 	}
 	slices.SortFunc(result, func(a, b *Session) int { return cmp.Compare(a.id, b.id) })
-	return result
+	return result, nil
 }
 
 // verifyProject returns ErrProjectNil if p is nil, ErrProjectNotFound if no
@@ -581,20 +579,19 @@ func (r *Registry) RemoveProjectFromAccount(acc *Account, p *Project) error {
 	return nil
 }
 
-// AccountProjects returns all projects assigned to an account, sorted by name.
-func (r *Registry) AccountProjects(acc *Account) []*Project {
+// AccountProjects returns all projects assigned to an account, sorted by
+// name. Returns ErrAccountNil, ErrAccountNotFound, or ErrAccountStale if
+// acc does not resolve. A non-nil, empty slice with a nil error means acc
+// resolved but has no assigned projects.
+func (r *Registry) AccountProjects(acc *Account) ([]*Project, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if err := r.verifyAccount(acc); err != nil {
-		return nil
+		return nil, fmt.Errorf("account projects: %w", err)
 	}
 
 	m := r.accountProjects[acc.key]
-	if len(m) == 0 {
-		return nil
-	}
-
 	result := make([]*Project, 0, len(m))
 	for pName := range m {
 		if p := r.projects[pName]; p != nil {
@@ -602,23 +599,22 @@ func (r *Registry) AccountProjects(acc *Account) []*Project {
 		}
 	}
 	slices.SortFunc(result, func(a, b *Project) int { return cmp.Compare(a.name, b.name) })
-	return result
+	return result, nil
 }
 
 // AccountSessions returns all sessions for a given account, sorted by ID.
-func (r *Registry) AccountSessions(acc *Account) []*Session {
+// Returns ErrAccountNil, ErrAccountNotFound, or ErrAccountStale if acc
+// does not resolve. A non-nil, empty slice with a nil error means acc
+// resolved but has no sessions.
+func (r *Registry) AccountSessions(acc *Account) ([]*Session, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if err := r.verifyAccount(acc); err != nil {
-		return nil
+		return nil, fmt.Errorf("account sessions: %w", err)
 	}
 
 	m := r.accountSessions[acc.key]
-	if len(m) == 0 {
-		return nil
-	}
-
 	result := make([]*Session, 0, len(m))
 	for sessID := range m {
 		if sess := r.sessions[sessID]; sess != nil {
@@ -626,7 +622,7 @@ func (r *Registry) AccountSessions(acc *Account) []*Session {
 		}
 	}
 	slices.SortFunc(result, func(a, b *Session) int { return cmp.Compare(a.id, b.id) })
-	return result
+	return result, nil
 }
 
 // verifyAccount returns ErrAccountNil if acc is nil, ErrAccountNotFound

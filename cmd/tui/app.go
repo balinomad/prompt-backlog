@@ -12,6 +12,10 @@ import (
 	"github.com/rivo/tview"
 )
 
+// AppName is the application's display name, used in dialog titles and
+// CLI output.
+const AppName = "llm-desk"
+
 // Compile-time check that App implements views.App.
 var _ views.App = (*App)(nil)
 
@@ -61,6 +65,11 @@ func (a *App) Run() error {
 // Views read from this; mutations go through Mutate.
 func (a *App) Service() *service.Service {
 	return a.svc
+}
+
+// AppName returns the application's display name.
+func (a *App) AppName() string {
+	return AppName
 }
 
 // Mutate applies fn to the service. If fn returns nil, the result is

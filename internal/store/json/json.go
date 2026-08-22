@@ -217,7 +217,10 @@ func loadSessions(dto *registryDTO, reg *model.Registry) error {
 // into place. An interrupted write therefore never corrupts the existing file.
 // The parent directory is created if it does not yet exist.
 func (s *Store) Save(reg *model.Registry) error {
-	dto := buildDTO(reg)
+	dto, err := buildDTO(reg)
+	if err != nil {
+		return err
+	}
 	data, err := stdjson.MarshalIndent(dto, "", "  ")
 	if err != nil {
 		return fmt.Errorf("store: marshal: %w", err)
@@ -243,7 +246,7 @@ func (s *Store) Save(reg *model.Registry) error {
 // buildDTO constructs the flat JSON DTOs using the Registry's getters,
 // explicitly sorting all slices to guarantee deterministic output and
 // stable session ID reconstruction.
-func buildDTO(reg *model.Registry) registryDTO {
+func buildDTO(reg *model.Registry) (registryDTO, error) {
 	var dto registryDTO
 
 	for _, p := range reg.Providers() {
@@ -280,7 +283,11 @@ func buildDTO(reg *model.Registry) registryDTO {
 			adto.PauseUntil = &t
 		}
 
-		for _, p := range reg.AccountProjects(acc) {
+		projects, err := reg.AccountProjects(acc)
+		if err != nil {
+			return registryDTO{}, fmt.Errorf("store: read projects for account %q|%q: %w", acc.UserEmail(), acc.ProviderName(), err)
+		}
+		for _, p := range projects {
 			adto.Projects = append(adto.Projects, p.Name())
 		}
 
@@ -307,5 +314,5 @@ func buildDTO(reg *model.Registry) registryDTO {
 		dto.Sessions = append(dto.Sessions, sdto)
 	}
 
-	return dto
+	return dto, nil
 }

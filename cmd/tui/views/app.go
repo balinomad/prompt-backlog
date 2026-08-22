@@ -18,6 +18,10 @@ type App interface {
 	// Views read from this; mutations must go through Mutate.
 	Service() *service.Service
 
+	// AppName returns the application's display name, for use in dialog
+	// and status text.
+	AppName() string
+
 	// Mutate applies fn against the service and, if fn returns nil, persists
 	// the result to disk. It then refreshes all views regardless of whether
 	// the save succeeded.

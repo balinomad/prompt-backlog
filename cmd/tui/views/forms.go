@@ -106,6 +106,7 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
@@ -232,6 +233,7 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
@@ -263,10 +265,10 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	}
 
 	if isEdit {
-		form.AddInputField("Name (fixed)", initName, 40,
+		form.AddInputField("Name (fixed)", initName, 30,
 			func(_ string, _ rune) bool { return false }, nil)
 	} else {
-		form.AddInputField("Name", initName, 40, nil, nil)
+		form.AddInputField("Name", initName, 30, nil, nil)
 	}
 	form.AddCheckbox("Supports projects", initHasProjects, nil)
 	form.AddCheckbox("Supports deep research", initHasDeepResearch, nil)
@@ -318,10 +320,12 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
 	return centeredModal(form, 12)
+
 }
 
 // ── Account form ──────────────────────────────────────────────────────────────
@@ -401,16 +405,17 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
 	return centeredModal(form, 13)
 }
 
-// accountCreateForm builds the create-mode account form. Provider must
-// already exist and is non-empty — checked by NewAccountForm before this
-// is reached. The user is resolved or created on demand by
-// Service.CreateAccount.
+// accountCreateForm builds the create-mode account form. Provider
+// non-emptiness is the caller's (NewAccountForm's) responsibility, not
+// checked here. Save reads the selected user from existingUsers, not
+// the (disabled) field text, to avoid display/save drift.
 func accountCreateForm(app App, onClose func()) tview.Primitive {
 	providers := app.Service().Providers() // already sorted by name; non-empty, checked by caller
 	providerNames := make([]string, len(providers))
@@ -418,21 +423,56 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 		providerNames[i] = p.Name()
 	}
 
+	existingUsers := app.Service().Users() // already sorted by email
+	userLabels := make([]string, len(existingUsers)+1)
+	userLabels[0] = "+ New user"
+	for i, u := range existingUsers {
+		userLabels[i+1] = fmt.Sprintf("%s (%s)", u.Name(), u.Email())
+	}
+
 	form := tview.NewForm()
 	form.SetBorder(true)
 	form.SetTitle(" New Account ")
 
+	form.AddDropDown("User", userLabels, 0, nil)
 	form.AddInputField("Email", "", 40, nil, nil)
-	form.AddDropDown("Provider", providerNames, 0, nil)
 	form.AddInputField("Name", "", 40, nil, nil)
+	form.AddDropDown("Provider", providerNames, 0, nil)
 
-	save := func() {
-		emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
-		if !ok {
-			app.SetStatus("[red]internal error: Email field missing[-]")
+	userDropDown, ok1 := form.GetFormItemByLabel("User").(*tview.DropDown)
+	emailField, ok2 := form.GetFormItemByLabel("Email").(*tview.InputField)
+	nameField, ok3 := form.GetFormItemByLabel("Name").(*tview.InputField)
+	if !ok1 || !ok2 || !ok3 {
+		return errorModal("Internal error: failed to initialize form fields.", onClose)
+	}
+
+	userDropDown.SetSelectedFunc(func(_ string, index int) {
+		if index <= 0 {
+			emailField.SetDisabled(false)
+			nameField.SetDisabled(false)
+			emailField.SetText("")
+			nameField.SetText("")
 			return
 		}
-		emailVal := strings.TrimSpace(emailField.GetText())
+		u := existingUsers[index-1]
+		emailField.SetText(u.Email())
+		nameField.SetText(u.Name())
+		emailField.SetDisabled(true)
+		nameField.SetDisabled(true)
+	})
+
+	save := func() {
+		userIdx, _ := userDropDown.GetCurrentOption()
+
+		var emailVal, nameVal string
+		if userIdx > 0 {
+			u := existingUsers[userIdx-1]
+			emailVal = u.Email()
+			nameVal = u.Name()
+		} else {
+			emailVal = strings.TrimSpace(emailField.GetText())
+			nameVal = strings.TrimSpace(nameField.GetText())
+		}
 
 		providerDropDown, ok := form.GetFormItemByLabel("Provider").(*tview.DropDown)
 		if !ok {
@@ -440,13 +480,6 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 			return
 		}
 		_, providerVal := providerDropDown.GetCurrentOption()
-
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
-		if !ok {
-			app.SetStatus("[red]internal error: Name field missing[-]")
-			return
-		}
-		nameVal := strings.TrimSpace(nameField.GetText())
 
 		if err := app.Service().ValidateAccount(emailVal, providerVal); err != nil {
 			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
@@ -464,10 +497,11 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 14)
+	return centeredModal(form, 16)
 }
 
 // ── Grant / Revoke forms ──────────────────────────────────────────────────────
@@ -524,6 +558,7 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
@@ -579,6 +614,7 @@ func NewRevokeForm(app App, project *model.Project, onClose func()) tview.Primit
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 

@@ -83,6 +83,7 @@ func (m *mockApp) SwitchToProjects()                 { m.switchedTo = "projects"
 func (m *mockApp) SetStatus(msg string)              { m.status = msg }
 func (m *mockApp) SetHints(hints string)             { m.hints = hints }
 func (m *mockApp) Quit()                             { m.quitted = true }
+func (m *mockApp) AppName() string                   { return "llm-desk" }
 
 // newMockApp returns a mock wired with a fully populated registry.
 // Deliberately excludes Sessions: their shape is being redesigned (account-

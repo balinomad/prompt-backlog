@@ -32,7 +32,7 @@
 | `x`         | projects screen, selected project   | revoke from an account          |
 | `K`         | queue editor, selected prompt       | move prompt up                  |
 | `J`         | queue editor, selected prompt       | move prompt down                |
-| `?`         | anywhere                            | help overlay                    |
+| `h`         | anywhere                            | help overlay                    |
 | `q`         | anywhere                            | quit                            |
 
 **Color semantics** (works in 16-color terminals):

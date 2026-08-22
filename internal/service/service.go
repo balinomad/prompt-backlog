@@ -244,7 +244,7 @@ func (s *Service) ProjectAccounts(name string) ([]*model.Account, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.reg.ProjectAccounts(p), nil
+	return s.reg.ProjectAccounts(p)
 }
 
 // ProjectSessions returns all sessions attached to the named project.
@@ -253,7 +253,7 @@ func (s *Service) ProjectSessions(name string) ([]*model.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.reg.ProjectSessions(p), nil
+	return s.reg.ProjectSessions(p)
 }
 
 // ValidateProject reports whether (name, description, instructions) would
@@ -304,7 +304,7 @@ func (s *Service) AccountProjects(userEmail, providerName string) ([]*model.Proj
 	if err != nil {
 		return nil, fmt.Errorf("account projects: %w", err)
 	}
-	return s.reg.AccountProjects(acc), nil
+	return s.reg.AccountProjects(acc)
 }
 
 // AccountSessions returns all sessions for the account for the given user
@@ -314,7 +314,7 @@ func (s *Service) AccountSessions(userEmail, providerName string) ([]*model.Sess
 	if err != nil {
 		return nil, fmt.Errorf("account sessions: %w", err)
 	}
-	return s.reg.AccountSessions(acc), nil
+	return s.reg.AccountSessions(acc)
 }
 
 // ValidateAccount reports whether (email, provider) would form a valid

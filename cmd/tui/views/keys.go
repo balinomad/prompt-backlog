@@ -1,6 +1,10 @@
 package views
 
-import "github.com/gdamore/tcell/v2"
+import (
+	"strings"
+
+	"github.com/gdamore/tcell/v2"
+)
 
 // ── Rune keys (single character, checked via event.Rune()) ───────────────────
 
@@ -20,7 +24,7 @@ const (
 	KeyToggle rune = ' '
 
 	// KeyHelp opens the help overlay.
-	KeyHelp rune = '?'
+	KeyHelp rune = 'h'
 
 	// KeyQuit initiates the quit flow (confirmation modal).
 	KeyQuit rune = 'q'
@@ -63,3 +67,51 @@ const (
 	// KeyFocusPrev rotates focus backward through the visible panels.
 	KeyFocusPrev = tcell.KeyBacktab
 )
+
+// ── Hint blocks ───────────────────────────────────────────────────────────────
+
+// hint is one "[key] description" fragment, e.g. "[::b]h[-::-] help".
+// label is string(KeyX) for a rune-bound key, or a fixed name ("Tab",
+// "Esc") for a tcell.Key-matched one.
+type hint struct {
+	label string
+	desc  string
+}
+
+// String renders the hint as inline tview markup.
+func (h hint) String() string {
+	return "[::b]" + h.label + "[-::-] " + h.desc
+}
+
+// helpLine renders the hint as a help-overlay row: label padded to a
+// fixed column, then the description. Uses rune length, not byte
+// length, since some labels contain multi-byte characters.
+func (h hint) helpLine() string {
+	const labelColumn = 18
+	pad := max(labelColumn-len([]rune(h.label)), 1)
+	return "  [::b]" + h.label + "[-::-]" + strings.Repeat(" ", pad) + h.desc
+}
+
+// hints is a sequence of hints, joined for either display form.
+type hints []hint
+
+// String joins every hint inline, matching the status bar's existing
+// two-space separator.
+func (hs hints) String() string {
+	parts := make([]string, len(hs))
+	for i, h := range hs {
+		parts[i] = h.String()
+	}
+	return strings.Join(parts, "  ")
+}
+
+// HelpLines joins every hint as help-overlay reference rows, each
+// newline-terminated.
+func (hs hints) HelpLines() string {
+	var sb strings.Builder
+	for _, h := range hs {
+		sb.WriteString(h.helpLine())
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}

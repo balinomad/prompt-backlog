@@ -689,28 +689,33 @@ func TestRegistry_ProjectAccounts(t *testing.T) {
 	t.Parallel()
 	t.Run("nil project", func(t *testing.T) {
 		t.Parallel()
-		if got := model.NewRegistry().ProjectAccounts(nil); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().ProjectAccounts(nil)
+		if !errors.Is(err, model.ErrProjectNil) {
+			t.Errorf("got %v, want ErrProjectNil", err)
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		ghost := model.NewProject("Ghost", "", "")
-		if got := model.NewRegistry().ProjectAccounts(ghost); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().ProjectAccounts(ghost)
+		if !errors.Is(err, model.ErrProjectNotFound) {
+			t.Errorf("got %v, want ErrProjectNotFound", err)
 		}
 	})
 	t.Run("none assigned", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		if got := reg.ProjectAccounts(reg.Project("Orphan")); got != nil {
-			t.Errorf("got %v, want nil", got)
+		got, err := reg.ProjectAccounts(reg.Project("Orphan"))
+		must(t, err)
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
 		}
 	})
 	t.Run("assigned, sorted by key", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		got := reg.ProjectAccounts(reg.Project("Alpha"))
+		got, err := reg.ProjectAccounts(reg.Project("Alpha"))
+		must(t, err)
 		if len(got) != 1 {
 			t.Fatalf("got %d accounts, want 1", len(got))
 		}
@@ -724,28 +729,33 @@ func TestRegistry_ProjectSessions(t *testing.T) {
 	t.Parallel()
 	t.Run("nil project", func(t *testing.T) {
 		t.Parallel()
-		if got := model.NewRegistry().ProjectSessions(nil); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().ProjectSessions(nil)
+		if !errors.Is(err, model.ErrProjectNil) {
+			t.Errorf("got %v, want ErrProjectNil", err)
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		ghost := model.NewProject("Ghost", "", "")
-		if got := model.NewRegistry().ProjectSessions(ghost); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().ProjectSessions(ghost)
+		if !errors.Is(err, model.ErrProjectNotFound) {
+			t.Errorf("got %v, want ErrProjectNotFound", err)
 		}
 	})
 	t.Run("none", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		if got := reg.ProjectSessions(reg.Project("Beta")); got != nil {
-			t.Errorf("got %v, want nil", got)
+		got, err := reg.ProjectSessions(reg.Project("Beta"))
+		must(t, err)
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
 		}
 	})
 	t.Run("has sessions, sorted by ID", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		got := reg.ProjectSessions(reg.Project("Alpha"))
+		got, err := reg.ProjectSessions(reg.Project("Alpha"))
+		must(t, err)
 		if len(got) != 1 || got[0].ID() != 1 {
 			t.Errorf("got %v, want one session with ID 1", got)
 		}
@@ -1029,7 +1039,8 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
 		must(t, reg.AddProjectToAccount(acc, reg.Project("Orphan")))
-		got := reg.AccountProjects(acc)
+		got, err := reg.AccountProjects(acc)
+		must(t, err)
 		if len(got) != 3 {
 			t.Errorf("got %d projects, want 3", len(got))
 		}
@@ -1118,7 +1129,8 @@ func TestRegistry_RemoveProjectFromAccount(t *testing.T) {
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
 		must(t, reg.RemoveProjectFromAccount(acc, reg.Project("Beta")))
-		got := reg.AccountProjects(acc)
+		got, err := reg.AccountProjects(acc)
+		must(t, err)
 		if len(got) != 1 || got[0].Name() != "Alpha" {
 			t.Errorf("got %v, want only Alpha remaining", got)
 		}
@@ -1184,30 +1196,35 @@ func TestRegistry_AccountProjects(t *testing.T) {
 	t.Parallel()
 	t.Run("nil account", func(t *testing.T) {
 		t.Parallel()
-		if got := model.NewRegistry().AccountProjects(nil); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().AccountProjects(nil)
+		if !errors.Is(err, model.ErrAccountNil) {
+			t.Errorf("got %v, want ErrAccountNil", err)
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		ghost := model.NewAccount("ghost@example.com", "claude")
-		if got := model.NewRegistry().AccountProjects(ghost); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().AccountProjects(ghost)
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
 		}
 	})
 	t.Run("none assigned", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("bob@example.com"), reg.Provider("chatgpt"))
-		if got := reg.AccountProjects(acc); got != nil {
-			t.Errorf("got %v, want nil", got)
+		got, err := reg.AccountProjects(acc)
+		must(t, err)
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
 		}
 	})
 	t.Run("assigned, sorted by name", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
-		got := reg.AccountProjects(acc)
+		got, err := reg.AccountProjects(acc)
+		must(t, err)
 		if len(got) != 2 || got[0].Name() != "Alpha" || got[1].Name() != "Beta" {
 			t.Errorf("got %v, want [Alpha Beta]", got)
 		}
@@ -1218,22 +1235,25 @@ func TestRegistry_AccountSessions(t *testing.T) {
 	t.Parallel()
 	t.Run("nil account", func(t *testing.T) {
 		t.Parallel()
-		if got := model.NewRegistry().AccountSessions(nil); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().AccountSessions(nil)
+		if !errors.Is(err, model.ErrAccountNil) {
+			t.Errorf("got %v, want ErrAccountNil", err)
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		ghost := model.NewAccount("ghost@example.com", "claude")
-		if got := model.NewRegistry().AccountSessions(ghost); got != nil {
-			t.Errorf("got %v, want nil", got)
+		_, err := model.NewRegistry().AccountSessions(ghost)
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
 		}
 	})
 	t.Run("has sessions, sorted by ID", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
-		got := reg.AccountSessions(acc)
+		got, err := reg.AccountSessions(acc)
+		must(t, err)
 		if len(got) != 1 || got[0].ID() != 1 {
 			t.Errorf("got %v, want one session with ID 1", got)
 		}
@@ -1245,8 +1265,10 @@ func TestRegistry_AccountSessions(t *testing.T) {
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
 		must(t, err)
-		if got := reg.AccountSessions(acc); got != nil {
-			t.Errorf("got %v, want nil", got)
+		got, err := reg.AccountSessions(acc)
+		must(t, err)
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty", got)
 		}
 	})
 }
@@ -1281,7 +1303,9 @@ func TestRegistry_AddSession_Success(t *testing.T) {
 		if len(sess.Queue()) != 1 {
 			t.Errorf("got %d queue items, want 1", len(sess.Queue()))
 		}
-		if got := reg.ProjectSessions(reg.Project("Beta")); len(got) != 1 {
+		got, err := reg.ProjectSessions(reg.Project("Beta"))
+		must(t, err)
+		if len(got) != 1 {
 			t.Errorf("expected the new session to be indexed under Beta, got %v", got)
 		}
 	})
@@ -1455,11 +1479,15 @@ func TestRegistry_DeleteSession(t *testing.T) {
 		if reg.Session(1) != nil {
 			t.Error("session 1 should no longer be retrievable")
 		}
-		if got := reg.ProjectSessions(reg.Project("Alpha")); len(got) != 0 {
-			t.Errorf("ProjectSessions(Alpha) = %v, want empty", got)
+		pSessions, err := reg.ProjectSessions(reg.Project("Alpha"))
+		must(t, err)
+		if len(pSessions) != 0 {
+			t.Errorf("ProjectSessions(Alpha) = %v, want empty", pSessions)
 		}
-		if got := reg.AccountSessions(acc); len(got) != 0 {
-			t.Errorf("AccountSessions(alice|claude) = %v, want empty", got)
+		aSessions, err := reg.AccountSessions(acc)
+		must(t, err)
+		if len(aSessions) != 0 {
+			t.Errorf("AccountSessions(alice|claude) = %v, want empty", aSessions)
 		}
 	})
 	t.Run("success without a project leaves project index untouched", func(t *testing.T) {
@@ -1549,7 +1577,9 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 		if got.ProjectName() != "Beta" {
 			t.Errorf("got %q, want Beta", got.ProjectName())
 		}
-		if pSessions := reg.ProjectSessions(reg.Project("Beta")); len(pSessions) != 1 {
+		pSessions, err := reg.ProjectSessions(reg.Project("Beta"))
+		must(t, err)
+		if len(pSessions) != 1 {
 			t.Errorf("ProjectSessions(Beta) = %v, want the new session indexed", pSessions)
 		}
 	})
@@ -1563,7 +1593,9 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 		if got.ProjectName() != "" {
 			t.Errorf("got %q, want empty", got.ProjectName())
 		}
-		if pSessions := reg.ProjectSessions(reg.Project("Alpha")); len(pSessions) != 0 {
+		pSessions, err := reg.ProjectSessions(reg.Project("Alpha"))
+		must(t, err)
+		if len(pSessions) != 0 {
 			t.Errorf("ProjectSessions(Alpha) = %v, want empty after unassign", pSessions)
 		}
 	})
@@ -1577,11 +1609,15 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 		if got.ProjectName() != "Beta" {
 			t.Errorf("got %q, want Beta", got.ProjectName())
 		}
-		if pSessions := reg.ProjectSessions(reg.Project("Alpha")); len(pSessions) != 0 {
-			t.Errorf("ProjectSessions(Alpha) = %v, want empty after switching away", pSessions)
+		pSessionsAlpha, err := reg.ProjectSessions(reg.Project("Alpha"))
+		must(t, err)
+		if len(pSessionsAlpha) != 0 {
+			t.Errorf("ProjectSessions(Alpha) = %v, want empty after switching away", pSessionsAlpha)
 		}
-		if pSessions := reg.ProjectSessions(reg.Project("Beta")); len(pSessions) != 1 {
-			t.Errorf("ProjectSessions(Beta) = %v, want the session indexed after switching to it", pSessions)
+		pSessionsBeta, err := reg.ProjectSessions(reg.Project("Beta"))
+		must(t, err)
+		if len(pSessionsBeta) != 1 {
+			t.Errorf("ProjectSessions(Beta) = %v, want the session indexed after switching to it", pSessionsBeta)
 		}
 	})
 
