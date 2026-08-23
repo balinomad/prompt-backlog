@@ -151,8 +151,8 @@ func TestLoad_ParseErrors(t *testing.T) {
 			content: "not json {{{",
 			check: func(t *testing.T, err error) {
 				t.Helper()
-				var serr *json.SyntaxError
-				if !errors.As(err, &serr) {
+				//nolint:errcheck // value intentionally unused; only type membership is asserted
+				if _, ok := errors.AsType[*json.SyntaxError](err); !ok {
 					t.Errorf("error %v is not a *json.SyntaxError", err)
 				}
 			},
@@ -162,8 +162,8 @@ func TestLoad_ParseErrors(t *testing.T) {
 			content: `{"providers": "not-an-array"}`,
 			check: func(t *testing.T, err error) {
 				t.Helper()
-				var terr *json.UnmarshalTypeError
-				if !errors.As(err, &terr) {
+				//nolint:errcheck // value intentionally unused; only type membership is asserted
+				if _, ok := errors.AsType[*json.UnmarshalTypeError](err); !ok {
 					t.Errorf("error %v is not a *json.UnmarshalTypeError", err)
 				}
 			},
