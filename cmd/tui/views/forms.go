@@ -515,6 +515,61 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 	return centeredModal(form, 16)
 }
 
+// ── User form ─────────────────────────────────────────────────────────────────
+
+// NewUserForm returns a form for renaming the user backing account. Email
+// is User's immutable natural key; only Name is editable. This is User's
+// own edit path — see NewAccountForm's doc comment for why accountEditForm
+// does not touch it.
+func NewUserForm(app App, account *model.Account, onClose func()) tview.Primitive {
+	if account == nil {
+		return errorModal("No account selected.", onClose)
+	}
+	email := account.UserEmail()
+	u := app.Service().User(email)
+	if u == nil {
+		return errorModal("User no longer exists.", onClose)
+	}
+
+	form := tview.NewForm()
+	form.SetBorder(true)
+	form.SetTitle(fmt.Sprintf(" Rename User: %s ", email))
+
+	form.AddInputField("Email", email, 40, nil, nil)
+	form.AddInputField("Name", u.Name(), 40, nil, nil)
+
+	emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+	if !ok {
+		return errorModal("Internal error: failed to initialize form fields.", onClose)
+	}
+	emailField.SetDisabled(true)
+
+	save := func() {
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			app.SetStatus("[red]internal error: Name field missing[-]")
+			return
+		}
+		nameVal := strings.TrimSpace(nameField.GetText())
+
+		if err := app.Mutate(func(s *service.Service) error {
+			return s.UpdateUser(email, nameVal)
+		}); err != nil {
+			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			return
+		}
+		onClose()
+	}
+
+	form.AddButton("Save", save)
+	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
+	form.SetCancelFunc(onClose)
+	addCtrlS(form, save)
+
+	return centeredModal(form, 11)
+}
+
 // ── Grant / Revoke forms ──────────────────────────────────────────────────────
 
 // NewGrantForm returns a form for granting project's access to an account.

@@ -14,6 +14,7 @@ var (
 		{string(KeyNew), "new"},
 		{string(KeyEdit), "edit"},
 		{string(KeyDelete), "del"},
+		{string(KeyRenameUser), "rename"},
 		{string(KeyProviders), "providers"},
 		{string(KeyProjects), "projects"},
 		{"Tab", "focus"},

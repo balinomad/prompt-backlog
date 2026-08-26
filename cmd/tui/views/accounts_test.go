@@ -148,6 +148,7 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 		{"new", KeyNew, HintsForm},
 		{"edit", KeyEdit, HintsForm},
 		{"delete", KeyDelete, HintsConfirmModal},
+		{"rename user", KeyRenameUser, HintsForm},
 		{"help", KeyHelp, HintsHelpOverlay},
 		{"quit", KeyQuit, HintsConfirmModal},
 	}
@@ -176,6 +177,7 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 	}{
 		{"delete", KeyDelete},
 		{"edit", KeyEdit},
+		{"rename user", KeyRenameUser},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

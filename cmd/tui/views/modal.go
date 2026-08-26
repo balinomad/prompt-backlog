@@ -165,6 +165,7 @@ var helpSections = []helpSection{
 		{string(KeyNew), "New account"},
 		{string(KeyEdit), "Edit selected account"},
 		{string(KeyDelete), "Delete selected account"},
+		{string(KeyRenameUser), "Rename user of selected account"},
 		{string(KeyProviders), "Providers screen"},
 		{string(KeyProjects), "Projects screen"},
 	}},

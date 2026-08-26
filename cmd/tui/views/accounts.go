@@ -128,6 +128,8 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleEdit()
 	case KeyDelete:
 		return p.handleDelete()
+	case KeyRenameUser:
+		return p.handleRenameUser()
 	case KeyProviders:
 		p.app.SwitchToProviders()
 		return nil
@@ -201,6 +203,23 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 		return nil
 	}
 	p.app.SetHints(HintsConfirmModal)
+	return nil
+}
+
+func (p *AccountsPanel) handleRenameUser() *tcell.EventKey {
+	a := p.Selected()
+	if a == nil {
+		return nil
+	}
+	modal := NewUserForm(p.app, a, func() {
+		p.app.SetHints(HintsAccountsPanel)
+		p.app.HideModal()
+	})
+	if err := p.app.ShowModal(modal); err != nil {
+		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	p.app.SetHints(HintsForm)
 	return nil
 }
 

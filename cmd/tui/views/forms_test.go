@@ -180,6 +180,61 @@ func TestNewAccountForm(t *testing.T) {
 	}
 }
 
+// ── NewUserForm ───────────────────────────────────────────────────────────────
+
+func TestNewUserForm(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (*mockApp, *model.Account)
+		wantModal bool
+	}{
+		{
+			name: "nil account",
+			setup: func(t *testing.T) (*mockApp, *model.Account) {
+				t.Helper()
+				return newMockApp(t), nil
+			},
+			wantModal: true,
+		},
+		{
+			name: "user no longer exists",
+			setup: func(t *testing.T) (*mockApp, *model.Account) {
+				t.Helper()
+				app := newMockApp(t)
+				// Constructed directly rather than resolved from the
+				// registry: a real Account can't outlive its User through
+				// normal service calls (DeleteUser refuses while any
+				// account still references it), so this is the only way
+				// to reach NewUserForm's defensive "user no longer exists"
+				// check.
+				ghost := model.NewAccount("ghost@example.com", "claude")
+				return app, ghost
+			},
+			wantModal: true,
+		},
+		{
+			name: "success",
+			setup: func(t *testing.T) (*mockApp, *model.Account) {
+				t.Helper()
+				app := newMockApp(t)
+				acc, err := app.svc.Account("alice@example.com", "claude")
+				must(t, err)
+				return app, acc
+			},
+			wantModal: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc := tc.setup(t)
+			result := NewUserForm(app, acc, func() {})
+			assertFormOrModal(t, result, tc.wantModal)
+		})
+	}
+}
+
 // ── NewGrantForm / NewRevokeForm ──────────────────────────────────────────────
 
 func TestNewGrantForm(t *testing.T) {

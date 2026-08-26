@@ -15,6 +15,7 @@
 | `e`         | projects screen, selected project   | edit project form               |
 | `e`         | session detail, selected session    | edit session form               |
 | `e`         | queue editor, selected prompt       | edit prompt form                |
+| `R`         | accounts list, selected account     | rename user                     |
 | `d`         | accounts list, selected account     | delete account (confirm modal)  |
 | `d`         | providers screen, selected provider | delete provider (confirm modal) |
 | `d`         | projects screen, selected project   | delete project (confirm modal)  |

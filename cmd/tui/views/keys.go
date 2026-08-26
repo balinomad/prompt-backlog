@@ -49,6 +49,10 @@ const (
 
 	// KeyMoveDown moves the selected queue entry one position later.
 	KeyMoveDown rune = 'J'
+
+	// KeyRenameUser opens the rename form for the user backing the
+	// selected account (AccountsPanel).
+	KeyRenameUser rune = 'R'
 )
 
 // ── Special keys (checked via event.Key()) ───────────────────────────────────
