@@ -76,7 +76,9 @@ func (a *App) AppName() string {
 // Mutate applies fn to the service. If fn returns nil, the result is
 // persisted to disk and all views are refreshed. Views are refreshed
 // regardless of whether the save succeeded so the in-memory state is
-// always reflected. The save error, if any, is returned to the caller.
+// always reflected. A save failure is wrapped in views.ErrSaveFailed,
+// distinguishing it from fn's own domain error — see the views.App
+// interface doc comment.
 // Returns an error if fn is nil.
 func (a *App) Mutate(fn func(*service.Service) error) error {
 	if fn == nil {
@@ -87,10 +89,11 @@ func (a *App) Mutate(fn func(*service.Service) error) error {
 	}
 	saveErr := a.svc.Save()
 	a.refreshAll()
-	if saveErr == nil {
-		a.statusBar.SetMessage("[green]saved ✓[-]")
+	if saveErr != nil {
+		return fmt.Errorf("%w: %w", views.ErrSaveFailed, saveErr)
 	}
-	return saveErr
+	a.statusBar.SetMessage("[green]saved ✓[-]")
+	return nil
 }
 
 // ShowModal displays p as a centred transparent overlay. The currently focused

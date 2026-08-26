@@ -2,10 +2,18 @@
 package views
 
 import (
+	"errors"
+
 	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/rivo/tview"
 )
+
+// ErrSaveFailed wraps a persistence error returned by Mutate when fn's
+// mutation succeeded in memory but the subsequent save to disk failed.
+// Callers can distinguish this from a domain/validation error (fn's own
+// error, registry unchanged) via errors.Is(err, ErrSaveFailed).
+var ErrSaveFailed = errors.New("save failed")
 
 // App is the interface that all views use to interact with the host application.
 // The concrete implementation lives in cmd/tui/app.go.
@@ -28,7 +36,9 @@ type App interface {
 	// Three distinct errors may be returned:
 	//   - fn is nil: a caller bug; no mutation is attempted.
 	//   - fn's error: a domain or validation failure; the registry is unchanged.
-	//   - a save error: the mutation was applied in memory but not persisted.
+	//   - a save error, wrapping ErrSaveFailed: the mutation was applied in
+	//     memory but not persisted. errors.Is(err, ErrSaveFailed) tells the
+	//     two apart.
 	// Callers display fn errors inline (e.g. inside a form); save errors are
 	// the caller's responsibility to surface, typically via SetStatus.
 	Mutate(fn func(*service.Service) error) error
