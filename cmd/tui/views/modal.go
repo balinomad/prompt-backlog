@@ -68,9 +68,8 @@ func confirmQuit(app App, returnHints string) *tcell.EventKey {
 // ── Help overlay ──────────────────────────────────────────────────────────────
 
 // NewHelpOverlay returns a scrollable keyboard-reference overlay. Esc
-// closes it and restores returnHints, the hint line shown before the
-// overlay opened.
-func NewHelpOverlay(app App, returnHints string) tview.Primitive {
+// calls onClose.
+func NewHelpOverlay(onClose func()) tview.Primitive {
 	text := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true).
@@ -79,8 +78,7 @@ func NewHelpOverlay(app App, returnHints string) tview.Primitive {
 
 	text.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == KeyCancel {
-			app.SetHints(returnHints)
-			app.HideModal()
+			onClose()
 			return nil
 		}
 		return event
@@ -109,7 +107,11 @@ func NewHelpOverlay(app App, returnHints string) tview.Primitive {
 // returnHints is the hint line restored when the overlay closes, so each
 // panel returns to its own hint line rather than a neighbour's.
 func showHelp(app App, returnHints string) *tcell.EventKey {
-	if err := app.ShowModal(NewHelpOverlay(app, returnHints)); err != nil {
+	onClose := func() {
+		app.SetHints(returnHints)
+		app.HideModal()
+	}
+	if err := app.ShowModal(NewHelpOverlay(onClose)); err != nil {
 		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}

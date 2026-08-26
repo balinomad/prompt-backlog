@@ -64,8 +64,8 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 			app.SetStatus("[red]internal error: Project dropdown missing[-]")
 			return
 		}
-		_, projectName := projectDropDown.GetCurrentOption()
-		if projectName == "none" {
+		idx, projectName := projectDropDown.GetCurrentOption()
+		if idx <= 0 {
 			projectName = ""
 		}
 
@@ -143,8 +143,9 @@ func sessionFormInitial(session *model.Session, projectNames []string) (string, 
 	if session.ProjectName() == "" {
 		return topic, 0
 	}
-	for i, name := range projectNames {
-		if name == session.ProjectName() {
+	// Start at 1 to skip index 0 ("none")
+	for i := 1; i < len(projectNames); i++ {
+		if projectNames[i] == session.ProjectName() {
 			return topic, i
 		}
 	}

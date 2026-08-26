@@ -67,6 +67,8 @@ var (
 		{string(KeyNew), "add"},
 		{string(KeyEdit), "edit"},
 		{string(KeyDelete), "del"},
+		{string(KeyHelp), "help"},
+		{string(KeyQuit), "quit"},
 		{string(KeyMoveUp), "up"},
 		{string(KeyMoveDown), "down"},
 		{"Esc", "close"},

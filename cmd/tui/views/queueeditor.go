@@ -141,6 +141,10 @@ func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return qe.handleMoveUp()
 	case KeyMoveDown:
 		return qe.handleMoveDown()
+	case KeyHelp:
+		return qe.handleHelp()
+	case KeyQuit:
+		return qe.handleQuit()
 	}
 	return event
 }
@@ -221,6 +225,42 @@ func (qe *queueEditor) handleMoveDown() *tcell.EventKey {
 		qe.rebuildList()
 		qe.list.SetCurrentItem(idx + 1)
 	}
+	return nil
+}
+
+// handleHelp opens the keyboard reference overlay. Not routed through the
+// shared showHelp helper: this view is itself shown via App.ShowModal, so
+// a second ShowModal call here would replace it on the "modal" page
+// (Pages.AddPage replaces a same-named page), and showHelp's own close
+// behaviour (a bare HideModal) would land on whatever was behind the
+// editor, not the editor itself. qe.reopen reconstructs a fresh queue
+// editor instead — the same pattern handleDelete already uses for its own
+// nested confirm dialog.
+func (qe *queueEditor) handleHelp() *tcell.EventKey {
+	qe.app.HideModal()
+	if err := qe.app.ShowModal(NewHelpOverlay(qe.reopen)); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	qe.app.SetHints(HintsHelpOverlay)
+	return nil
+}
+
+// handleQuit opens the quit confirmation, built directly on
+// NewConfirmModal rather than the shared confirmQuit helper for the same
+// reason as handleHelp: onCancel must reopen the editor, not just hide it.
+func (qe *queueEditor) handleQuit() *tcell.EventKey {
+	modal := NewConfirmModal(
+		"Quit "+qe.app.AppName()+"?",
+		func() { qe.app.Quit() },
+		qe.reopen,
+	)
+	qe.app.HideModal()
+	if err := qe.app.ShowModal(modal); err != nil {
+		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		return nil
+	}
+	qe.app.SetHints(HintsConfirmModal)
 	return nil
 }
 
