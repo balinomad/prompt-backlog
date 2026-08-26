@@ -124,9 +124,8 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		p.app.SwitchToMain()
 		return nil
 	}
-
-	if event.Key() != tcell.KeyRune {
-		return event
+	if result, ok := dispatchPanelKey(event, p.app, HintsProvidersPanel); ok {
+		return result
 	}
 
 	switch event.Rune() {
@@ -139,10 +138,6 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleEdit()
 	case KeyDelete:
 		return p.handleDelete()
-	case KeyHelp:
-		return showHelp(p.app, HintsProvidersPanel)
-	case KeyQuit:
-		return confirmQuit(p.app, HintsProvidersPanel)
 	}
 	return event
 }

@@ -119,3 +119,23 @@ func (hs hints) HelpLines() string {
 	}
 	return sb.String()
 }
+
+// dispatchPanelKey applies the input filtering and Help/Quit handling
+// shared by every full-screen panel. The second return is true when event
+// was fully handled here — a non-rune event, KeyHelp, or KeyQuit — and
+// the caller should return the first value unchanged. It is false for any
+// other rune, leaving the caller's own switch to dispatch it.
+func dispatchPanelKey(event *tcell.EventKey, app App, hints string) (*tcell.EventKey, bool) {
+	if event.Key() != tcell.KeyRune {
+		return event, true
+	}
+	switch event.Rune() {
+	case KeyHelp:
+		showHelp(app, hints)
+		return nil, true
+	case KeyQuit:
+		confirmQuit(app, hints)
+		return nil, true
+	}
+	return nil, false
+}

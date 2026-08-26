@@ -48,7 +48,7 @@ func NewConfirmModal(message string, onConfirm, onCancel func()) tview.Primitive
 // every panel's KeyQuit case. returnHints is the hint line restored if the
 // operator cancels, so each panel returns to its own hint line rather than
 // a neighbour's.
-func confirmQuit(app App, returnHints string) *tcell.EventKey {
+func confirmQuit(app App, returnHints string) {
 	modal := NewConfirmModal(
 		"Quit "+app.AppName()+"?",
 		func() { app.Quit() },
@@ -59,10 +59,9 @@ func confirmQuit(app App, returnHints string) *tcell.EventKey {
 	)
 	if err := app.ShowModal(modal); err != nil {
 		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
+		return
 	}
 	app.SetHints(HintsConfirmModal)
-	return nil
 }
 
 // ── Help overlay ──────────────────────────────────────────────────────────────
@@ -106,17 +105,16 @@ func NewHelpOverlay(onClose func()) tview.Primitive {
 // showHelp opens the help overlay, shared by every panel's KeyHelp case.
 // returnHints is the hint line restored when the overlay closes, so each
 // panel returns to its own hint line rather than a neighbour's.
-func showHelp(app App, returnHints string) *tcell.EventKey {
+func showHelp(app App, returnHints string) {
 	onClose := func() {
 		app.SetHints(returnHints)
 		app.HideModal()
 	}
 	if err := app.ShowModal(NewHelpOverlay(onClose)); err != nil {
 		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
+		return
 	}
 	app.SetHints(HintsHelpOverlay)
-	return nil
 }
 
 // errorModal returns a simple message modal for conditions where a form

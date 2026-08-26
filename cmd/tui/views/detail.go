@@ -181,8 +181,8 @@ func (p *DetailPanel) renderInfo(acc *model.Account) {
 // ── Private: key handling ─────────────────────────────────────────────────────
 
 func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() != tcell.KeyRune {
-		return event
+	if result, ok := dispatchPanelKey(event, p.app, HintsDetailPanel); ok {
+		return result
 	}
 
 	switch event.Rune() {
@@ -196,10 +196,6 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleQueue()
 	case KeyToggle:
 		return p.handleToggle()
-	case KeyHelp:
-		return showHelp(p.app, HintsDetailPanel)
-	case KeyQuit:
-		return confirmQuit(p.app, HintsDetailPanel)
 	}
 	return event
 }

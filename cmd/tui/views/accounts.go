@@ -117,8 +117,8 @@ func (p *AccountsPanel) Refresh() {
 
 // handleKey processes keyboard input for this panel.
 func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() != tcell.KeyRune {
-		return event
+	if result, ok := dispatchPanelKey(event, p.app, HintsAccountsPanel); ok {
+		return result
 	}
 
 	switch event.Rune() {
@@ -136,10 +136,6 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case KeyProjects:
 		p.app.SwitchToProjects()
 		return nil
-	case KeyHelp:
-		return showHelp(p.app, HintsAccountsPanel)
-	case KeyQuit:
-		return confirmQuit(p.app, HintsAccountsPanel)
 	}
 	return event
 }

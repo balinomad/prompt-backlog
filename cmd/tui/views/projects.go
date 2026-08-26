@@ -161,16 +161,14 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		p.app.SwitchToMain()
 		return nil
 	}
-
-	if event.Key() != tcell.KeyRune {
-		return event
+	if result, ok := dispatchPanelKey(event, p.app, HintsProjectsPanel); ok {
+		return result
 	}
 
 	switch event.Rune() {
 	case KeyProjects:
 		p.app.SwitchToMain()
 		return nil
-
 	case KeyNew:
 		return p.handleNew()
 	case KeyEdit:
@@ -181,10 +179,6 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleGrant()
 	case KeyRevoke:
 		return p.handleRevoke()
-	case KeyHelp:
-		return showHelp(p.app, HintsProjectsPanel)
-	case KeyQuit:
-		return confirmQuit(p.app, HintsProjectsPanel)
 	}
 	return event
 }
