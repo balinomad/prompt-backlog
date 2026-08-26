@@ -105,12 +105,13 @@ func (p *AccountsPanel) Refresh() {
 		p.SetCurrentItem(0)
 	}
 
-	// Notify detail panel of the current selection after rebuild.
-	if p.onSelect != nil && len(p.accounts) > 0 {
-		idx := p.GetCurrentItem()
-		if idx >= 0 && idx < len(p.accounts) {
-			p.onSelect(p.accounts[idx])
-		}
+	// Notify detail panel of the current selection after rebuild — even
+	// when the list is now empty, so a deleted last account correctly
+	// clears the detail panel via SetAccount(nil) instead of leaving it
+	// stale. This is now the only trigger for DetailPanel.Refresh(); see
+	// app.refreshAll.
+	if p.onSelect != nil {
+		p.onSelect(p.Selected())
 	}
 }
 

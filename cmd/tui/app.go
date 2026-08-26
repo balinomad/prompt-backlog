@@ -9,6 +9,7 @@ import (
 	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/service"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -187,6 +188,7 @@ func (a *App) build() {
 		AddItem(a.statusBar, 1, 0, false)
 
 	a.tv.SetRoot(root, true).EnableMouse(true)
+	a.tv.SetInputCapture(a.handleGlobalKeys)
 
 	// Initial data load.
 	a.refreshAll()
@@ -204,10 +206,33 @@ func (a *App) build() {
 // refreshAll repopulates every panel from the current in-memory registry.
 // Called after every successful mutation and when a modal is hidden.
 func (a *App) refreshAll() {
+	// a.detail is refreshed indirectly: accounts.Refresh() always invokes
+	// the onSelect callback wired to a.detail.SetAccount in build(), which
+	// calls a.detail.Refresh() itself. An explicit call here would run it
+	// a second time for no benefit.
 	a.accounts.Refresh()
-	a.detail.Refresh()
 	a.providers.Refresh()
 	a.projects.Refresh()
+}
+
+// handleGlobalKeys toggles focus between the accounts and detail panels on
+// Tab/Shift+Tab. It is a no-op whenever the front page isn't "main" —
+// including while a modal is shown, since ShowModal's AddPage("modal", ...)
+// becomes the front page — so it never intercepts a Form's own Tab-based
+// field navigation.
+func (a *App) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() != views.KeyFocusNext && event.Key() != views.KeyFocusPrev {
+		return event
+	}
+	if name, _ := a.pages.GetFrontPage(); name != "main" {
+		return event
+	}
+	if a.tv.GetFocus() == a.accounts {
+		a.tv.SetFocus(a.detail)
+	} else {
+		a.tv.SetFocus(a.accounts)
+	}
+	return nil
 }
 
 // isNilPrimitive reports whether p is nil — including the case where p is a
