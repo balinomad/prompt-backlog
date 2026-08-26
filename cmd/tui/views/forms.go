@@ -178,14 +178,17 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 		form.SetTitle(" New Project ")
 	}
 
-	if isEdit {
-		form.AddInputField("Name (fixed)", initName, 40,
-			func(_ string, _ rune) bool { return false }, nil)
-	} else {
-		form.AddInputField("Name", initName, 40, nil, nil)
-	}
+	form.AddInputField("Name", initName, 40, nil, nil)
 	form.AddInputField("Description", initDesc, 40, nil, nil)
 	form.AddInputField("Instructions", initInstr, 40, nil, nil)
+
+	if isEdit {
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			return errorModal("Internal error: failed to initialize form fields.", onClose)
+		}
+		nameField.SetDisabled(true)
+	}
 
 	save := func() {
 		descField, ok := form.GetFormItemByLabel("Description").(*tview.InputField)
@@ -265,14 +268,17 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 		form.SetTitle(" New Provider ")
 	}
 
-	if isEdit {
-		form.AddInputField("Name (fixed)", initName, 30,
-			func(_ string, _ rune) bool { return false }, nil)
-	} else {
-		form.AddInputField("Name", initName, 30, nil, nil)
-	}
+	form.AddInputField("Name", initName, 30, nil, nil)
 	form.AddCheckbox("Supports projects", initHasProjects, nil)
 	form.AddCheckbox("Supports deep research", initHasDeepResearch, nil)
+
+	if isEdit {
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			return errorModal("Internal error: failed to initialize form fields.", onClose)
+		}
+		nameField.SetDisabled(true)
+	}
 
 	save := func() {
 		projectCheckbox, ok := form.GetFormItemByLabel("Supports projects").(*tview.Checkbox)
@@ -366,15 +372,19 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 	form.SetBorder(true)
 	form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", email, provider))
 
-	form.AddInputField("Email (fixed)", email, 40, func(_ string, _ rune) bool { return false }, nil)
-	form.AddInputField("Provider (fixed)", provider, 40, func(_ string, _ rune) bool { return false }, nil)
+	form.AddInputField("Email", email, 40, nil, nil)
+	form.AddInputField("Provider", provider, 40, nil, nil)
 	form.AddInputField("Pause until", initPause, 20, nil, nil)
 
-	pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
-	if !ok {
-		// We just added this field, so this should theoretically never happen.
+	emailField, ok1 := form.GetFormItemByLabel("Email").(*tview.InputField)
+	providerField, ok2 := form.GetFormItemByLabel("Provider").(*tview.InputField)
+	pauseField, ok3 := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+	if !ok1 || !ok2 || !ok3 {
+		// We just added these fields, so this should theoretically never happen.
 		return errorModal("Internal error: failed to initialize form fields.", onClose)
 	}
+	emailField.SetDisabled(true)
+	providerField.SetDisabled(true)
 	pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
 
 	save := func() {
