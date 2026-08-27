@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
+
+	"github.com/rivo/tview"
 )
 
 // ── construction ──────────────────────────────────────────────────────────────
@@ -209,6 +211,7 @@ func TestSessionItemText(t *testing.T) {
 		{"untitled no project no queue", "", "", nil, []string{"(untitled)", "queue: 0"}},
 		{"topic and project shown", "Architecture review", "Alpha", nil, []string{"Architecture review", "Alpha", "queue: 0"}},
 		{"pending continue reflected in count", "topic", "", []model.Prompt{model.NewPrompt("continue", false)}, []string{"queue: 1"}},
+		{"bracket in topic and project is escaped", "plan [x]", "proj]y", nil, []string{tview.Escape("plan [x]"), tview.Escape("proj]y")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

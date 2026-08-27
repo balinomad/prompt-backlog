@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
@@ -144,11 +145,11 @@ func (p *DetailPanel) renderInfo(acc *model.Account) {
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "  [::b]User[-::-]     %s (%s)\n", userName, email)
-	fmt.Fprintf(&sb, "  [::b]Provider[-::-] %s\n", provider)
+	fmt.Fprintf(&sb, "  [::b]User[-::-]     %s (%s)\n", tview.Escape(userName), tview.Escape(email))
+	fmt.Fprintf(&sb, "  [::b]Provider[-::-] %s\n", tview.Escape(provider))
 
 	if pause := acc.PauseUntil(); !pause.IsZero() {
-		timeStr, isPast := formatPauseUntil(pause)
+		timeStr, isPast := formatPauseUntil(pause, time.Now())
 		if isPast {
 			fmt.Fprintf(&sb, "  [::b]Paused[-::-]   [red]%s (ready)[-]\n", timeStr)
 		} else {
@@ -170,7 +171,7 @@ func (p *DetailPanel) renderInfo(acc *model.Account) {
 	} else {
 		names := make([]string, len(projects))
 		for i, proj := range projects {
-			names[i] = proj.Name()
+			names[i] = tview.Escape(proj.Name())
 		}
 		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", strings.Join(names, ", "))
 	}
@@ -246,7 +247,7 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 		label = fmt.Sprintf("session #%d", id)
 	}
 	modal := NewConfirmModal(
-		fmt.Sprintf("End session\n%q?", label),
+		fmt.Sprintf("End session\n%q?", tview.Escape(label)),
 		func() {
 			if err := p.app.Mutate(func(svc *service.Service) error {
 				return svc.EndSession(email, provider, id)
@@ -309,11 +310,11 @@ func (p *DetailPanel) handleToggle() *tcell.EventKey {
 // queue length. A pending trailing "continue" prompt — the queue-based
 // equivalent of the old mid-answer flag — is highlighted in yellow.
 func sessionItemText(s *model.Session) string {
-	topic := truncate(s.Topic(), 26)
+	topic := tview.Escape(truncate(s.Topic(), 26))
 	if topic == "" {
 		topic = dimText("(untitled)")
 	}
-	proj := truncate(s.ProjectName(), 14)
+	proj := tview.Escape(truncate(s.ProjectName(), 14))
 	if proj == "" {
 		proj = dimText("—")
 	}

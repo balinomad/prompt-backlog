@@ -2,10 +2,13 @@ package views
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
+
+	"github.com/rivo/tview"
 )
 
 // ── construction ──────────────────────────────────────────────────────────────
@@ -216,6 +219,18 @@ func buildPausedAccount(t *testing.T, email string, pauseAt time.Time) *model.Ac
 	return acc
 }
 
+func TestAccountItemText_EscapesEmailAndProvider(t *testing.T) {
+	t.Parallel()
+	a := model.NewAccount("alice[red]@example.com", "claude]blue")
+	got := accountItemText(a)
+	if !strings.Contains(got, tview.Escape(a.UserEmail())) {
+		t.Errorf("got %q, want it to contain escaped email %q", got, tview.Escape(a.UserEmail()))
+	}
+	if !strings.Contains(got, tview.Escape(a.ProviderName())) {
+		t.Errorf("got %q, want it to contain escaped provider %q", got, tview.Escape(a.ProviderName()))
+	}
+}
+
 func TestSortAccountsByAvailability(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -270,9 +285,13 @@ func TestSortAccountsByAvailability(t *testing.T) {
 
 func TestFormatPauseUntil(t *testing.T) {
 	t.Parallel()
-	now := time.Now()
-	sameDay := time.Date(now.Year(), now.Month(), now.Day(), 14, 30, 0, 0, now.Location())
-	otherDay := time.Date(2027, 6, 15, 9, 0, 0, 0, time.Local)
+	// A fixed reference instant, not time.Now(): now that formatPauseUntil
+	// takes it as a parameter, hardcoding it here removes any dependency
+	// on wall-clock timing — see formatPauseUntil's doc comment for the
+	// flake this replaces.
+	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	sameDay := time.Date(2026, 8, 27, 14, 30, 0, 0, time.UTC)
+	otherDay := time.Date(2027, 6, 15, 9, 0, 0, 0, time.UTC)
 	past := now.Add(-time.Hour)
 	future := now.Add(time.Hour)
 
@@ -290,7 +309,7 @@ func TestFormatPauseUntil(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			gotText, gotIsPast := formatPauseUntil(tc.t)
+			gotText, gotIsPast := formatPauseUntil(tc.t, now)
 			if gotText != tc.wantText {
 				t.Errorf("text: got %q, want %q", gotText, tc.wantText)
 			}

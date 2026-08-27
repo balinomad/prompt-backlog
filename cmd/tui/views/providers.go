@@ -111,7 +111,7 @@ func (p *ProvidersPanel) renderInfo(prov *model.Provider) {
 		return
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "  [::b]Name[-::-]            %s\n", prov.Name())
+	fmt.Fprintf(&sb, "  [::b]Name[-::-]            %s\n", tview.Escape(prov.Name()))
 	fmt.Fprintf(&sb, "  [::b]Projects[-::-]        %s\n", boolTag(prov.HasProjects()))
 	fmt.Fprintf(&sb, "  [::b]Deep research[-::-]   %s", boolTag(prov.HasDeepResearch()))
 	p.infoView.SetText(sb.String())
@@ -179,7 +179,7 @@ func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
 	}
 	name := prov.Name()
 	modal := NewConfirmModal(
-		fmt.Sprintf("Remove provider %q?\nAll accounts using it must be removed first.", name),
+		fmt.Sprintf("Remove provider %q?\nAll accounts using it must be removed first.", tview.Escape(name)),
 		func() {
 			if err := p.app.Mutate(func(s *service.Service) error {
 				return s.DeleteProvider(name)
@@ -206,6 +206,7 @@ func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
 
 // providerItemText formats a provider row for the list.
 func providerItemText(p *model.Provider) string {
+	name := tview.Escape(p.Name())
 	var tags []string
 	if p.HasProjects() {
 		tags = append(tags, "[green]projects[-]")
@@ -214,9 +215,9 @@ func providerItemText(p *model.Provider) string {
 		tags = append(tags, "[cyan]deep-research[-]")
 	}
 	if len(tags) == 0 {
-		return p.Name()
+		return name
 	}
-	return fmt.Sprintf("%-24s  %s", p.Name(), strings.Join(tags, "  "))
+	return fmt.Sprintf("%-24s  %s", name, strings.Join(tags, "  "))
 }
 
 // boolTag returns a coloured yes/no string for boolean capability fields.

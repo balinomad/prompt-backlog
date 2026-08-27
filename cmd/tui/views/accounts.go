@@ -177,7 +177,7 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 	}
 	email := a.UserEmail()
 	provider := a.ProviderName()
-	label := fmt.Sprintf("%s / %s", email, provider)
+	label := fmt.Sprintf("%s / %s", tview.Escape(email), tview.Escape(provider))
 	modal := NewConfirmModal(
 		fmt.Sprintf("Remove account\n%s?\nAll its sessions and project grants must be removed first.", label),
 		func() {
@@ -225,22 +225,25 @@ func (p *AccountsPanel) handleRenameUser() *tcell.EventKey {
 // Format: "email / provider" with the pause time appended when set.
 // A past PauseUntil is shown in red; a future one in the default colour.
 func accountItemText(a *model.Account) string {
-	base := fmt.Sprintf("%s / %s", a.UserEmail(), a.ProviderName())
+	base := fmt.Sprintf("%s / %s", tview.Escape(a.UserEmail()), tview.Escape(a.ProviderName()))
 	if a.PauseUntil().IsZero() {
 		return base
 	}
-	timeStr, isPast := formatPauseUntil(a.PauseUntil())
+	timeStr, isPast := formatPauseUntil(a.PauseUntil(), time.Now())
 	if isPast {
 		return fmt.Sprintf("%-40s [red]%s[-]", base, timeStr)
 	}
 	return fmt.Sprintf("%-40s %s", base, timeStr)
 }
 
-// formatPauseUntil formats a PauseUntil timestamp for inline display.
-// Returns the formatted string and whether the time is in the past.
-// Same-day times are shown as "HH:MM"; other days as "MM-DD HH:MM".
-func formatPauseUntil(t time.Time) (string, bool) {
-	now := time.Now()
+// formatPauseUntil formats a PauseUntil timestamp for inline display,
+// relative to now. Returns the formatted string and whether the time is
+// in the past. Same-day times are shown as "HH:MM"; other days as
+// "MM-DD HH:MM". now is a parameter, not an internal time.Now() call, so
+// the same-day comparison is deterministic — an internal call made
+// TestFormatPauseUntil flaky within the first hour after local midnight,
+// when now.Add(-time.Hour) crosses into the previous calendar day.
+func formatPauseUntil(t, now time.Time) (string, bool) {
 	isPast := t.Before(now)
 	y, m, d := t.Date()
 	ny, nm, nd := now.Date()

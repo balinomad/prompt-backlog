@@ -26,6 +26,20 @@ func addCtrlS(form *tview.Form, save func()) {
 	})
 }
 
+// escapeAll returns a copy of names with each entry passed through
+// tview.Escape, for display in list-like widgets (dropdown options, list
+// items) without free text being read as a color or region tag. Callers
+// that also read a selection back must index into the original,
+// unescaped slice — never re-parse the string a DropDown returns, since
+// it reflects the escaped copy, not the source value.
+func escapeAll(names []string) []string {
+	escaped := make([]string, len(names))
+	for i, n := range names {
+		escaped[i] = tview.Escape(n)
+	}
+	return escaped
+}
+
 // ── Session form ──────────────────────────────────────────────────────────────
 
 // NewSessionForm returns a form for creating or editing a session under
@@ -43,19 +57,19 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 	email := account.UserEmail()
 	provider := account.ProviderName()
 
-	projectNames := sessionFormProjectNames(app, email, provider)
+	projectNames := sessionFormProjectNames(app, email, provider) // raw — see save() below
 	isEdit := session != nil
 	initTopic, initProjectIdx := sessionFormInitial(session, projectNames)
 
 	form := tview.NewForm()
 	form.SetBorder(true)
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Session: %s / %s ", email, provider))
+		form.SetTitle(fmt.Sprintf(" Edit Session: %s / %s ", tview.Escape(email), tview.Escape(provider)))
 	} else {
 		form.SetTitle(" New Session ")
 	}
 
-	form.AddDropDown("Project", projectNames, initProjectIdx, nil)
+	form.AddDropDown("Project", escapeAll(projectNames), initProjectIdx, nil)
 	form.AddInputField("Topic", initTopic, 40, nil, nil)
 
 	save := func() {
@@ -64,9 +78,14 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 			app.SetStatus("[red]internal error: Project dropdown missing[-]")
 			return
 		}
-		idx, projectName := projectDropDown.GetCurrentOption()
-		if idx <= 0 {
-			projectName = ""
+		// Look up by index into the raw projectNames, not the string
+		// GetCurrentOption returns — the dropdown displays the escaped
+		// copy, which wouldn't resolve against the registry. idx 0 is
+		// always "no project" (see sessionFormProjectNames).
+		idx, _ := projectDropDown.GetCurrentOption()
+		var projectName string
+		if idx > 0 && idx < len(projectNames) {
+			projectName = projectNames[idx]
 		}
 
 		topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
@@ -173,7 +192,7 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 	form := tview.NewForm()
 	form.SetBorder(true)
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Project: %s ", initName))
+		form.SetTitle(fmt.Sprintf(" Edit Project: %s ", tview.Escape(initName)))
 	} else {
 		form.SetTitle(" New Project ")
 	}
@@ -263,7 +282,7 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	form := tview.NewForm()
 	form.SetBorder(true)
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Provider: %s ", initName))
+		form.SetTitle(fmt.Sprintf(" Edit Provider: %s ", tview.Escape(initName)))
 	} else {
 		form.SetTitle(" New Provider ")
 	}
@@ -370,7 +389,7 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 
 	form := tview.NewForm()
 	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", email, provider))
+	form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", tview.Escape(email), tview.Escape(provider)))
 
 	form.AddInputField("Email", email, 40, nil, nil)
 	form.AddInputField("Provider", provider, 40, nil, nil)
@@ -438,7 +457,7 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 	userLabels := make([]string, len(existingUsers)+1)
 	userLabels[0] = "+ New user"
 	for i, u := range existingUsers {
-		userLabels[i+1] = fmt.Sprintf("%s (%s)", u.Name(), u.Email())
+		userLabels[i+1] = fmt.Sprintf("%s (%s)", tview.Escape(u.Name()), tview.Escape(u.Email()))
 	}
 
 	form := tview.NewForm()
@@ -448,7 +467,9 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 	form.AddDropDown("User", userLabels, 0, nil)
 	form.AddInputField("Email", "", 40, nil, nil)
 	form.AddInputField("Name", "", 40, nil, nil)
-	form.AddDropDown("Provider", providerNames, 0, nil)
+	// providerNames stays raw for save()'s idx-based lookup below; the
+	// dropdown only sees an escaped display copy.
+	form.AddDropDown("Provider", escapeAll(providerNames), 0, nil)
 
 	userDropDown, ok1 := form.GetFormItemByLabel("User").(*tview.DropDown)
 	emailField, ok2 := form.GetFormItemByLabel("Email").(*tview.InputField)
@@ -490,7 +511,13 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 			app.SetStatus("[red]internal error: Provider dropdown missing[-]")
 			return
 		}
-		_, providerVal := providerDropDown.GetCurrentOption()
+		// By index into the raw providerNames, not the string
+		// GetCurrentOption returns — see the AddDropDown call above.
+		providerIdx, _ := providerDropDown.GetCurrentOption()
+		var providerVal string
+		if providerIdx >= 0 && providerIdx < len(providerNames) {
+			providerVal = providerNames[providerIdx]
+		}
 
 		if err := app.Service().ValidateAccount(emailVal, providerVal); err != nil {
 			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
@@ -533,7 +560,7 @@ func NewUserForm(app App, account *model.Account, onClose func()) tview.Primitiv
 
 	form := tview.NewForm()
 	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Rename User: %s ", email))
+	form.SetTitle(fmt.Sprintf(" Rename User: %s ", tview.Escape(email)))
 
 	form.AddInputField("Email", email, 40, nil, nil)
 	form.AddInputField("Name", u.Name(), 40, nil, nil)
@@ -594,9 +621,11 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 
 	form := tview.NewForm()
 	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Grant %q to Account ", project.Name()))
+	form.SetTitle(fmt.Sprintf(" Grant %q to Account ", tview.Escape(project.Name())))
 
-	form.AddDropDown("Account", labels, 0, nil)
+	// labels is only ever read back by index (below) — safe to escape
+	// for display without a raw copy.
+	form.AddDropDown("Account", escapeAll(labels), 0, nil)
 
 	save := func() {
 		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
@@ -650,9 +679,9 @@ func NewRevokeForm(app App, project *model.Project, onClose func()) tview.Primit
 
 	form := tview.NewForm()
 	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Revoke %q from Account ", project.Name()))
+	form.SetTitle(fmt.Sprintf(" Revoke %q from Account ", tview.Escape(project.Name())))
 
-	form.AddDropDown("Account", labels, 0, nil)
+	form.AddDropDown("Account", escapeAll(labels), 0, nil)
 
 	save := func() {
 		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)

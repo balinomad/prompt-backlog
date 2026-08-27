@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
+
 	"github.com/rivo/tview"
 )
 
@@ -325,5 +326,19 @@ func TestNewRevokeForm(t *testing.T) {
 			result := NewRevokeForm(app, proj, func() {})
 			assertFormOrModal(t, result, tc.wantModal)
 		})
+	}
+}
+
+func TestEscapeAll(t *testing.T) {
+	t.Parallel()
+	in := []string{"Alpha", "Be[ta]", ""}
+	got := escapeAll(in)
+	if len(got) != len(in) {
+		t.Fatalf("got %d entries, want %d", len(got), len(in))
+	}
+	for i, want := range in {
+		if got[i] != tview.Escape(want) {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], tview.Escape(want))
+		}
 	}
 }

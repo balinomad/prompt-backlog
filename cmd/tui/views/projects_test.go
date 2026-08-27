@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
+
+	"github.com/rivo/tview"
 )
 
 func TestNewProjectsPanel(t *testing.T) {
@@ -179,5 +181,15 @@ func TestProjectItemText(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tc.wantEqual)
 			}
 		})
+	}
+}
+
+func TestProjectItemText_EscapesName(t *testing.T) {
+	t.Parallel()
+	p := model.NewProject("Alpha[red]", "", "")
+	got := projectItemText(p, 1)
+	want := tview.Escape("Alpha[red]")
+	if !strings.Contains(got, want) {
+		t.Errorf("got %q, want it to contain %q", got, want)
 	}
 }

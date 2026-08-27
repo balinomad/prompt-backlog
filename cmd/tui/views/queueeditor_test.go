@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
+
 	"github.com/rivo/tview"
 )
 
@@ -305,6 +306,7 @@ func TestPromptItemText(t *testing.T) {
 	}{
 		{"no spawn returns plain text", "continue", false, "", "continue"},
 		{"spawns appends marker", "start fresh", true, "new session", ""},
+		{"bracket in text is escaped", "do [x]", false, "", tview.Escape("do [x]")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

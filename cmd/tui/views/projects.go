@@ -123,17 +123,21 @@ func (p *ProjectsPanel) renderInfo(proj *model.Project) {
 	svc := p.app.Service()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "  [::b]Name[-::-]         %s\n", proj.Name())
+	fmt.Fprintf(&sb, "  [::b]Name[-::-]         %s\n", tview.Escape(proj.Name()))
 
 	desc := proj.Description()
 	if desc == "" {
 		desc = dimText("none")
+	} else {
+		desc = tview.Escape(desc)
 	}
 	fmt.Fprintf(&sb, "  [::b]Description[-::-]  %s\n", desc)
 
 	instr := proj.Instructions()
 	if instr == "" {
 		instr = dimText("none")
+	} else {
+		instr = tview.Escape(instr)
 	}
 	fmt.Fprintf(&sb, "  [::b]Instructions[-::-] %s\n", instr)
 
@@ -146,7 +150,7 @@ func (p *ProjectsPanel) renderInfo(proj *model.Project) {
 	} else {
 		labels := make([]string, len(accounts))
 		for i, acc := range accounts {
-			labels[i] = fmt.Sprintf("%s/%s", acc.UserEmail(), acc.ProviderName())
+			labels[i] = fmt.Sprintf("%s/%s", tview.Escape(acc.UserEmail()), tview.Escape(acc.ProviderName()))
 		}
 		fmt.Fprintf(&sb, "  [::b]Accounts[-::-]     %s", strings.Join(labels, ", "))
 	}
@@ -220,7 +224,7 @@ func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
 	}
 	name := proj.Name()
 	modal := NewConfirmModal(
-		fmt.Sprintf("Delete project %q?\nIt must not be granted to any account.", name),
+		fmt.Sprintf("Delete project %q?\nIt must not be granted to any account.", tview.Escape(name)),
 		func() {
 			if err := p.app.Mutate(func(s *service.Service) error {
 				return s.DeleteProject(name)
@@ -283,8 +287,9 @@ func (p *ProjectsPanel) handleRevoke() *tcell.EventKey {
 // number of accounts currently granted this project; zero is flagged as
 // "unattached".
 func projectItemText(p *model.Project, accountCount int) string {
+	name := tview.Escape(p.Name())
 	if accountCount == 0 {
-		return fmt.Sprintf("%-28s  %s", p.Name(), dimText("unattached"))
+		return fmt.Sprintf("%-28s  %s", name, dimText("unattached"))
 	}
-	return p.Name()
+	return name
 }

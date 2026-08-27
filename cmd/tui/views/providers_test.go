@@ -1,9 +1,12 @@
 package views
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
+
+	"github.com/rivo/tview"
 )
 
 func TestNewProvidersPanel(t *testing.T) {
@@ -175,6 +178,16 @@ func TestProviderItemText(t *testing.T) {
 				t.Error("expected capability tags to be appended")
 			}
 		})
+	}
+}
+
+func TestProviderItemText_EscapesName(t *testing.T) {
+	t.Parallel()
+	p := model.NewProvider("claude[red]", true, false)
+	got := providerItemText(p)
+	want := tview.Escape("claude[red]")
+	if !strings.Contains(got, want) {
+		t.Errorf("got %q, want it to contain %q", got, want)
 	}
 }
 

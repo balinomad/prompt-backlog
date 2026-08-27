@@ -182,7 +182,7 @@ func (qe *queueEditor) handleDelete() *tcell.EventKey {
 	}
 	label := qe.queue[idx].Text()
 	modal := NewConfirmModal(
-		fmt.Sprintf("Delete prompt\n%q?", label),
+		fmt.Sprintf("Delete prompt\n%q?", tview.Escape(label)),
 		func() {
 			qe.commit(slices.Delete(slices.Clone(qe.queue), idx, idx+1))
 			qe.reopen()
@@ -329,8 +329,9 @@ func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.P
 
 // promptItemText formats a prompt row for the queue list.
 func promptItemText(p model.Prompt) string {
+	text := tview.Escape(p.Text())
 	if p.SpawnsSession() {
-		return p.Text() + "  [cyan]→ new session[-]"
+		return text + "  [cyan]→ new session[-]"
 	}
-	return p.Text()
+	return text
 }
