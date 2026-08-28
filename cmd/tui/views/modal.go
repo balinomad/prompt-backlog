@@ -127,15 +127,21 @@ func errorModal(message string, onClose func()) tview.Primitive {
 // centred on screen at a fixed width of 64 columns. height is content's
 // own height, not the overlay's.
 func centeredModal(content tview.Primitive, height int) tview.Primitive {
-	const width = 64
+	const (
+		width   = 64
+		padding = 1 // rows of solid background directly touching content
+	)
+	inner := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewBox(), padding, 0, false).
+		AddItem(content, height, 1, true).
+		AddItem(tview.NewBox(), padding, 0, false).
+		AddItem(nil, 0, 1, false)
+
 	return tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(content, height, 1, true).
-			AddItem(nil, 0, 1, false),
-			width, 1, true).
+		AddItem(inner, width, 1, true).
 		AddItem(nil, 0, 1, false)
 }
 
