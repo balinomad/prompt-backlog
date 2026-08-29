@@ -27,6 +27,34 @@ func assertFormOrModal(t *testing.T, result tview.Primitive, wantModal bool) {
 	}
 }
 
+// formFromCenteredModal drills into the Flex/Box/content/Box/Flex
+// structure centeredModal wraps content in, returning content itself.
+func formFromCenteredModal(t *testing.T, p tview.Primitive) *tview.Form {
+	t.Helper()
+	outer, ok := p.(*tview.Flex)
+	if !ok {
+		t.Fatalf("expected *tview.Flex, got %T", p)
+	}
+	inner, ok := outer.GetItem(1).(*tview.Flex)
+	if !ok {
+		t.Fatalf("expected inner *tview.Flex, got %T", outer.GetItem(1))
+	}
+	form, ok := inner.GetItem(2).(*tview.Form)
+	if !ok {
+		t.Fatalf("expected *tview.Form, got %T", inner.GetItem(2))
+	}
+	return form
+}
+
+// inputFieldAcceptsText reports whether typing a rune into field changes
+// its text — see this section's doc comment for why this, not a disabled
+// getter, is what's actually testable here.
+func inputFieldAcceptsText(field *tview.InputField) bool {
+	before := field.GetText()
+	field.InputHandler()(runeKey('z'), func(tview.Primitive) {})
+	return field.GetText() != before
+}
+
 // ── NewSessionForm ────────────────────────────────────────────────────────────
 
 func TestNewSessionForm(t *testing.T) {
@@ -188,6 +216,35 @@ func TestNewProjectForm_ReturnsForm(t *testing.T) {
 	}
 }
 
+func TestNewProjectForm_NameFieldDisabledState(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+
+	t.Run("create mode: enabled", func(t *testing.T) {
+		t.Parallel()
+		form := formFromCenteredModal(t, NewProjectForm(app, nil, func() {}))
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			t.Fatal("expected Name *tview.InputField")
+		}
+		if !inputFieldAcceptsText(nameField) {
+			t.Error("Name field should accept text in create mode")
+		}
+	})
+
+	t.Run("edit mode: disabled", func(t *testing.T) {
+		t.Parallel()
+		form := formFromCenteredModal(t, NewProjectForm(app, app.svc.Project("Alpha"), func() {}))
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			t.Fatal("expected Name *tview.InputField")
+		}
+		if inputFieldAcceptsText(nameField) {
+			t.Error("Name field should not accept text in edit mode")
+		}
+	})
+}
+
 // ── NewProviderForm ───────────────────────────────────────────────────────────
 
 // NewProviderForm's body is unchanged from the prior session; it had no
@@ -213,6 +270,35 @@ func TestNewProviderForm_ReturnsForm(t *testing.T) {
 			assertFormOrModal(t, result, false)
 		})
 	}
+}
+
+func TestNewProviderForm_NameFieldDisabledState(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+
+	t.Run("create mode: enabled", func(t *testing.T) {
+		t.Parallel()
+		form := formFromCenteredModal(t, NewProviderForm(app, nil, func() {}))
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			t.Fatal("expected Name *tview.InputField")
+		}
+		if !inputFieldAcceptsText(nameField) {
+			t.Error("Name field should accept text in create mode")
+		}
+	})
+
+	t.Run("edit mode: disabled", func(t *testing.T) {
+		t.Parallel()
+		form := formFromCenteredModal(t, NewProviderForm(app, app.svc.Provider("claude"), func() {}))
+		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		if !ok {
+			t.Fatal("expected Name *tview.InputField")
+		}
+		if inputFieldAcceptsText(nameField) {
+			t.Error("Name field should not accept text in edit mode")
+		}
+	})
 }
 
 // ── NewAccountForm ────────────────────────────────────────────────────────────
@@ -261,6 +347,31 @@ func TestNewAccountForm(t *testing.T) {
 			result := NewAccountForm(app, acc, func() {})
 			assertFormOrModal(t, result, tc.wantModal)
 		})
+	}
+}
+
+func TestAccountEditForm_EmailProviderDisabled(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	acc, err := app.svc.Account("alice@example.com", "claude")
+	must(t, err)
+
+	form := formFromCenteredModal(t, NewAccountForm(app, acc, func() {}))
+
+	emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+	if !ok {
+		t.Fatal("expected Email *tview.InputField")
+	}
+	if inputFieldAcceptsText(emailField) {
+		t.Error("Email field should not accept text in edit mode")
+	}
+
+	providerField, ok := form.GetFormItemByLabel("Provider").(*tview.InputField)
+	if !ok {
+		t.Fatal("expected Provider *tview.InputField")
+	}
+	if inputFieldAcceptsText(providerField) {
+		t.Error("Provider field should not accept text in edit mode")
 	}
 }
 
