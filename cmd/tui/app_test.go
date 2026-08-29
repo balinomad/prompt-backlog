@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tui "github.com/balinomad/llm-desk/cmd/tui"
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
@@ -167,6 +168,9 @@ func TestApp_Mutate_SaveError(t *testing.T) {
 	gotErr := app.Mutate(func(*service.Service) error { return nil })
 	if !errors.Is(gotErr, saveErr) {
 		t.Errorf("got %v, want %v", gotErr, saveErr)
+	}
+	if !errors.Is(gotErr, views.ErrSaveFailed) {
+		t.Errorf("got %v, want errors.Is(_, views.ErrSaveFailed)", gotErr)
 	}
 }
 

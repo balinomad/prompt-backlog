@@ -115,6 +115,35 @@ func TestAccountsPanel_Refresh_CallsOnSelect(t *testing.T) {
 	}
 }
 
+func TestAccountsPanel_Refresh_ClearsDetailPanelOnLastAccountDeleted(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	accounts := NewAccountsPanel(app)
+	detail := NewDetailPanel(app)
+	accounts.SetOnSelect(detail.SetAccount)
+	accounts.Refresh()
+
+	if detail.account == nil {
+		t.Fatal("detail panel should show the sole account before deletion")
+	}
+
+	must(t, reg.DeleteAccount(acc))
+	accounts.Refresh()
+
+	if detail.account != nil {
+		t.Error("detail panel should be cleared after the last account is deleted")
+	}
+	if detail.sessionsList.GetItemCount() != 0 {
+		t.Error("detail panel's session list should be empty after the last account is deleted")
+	}
+}
+
 // ── keyboard handlers ─────────────────────────────────────────────────────────
 
 func TestAccountsPanel_Keys_SwitchScreens(t *testing.T) {

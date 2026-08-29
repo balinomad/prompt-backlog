@@ -75,6 +75,89 @@ func TestNewSessionForm(t *testing.T) {
 	}
 }
 
+func TestSessionFormProjectNames(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
+	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
+	must(t, reg.AddProject(model.NewProject("none", "", "")))
+	must(t, reg.AddProjectToAccount(acc, reg.Project("none")))
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	got := sessionFormProjectNames(app, "alice@example.com", "claude")
+
+	// AccountProjects sorts by name: "Alpha" before "none". Index 0 is
+	// always the sentinel, so the real "none" project must land at
+	// index 2, distinct from the sentinel at index 0.
+	want := []string{"none", "Alpha", "none"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestSessionFormInitial(t *testing.T) {
+	t.Parallel()
+
+	// Sentinel, a normal granted project, and a second granted project
+	// that happens to be named identically to the sentinel — the exact
+	// shape sessionFormProjectNames produces when a project is granted
+	// under the name "none".
+	projectNames := []string{"none", "Alpha", "none"}
+
+	cases := []struct {
+		name      string
+		session   *model.Session
+		wantTopic string
+		wantIdx   int
+	}{
+		{
+			name:      "nil session",
+			session:   nil,
+			wantTopic: "",
+			wantIdx:   0,
+		},
+		{
+			name:      "no project assigned",
+			session:   model.NewSession(model.AccountKey{Email: "a@x.com", Provider: "p"}, 1, "", "Topic", nil),
+			wantTopic: "Topic",
+			wantIdx:   0,
+		},
+		{
+			name:      "normal project matches by name",
+			session:   model.NewSession(model.AccountKey{Email: "a@x.com", Provider: "p"}, 1, "Alpha", "Topic", nil),
+			wantTopic: "Topic",
+			wantIdx:   1,
+		},
+		{
+			name:      "project literally named none resolves to its own index, not the sentinel",
+			session:   model.NewSession(model.AccountKey{Email: "a@x.com", Provider: "p"}, 1, "none", "Topic", nil),
+			wantTopic: "Topic",
+			wantIdx:   2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			gotTopic, gotIdx := sessionFormInitial(tc.session, projectNames)
+			if gotTopic != tc.wantTopic {
+				t.Errorf("topic: got %q, want %q", gotTopic, tc.wantTopic)
+			}
+			if gotIdx != tc.wantIdx {
+				t.Errorf("index: got %d, want %d", gotIdx, tc.wantIdx)
+			}
+		})
+	}
+}
+
 // ── NewProjectForm ────────────────────────────────────────────────────────────
 
 // NewProjectForm no longer takes a session parameter (Project has no

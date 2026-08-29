@@ -15,11 +15,11 @@ var (
 		{string(KeyEdit), "edit"},
 		{string(KeyDelete), "del"},
 		{string(KeyRenameUser), "rename"},
+		{string(KeyHelp), "help"},
+		{string(KeyQuit), "quit"},
 		{string(KeyProviders), "providers"},
 		{string(KeyProjects), "projects"},
 		{"Tab", "focus"},
-		{string(KeyHelp), "help"},
-		{string(KeyQuit), "quit"},
 	}.String()
 
 	// HintsDetailPanel is shown when the sessions sub-list in the detail panel
@@ -29,10 +29,10 @@ var (
 		{string(KeyEdit), "edit"},
 		{string(KeyDelete), "end"},
 		{string(KeyQueue), "queue"},
-		{"Space", "continue"},
-		{"Tab", "focus"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
+		{"Space", "continue"},
+		{"Tab", "focus"},
 	}.String()
 
 	// HintsProvidersPanel is shown when the providers screen has focus.
@@ -40,9 +40,9 @@ var (
 		{string(KeyNew), "new"},
 		{string(KeyEdit), "edit"},
 		{string(KeyDelete), "del"},
-		{"Tab", "focus"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
+		{"Tab", "focus"},
 	}.String()
 
 	// HintsProjectsPanel is shown when the projects screen has focus.
@@ -52,9 +52,9 @@ var (
 		{string(KeyDelete), "del"},
 		{string(KeyGrant), "grant"},
 		{string(KeyRevoke), "revoke"},
-		{"Tab", "focus"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
+		{"Tab", "focus"},
 	}.String()
 
 	// HintsForm is shown when a form modal is open.
@@ -113,7 +113,7 @@ func NewStatusBar() *StatusBar {
 
 	flex := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
-		AddItem(hints, 0, 1, false).
+		AddItem(hints, 0, 3, false).
 		AddItem(message, 0, 1, false)
 
 	return &StatusBar{

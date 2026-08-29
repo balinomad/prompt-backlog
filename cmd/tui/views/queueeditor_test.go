@@ -322,3 +322,56 @@ func TestPromptItemText(t *testing.T) {
 		})
 	}
 }
+
+// ── Help / Quit: cancel reopens the editor, doesn't just hide it ──────────────
+
+func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
+	t.Parallel()
+
+	t.Run("help", func(t *testing.T) {
+		t.Parallel()
+		app, acc, sess := newQueueTestApp(t)
+		result := NewQueueEditor(app, acc, sess, func() {})
+		list, ok := result.(*tview.List)
+		if !ok {
+			t.Fatalf("expected *tview.List, got %T", result)
+		}
+		list.GetInputCapture()(runeKey(KeyHelp))
+
+		helpOverlayTextView(t, app.modal).GetInputCapture()(escKey())
+
+		if _, ok := app.modal.(*tview.List); !ok {
+			t.Fatalf("expected Esc on help to reopen the queue editor (*tview.List), got %T", app.modal)
+		}
+		if app.hints != HintsQueueEditor {
+			t.Errorf("hints after reopen: got %q, want %q", app.hints, HintsQueueEditor)
+		}
+	})
+
+	t.Run("quit", func(t *testing.T) {
+		t.Parallel()
+		app, acc, sess := newQueueTestApp(t)
+		result := NewQueueEditor(app, acc, sess, func() {})
+		list, ok := result.(*tview.List)
+		if !ok {
+			t.Fatalf("expected *tview.List, got %T", result)
+		}
+		list.GetInputCapture()(runeKey(KeyQuit))
+
+		confirmModal, ok := app.modal.(*tview.Modal)
+		if !ok {
+			t.Fatalf("expected *tview.Modal, got %T", app.modal)
+		}
+		confirmModal.GetInputCapture()(escKey())
+
+		if _, ok := app.modal.(*tview.List); !ok {
+			t.Fatalf("expected cancelling quit to reopen the queue editor (*tview.List), got %T", app.modal)
+		}
+		if app.hints != HintsQueueEditor {
+			t.Errorf("hints after reopen: got %q, want %q", app.hints, HintsQueueEditor)
+		}
+		if app.quitted {
+			t.Error("cancelling quit must not actually quit")
+		}
+	})
+}
