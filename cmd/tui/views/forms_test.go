@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/gdamore/tcell/v2"
 
 	"github.com/rivo/tview"
 )
@@ -103,7 +104,7 @@ func TestNewSessionForm(t *testing.T) {
 	}
 }
 
-func TestSessionFormProjectNames(t *testing.T) {
+func TestSessionForm_ProjectNames(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
@@ -129,6 +130,42 @@ func TestSessionFormProjectNames(t *testing.T) {
 		if got[i] != w {
 			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
 		}
+	}
+}
+
+func TestNewSessionForm_ProjectDropdown_BracketNameSurvivesSave(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	must(t, reg.AddProject(model.NewProject("Weird[Name]", "", "")))
+	must(t, reg.AddProjectToAccount(acc, reg.Project("Weird[Name]")))
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	form := formFromCenteredModal(t, NewSessionForm(app, acc, nil, func() {}))
+
+	projectDropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
+	if !ok {
+		t.Fatal("expected Project *tview.DropDown")
+	}
+	// Index 0 is always the "none" sentinel; the sole granted project is
+	// index 1 (see sessionFormProjectNames).
+	projectDropDown.SetCurrentOption(1)
+
+	capture := form.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil form input capture (addCtrlS)")
+	}
+	capture(tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModNone))
+
+	sessions := app.svc.Sessions()
+	if len(sessions) != 1 {
+		t.Fatalf("got %d sessions after save, want 1", len(sessions))
+	}
+	if got := sessions[0].ProjectName(); got != "Weird[Name]" {
+		t.Errorf("ProjectName() = %q, want %q (unescaped)", got, "Weird[Name]")
 	}
 }
 
