@@ -1,17 +1,36 @@
-package views
+package views_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
+// projectsPanelParts returns p's project list and info view, reached via
+// the exported Flex.GetItem — ProjectsPanel puts the list at index 0, the
+// info view at index 1 (see projects.go).
+func projectsPanelParts(t *testing.T, p *views.ProjectsPanel) (*tview.List, *tview.TextView) {
+	t.Helper()
+	list, ok := p.GetItem(0).(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List at index 0, got %T", p.GetItem(0))
+	}
+	info, ok := p.GetItem(1).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at index 1, got %T", p.GetItem(1))
+	}
+	return list, info
+}
+
 func TestNewProjectsPanel(t *testing.T) {
 	t.Parallel()
-	if p := NewProjectsPanel(newMockApp(t)); p == nil {
+	if p := views.NewProjectsPanel(newMockApp(t)); p == nil {
 		t.Fatal("expected non-nil ProjectsPanel")
 	}
 }
@@ -34,9 +53,10 @@ func TestProjectsPanel_Refresh(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			tc.setup(t, app)
-			p := NewProjectsPanel(app)
+			p := views.NewProjectsPanel(app)
 			p.Refresh()
-			if got := p.list.GetItemCount(); got != tc.wantCount {
+			list, _ := projectsPanelParts(t, p)
+			if got := list.GetItemCount(); got != tc.wantCount {
 				t.Errorf("item count: got %d, want %d", got, tc.wantCount)
 			}
 		})
@@ -46,13 +66,14 @@ func TestProjectsPanel_Refresh(t *testing.T) {
 func TestProjectsPanel_Refresh_SortedByName(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := NewProjectsPanel(app)
+	p := views.NewProjectsPanel(app)
 	p.Refresh()
+	list, _ := projectsPanelParts(t, p)
 
-	itemCount := p.list.GetItemCount()
+	itemCount := list.GetItemCount()
 	names := make([]string, 0, itemCount)
 	for i := range itemCount {
-		main, _ := p.list.GetItemText(i)
+		main, _ := list.GetItemText(i)
 		names = append(names, main)
 	}
 	for i := 1; i < len(names); i++ {
@@ -65,33 +86,37 @@ func TestProjectsPanel_Refresh_SortedByName(t *testing.T) {
 func TestProjectsPanel_Refresh_PreservesSelection(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := NewProjectsPanel(app)
+	p := views.NewProjectsPanel(app)
 	p.Refresh()
-	p.list.SetCurrentItem(1)
-	want := p.selectedProject().Name()
+	list, _ := projectsPanelParts(t, p)
+	list.SetCurrentItem(1)
+	want, _ := list.GetItemText(1)
 
 	p.Refresh()
-	if got := p.selectedProject(); got == nil || got.Name() != want {
-		t.Errorf("selection changed: got %v, want %q", got, want)
+
+	got, _ := list.GetItemText(list.GetCurrentItem())
+	if got != want {
+		t.Errorf("selection changed: got %q, want %q", got, want)
 	}
 }
 
 func TestProjectsPanel_Keys_SwitchToMain(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		fire func(*ProjectsPanel)
+		name  string
+		event *tcell.EventKey
 	}{
-		{"esc key", func(p *ProjectsPanel) { p.handleKey(escKey()) }},
-		{"p key", func(p *ProjectsPanel) { p.handleKey(runeKey(KeyProjects)) }},
+		{"esc key", escKey()},
+		{"p key", runeKey(views.KeyProjects)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			p := NewProjectsPanel(app)
+			p := views.NewProjectsPanel(app)
 			p.Refresh()
-			tc.fire(p)
+			list, _ := projectsPanelParts(t, p)
+			list.GetInputCapture()(tc.event)
 			if app.switchedTo != "main" {
 				t.Errorf("expected switchedTo=main, got %q", app.switchedTo)
 			}
@@ -106,21 +131,26 @@ func TestProjectsPanel_Keys_ShowModal(t *testing.T) {
 		key       rune
 		wantHints string
 	}{
-		{"new", KeyNew, HintsForm},
-		{"edit", KeyEdit, HintsForm},
-		{"delete", KeyDelete, HintsConfirmModal},
-		{"grant", KeyGrant, HintsForm},
-		{"revoke", KeyRevoke, HintsForm},
-		{"help", KeyHelp, HintsHelpOverlay},
-		{"quit", KeyQuit, HintsConfirmModal},
+		{"new", views.KeyNew, views.HintsForm},
+		{"edit", views.KeyEdit, views.HintsForm},
+		{"delete", views.KeyDelete, views.HintsConfirmModal},
+		{"grant", views.KeyGrant, views.HintsForm},
+		{"revoke", views.KeyRevoke, views.HintsForm},
+		{"help", views.KeyHelp, views.HintsHelpOverlay},
+		{"quit", views.KeyQuit, views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			p := NewProjectsPanel(app)
+			p := views.NewProjectsPanel(app)
 			p.Refresh()
-			p.handleKey(runeKey(tc.key))
+			list, _ := projectsPanelParts(t, p)
+			capture := list.GetInputCapture()
+			if capture == nil {
+				t.Fatal("expected non-nil input capture")
+			}
+			capture(runeKey(tc.key))
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", string(tc.key))
 			}
@@ -137,19 +167,20 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 		name string
 		key  rune
 	}{
-		{"edit", KeyEdit},
-		{"delete", KeyDelete},
-		{"grant", KeyGrant},
-		{"revoke", KeyRevoke},
+		{"edit", views.KeyEdit},
+		{"delete", views.KeyDelete},
+		{"grant", views.KeyGrant},
+		{"revoke", views.KeyRevoke},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			app.svc = newTestService(t, model.NewRegistry())
-			p := NewProjectsPanel(app)
+			p := views.NewProjectsPanel(app)
 			p.Refresh()
-			p.handleKey(runeKey(tc.key))
+			list, _ := projectsPanelParts(t, p)
+			list.GetInputCapture()(runeKey(tc.key))
 			if app.modal != nil {
 				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
 			}
@@ -157,6 +188,10 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 	}
 }
 
+// TestProjectItemText replaces the old direct calls to the unexported
+// projectItemText: grants the project to accountCount real accounts
+// through a registry, refreshes, and reads the rendered row back via the
+// list's exported GetItemText.
 func TestProjectItemText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -172,8 +207,23 @@ func TestProjectItemText(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewProject("Alpha", "", "")
-			got := projectItemText(p, tc.accountCount)
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
+			for i := range tc.accountCount {
+				email := fmt.Sprintf("user%d@example.com", i)
+				must(t, reg.AddUser(model.NewUser(email, "User")))
+				acc, err := reg.AddAccount(reg.User(email), reg.Provider("claude"))
+				must(t, err)
+				must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
+			}
+
+			app := &mockApp{svc: newTestService(t, reg)}
+			p := views.NewProjectsPanel(app)
+			p.Refresh()
+			list, _ := projectsPanelParts(t, p)
+			got, _ := list.GetItemText(0)
+
 			if tc.wantContains != "" && !strings.Contains(got, tc.wantContains) {
 				t.Errorf("got %q, want it to contain %q", got, tc.wantContains)
 			}
@@ -186,8 +236,19 @@ func TestProjectItemText(t *testing.T) {
 
 func TestProjectItemText_EscapesName(t *testing.T) {
 	t.Parallel()
-	p := model.NewProject("Alpha[red]", "", "")
-	got := projectItemText(p, 1)
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	must(t, reg.AddProject(model.NewProject("Alpha[red]", "", "")))
+	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha[red]")))
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewProjectsPanel(app)
+	p.Refresh()
+	list, _ := projectsPanelParts(t, p)
+	got, _ := list.GetItemText(0)
 	want := tview.Escape("Alpha[red]")
 	if !strings.Contains(got, want) {
 		t.Errorf("got %q, want it to contain %q", got, want)

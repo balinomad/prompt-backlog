@@ -1,9 +1,10 @@
-package views
+package views_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
 	"github.com/rivo/tview"
@@ -86,7 +87,7 @@ func TestNewQueueEditor(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app, acc, sess := tc.setup(t)
-			result := NewQueueEditor(app, acc, sess, func() {})
+			result := views.NewQueueEditor(app, acc, sess, func() {})
 			if tc.wantModal {
 				if _, ok := result.(*tview.Modal); !ok {
 					t.Errorf("expected error modal, got %T", result)
@@ -113,15 +114,15 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 		key       rune
 		wantHints string
 	}{
-		{"new", KeyNew, HintsForm},
-		{"edit", KeyEdit, HintsForm},
-		{"delete", KeyDelete, HintsConfirmModal},
+		{"new", views.KeyNew, views.HintsForm},
+		{"edit", views.KeyEdit, views.HintsForm},
+		{"delete", views.KeyDelete, views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app, acc, sess := newQueueTestApp(t)
-			result := NewQueueEditor(app, acc, sess, func() {})
+			result := views.NewQueueEditor(app, acc, sess, func() {})
 			list, ok := result.(*tview.List)
 			if !ok {
 				t.Fatalf("expected *tview.List, got %T", result)
@@ -141,23 +142,32 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 	}
 }
 
+// TestQueueEditor_EmptyQueue_NoModal builds its own minimal fixture rather
+// than reusing newDetailTestApp (detail_test.go, not yet converted — see
+// the standing note on cross-file dependencies during this conversion).
+// Only a single account with one empty-queue session is needed here.
 func TestQueueEditor_EmptyQueue_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
 		key  rune
 	}{
-		{"edit", KeyEdit},
-		{"delete", KeyDelete},
+		{"edit", views.KeyEdit},
+		{"delete", views.KeyDelete},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app, acc := newDetailTestApp(t)
-			sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
 			must(t, err)
-			emptySess := sessions[1] // untitled session, nil queue, per newDetailTestApp's doc
-			result := NewQueueEditor(app, acc, emptySess, func() {})
+			emptySess, err := reg.AddSession(acc, nil, "", nil)
+			must(t, err)
+			app := &mockApp{svc: newTestService(t, reg)}
+
+			result := views.NewQueueEditor(app, acc, emptySess, func() {})
 			list, ok := result.(*tview.List)
 			if !ok {
 				t.Fatalf("expected *tview.List, got %T", result)
@@ -184,28 +194,28 @@ func TestQueueEditor_Reorder(t *testing.T) {
 	}{
 		{
 			name:      "move up from first item is a no-op",
-			key:       KeyMoveUp,
+			key:       views.KeyMoveUp,
 			startIdx:  0,
 			wantOrder: []string{"first", "second", "third"},
 			wantIdx:   0,
 		},
 		{
 			name:      "move up swaps with previous",
-			key:       KeyMoveUp,
+			key:       views.KeyMoveUp,
 			startIdx:  1,
 			wantOrder: []string{"second", "first", "third"},
 			wantIdx:   0,
 		},
 		{
 			name:      "move down from last item is a no-op",
-			key:       KeyMoveDown,
+			key:       views.KeyMoveDown,
 			startIdx:  2,
 			wantOrder: []string{"first", "second", "third"},
 			wantIdx:   2,
 		},
 		{
 			name:      "move down swaps with next",
-			key:       KeyMoveDown,
+			key:       views.KeyMoveDown,
 			startIdx:  0,
 			wantOrder: []string{"second", "first", "third"},
 			wantIdx:   1,
@@ -215,7 +225,7 @@ func TestQueueEditor_Reorder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app, acc, sess := newQueueTestApp(t)
-			result := NewQueueEditor(app, acc, sess, func() {})
+			result := views.NewQueueEditor(app, acc, sess, func() {})
 			list, ok := result.(*tview.List)
 			if !ok {
 				t.Fatalf("expected *tview.List, got %T", result)
@@ -249,7 +259,7 @@ func TestQueueEditor_Reorder(t *testing.T) {
 func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 	t.Parallel()
 	app, acc, sess := newQueueTestApp(t)
-	result := NewQueueEditor(app, acc, sess, func() {})
+	result := views.NewQueueEditor(app, acc, sess, func() {})
 	list, ok := result.(*tview.List)
 	if !ok {
 		t.Fatalf("expected *tview.List, got %T", result)
@@ -261,33 +271,42 @@ func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 
 	list.SetCurrentItem(1)
 	capture := list.GetInputCapture()
-	capture(runeKey(KeyMoveUp))
+	capture(runeKey(views.KeyMoveUp))
 
 	if app.status == "" {
 		t.Error("expected a status message reporting the commit failure")
 	}
 }
 
-// ── newPromptForm ──────────────────────────────────────────────────────────────
+// ── New / edit prompt: opens the form ──────────────────────────────────────────
 
-func TestNewPromptForm_ReturnsForm(t *testing.T) {
+// TestQueueEditor_NewAndEditPrompt_OpensForm replaces the old direct call
+// to the unexported newPromptForm: it drives the same two code paths
+// (KeyNew, KeyEdit) through the queue editor's own reachable key capture
+// and checks the resulting modal is a centred form (*tview.Flex), not
+// e.g. an error modal.
+func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name  string
-		idx   int // -1 = new
-		queue []model.Prompt
+		name string
+		key  rune
 	}{
-		{"new prompt", -1, nil},
-		{"edit existing prompt", 0, []model.Prompt{model.NewPrompt("existing", false)}},
+		{"new prompt", views.KeyNew},
+		{"edit existing prompt", views.KeyEdit},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
-			commit := func([]model.Prompt) bool { return true }
-			result := newPromptForm(app, tc.queue, tc.idx, commit, func() {})
-			if _, ok := result.(*tview.Flex); !ok {
-				t.Errorf("expected centred form, got %T", result)
+			app, acc, sess := newQueueTestApp(t)
+			result := views.NewQueueEditor(app, acc, sess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			list.SetCurrentItem(0)
+			list.GetInputCapture()(runeKey(tc.key))
+			if _, ok := app.modal.(*tview.Flex); !ok {
+				t.Errorf("key %q: expected centred form (*tview.Flex), got %T", string(tc.key), app.modal)
 			}
 		})
 	}
@@ -295,6 +314,9 @@ func TestNewPromptForm_ReturnsForm(t *testing.T) {
 
 // ── promptItemText ──────────────────────────────────────────────────────────────
 
+// TestPromptItemText builds a real session per case and reads the rendered
+// row back via the list's exported GetItemText, rather than calling the
+// unexported promptItemText directly.
 func TestPromptItemText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -311,8 +333,22 @@ func TestPromptItemText(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewPrompt(tc.text, tc.spawns)
-			got := promptItemText(p)
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			must(t, err)
+			sess, err := reg.AddSession(acc, nil, "", []model.Prompt{model.NewPrompt(tc.text, tc.spawns)})
+			must(t, err)
+			app := &mockApp{svc: newTestService(t, reg)}
+
+			result := views.NewQueueEditor(app, acc, sess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			got, _ := list.GetItemText(0)
+
 			if tc.wantEqual != "" && got != tc.wantEqual {
 				t.Errorf("got %q, want %q", got, tc.wantEqual)
 			}
@@ -331,32 +367,32 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 	t.Run("help", func(t *testing.T) {
 		t.Parallel()
 		app, acc, sess := newQueueTestApp(t)
-		result := NewQueueEditor(app, acc, sess, func() {})
+		result := views.NewQueueEditor(app, acc, sess, func() {})
 		list, ok := result.(*tview.List)
 		if !ok {
 			t.Fatalf("expected *tview.List, got %T", result)
 		}
-		list.GetInputCapture()(runeKey(KeyHelp))
+		list.GetInputCapture()(runeKey(views.KeyHelp))
 
 		helpOverlayTextView(t, app.modal).GetInputCapture()(escKey())
 
 		if _, ok := app.modal.(*tview.List); !ok {
 			t.Fatalf("expected Esc on help to reopen the queue editor (*tview.List), got %T", app.modal)
 		}
-		if app.hints != HintsQueueEditor {
-			t.Errorf("hints after reopen: got %q, want %q", app.hints, HintsQueueEditor)
+		if app.hints != views.HintsQueueEditor {
+			t.Errorf("hints after reopen: got %q, want %q", app.hints, views.HintsQueueEditor)
 		}
 	})
 
 	t.Run("quit", func(t *testing.T) {
 		t.Parallel()
 		app, acc, sess := newQueueTestApp(t)
-		result := NewQueueEditor(app, acc, sess, func() {})
+		result := views.NewQueueEditor(app, acc, sess, func() {})
 		list, ok := result.(*tview.List)
 		if !ok {
 			t.Fatalf("expected *tview.List, got %T", result)
 		}
-		list.GetInputCapture()(runeKey(KeyQuit))
+		list.GetInputCapture()(runeKey(views.KeyQuit))
 
 		confirmModal, ok := app.modal.(*tview.Modal)
 		if !ok {
@@ -367,8 +403,8 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 		if _, ok := app.modal.(*tview.List); !ok {
 			t.Fatalf("expected cancelling quit to reopen the queue editor (*tview.List), got %T", app.modal)
 		}
-		if app.hints != HintsQueueEditor {
-			t.Errorf("hints after reopen: got %q, want %q", app.hints, HintsQueueEditor)
+		if app.hints != views.HintsQueueEditor {
+			t.Errorf("hints after reopen: got %q, want %q", app.hints, views.HintsQueueEditor)
 		}
 		if app.quitted {
 			t.Error("cancelling quit must not actually quit")

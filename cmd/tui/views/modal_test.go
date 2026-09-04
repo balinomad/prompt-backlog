@@ -1,7 +1,9 @@
-package views
+package views_test
 
 import (
 	"testing"
+
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 
 	"github.com/rivo/tview"
 )
@@ -11,7 +13,7 @@ import (
 func TestNewConfirmModal_EscCallsCancel(t *testing.T) {
 	t.Parallel()
 	var cancelled bool
-	prim := NewConfirmModal("test?", func() {}, func() { cancelled = true })
+	prim := views.NewConfirmModal("test?", func() {}, func() { cancelled = true })
 	modal, ok := prim.(*tview.Modal)
 	if !ok {
 		t.Fatal("NewConfirmModal must return *tview.Modal")
@@ -31,7 +33,7 @@ func TestNewConfirmModal_EscCallsCancel(t *testing.T) {
 
 func TestNewConfirmModal_NonEscPassesThrough(t *testing.T) {
 	t.Parallel()
-	prim := NewConfirmModal("test?", func() {}, func() {})
+	prim := views.NewConfirmModal("test?", func() {}, func() {})
 	modal, ok := prim.(*tview.Modal)
 	if !ok {
 		t.Fatal("NewConfirmModal must return *tview.Modal")
@@ -48,7 +50,7 @@ func TestNewConfirmModal_NonEscPassesThrough(t *testing.T) {
 
 func TestNewConfirmModal_ReturnsModal(t *testing.T) {
 	t.Parallel()
-	prim := NewConfirmModal("message", func() {}, func() {})
+	prim := views.NewConfirmModal("message", func() {}, func() {})
 	if _, ok := prim.(*tview.Modal); !ok {
 		t.Error("expected *tview.Modal")
 	}
@@ -83,7 +85,7 @@ func helpOverlayTextView(t *testing.T, overlay tview.Primitive) *tview.TextView 
 func TestNewHelpOverlay_EscCallsOnClose(t *testing.T) {
 	t.Parallel()
 	var closed bool
-	overlay := NewHelpOverlay(func() { closed = true })
+	overlay := views.NewHelpOverlay(func() { closed = true })
 	capture := helpOverlayTextView(t, overlay).GetInputCapture()
 	if capture == nil {
 		t.Fatal("expected non-nil input capture")
@@ -97,15 +99,30 @@ func TestNewHelpOverlay_EscCallsOnClose(t *testing.T) {
 	}
 }
 
+// TestShowHelp_EscRestoresHintsAndHidesModal exercises the unexported
+// showHelp indirectly through AccountsPanel's KeyHelp handling —
+// AccountsPanel embeds *tview.List directly, so its GetInputCapture()
+// reaches handleKey from outside the package. The restored-hints value is
+// necessarily HintsAccountsPanel here, since that's what
+// AccountsPanel.handleKey passes to showHelp; the round trip itself
+// (open, HintsHelpOverlay, Esc, hints restored, modal hidden) is what's
+// under test, not the specific string.
 func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 	t.Parallel()
-	app := &mockApp{}
-	showHelp(app, "return hints")
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+
+	capture := p.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyHelp))
+
 	if app.modal == nil {
 		t.Fatal("expected a modal to be shown")
 	}
-	if app.hints != HintsHelpOverlay {
-		t.Errorf("hints while open: got %q, want %q", app.hints, HintsHelpOverlay)
+	if app.hints != views.HintsHelpOverlay {
+		t.Errorf("hints while open: got %q, want %q", app.hints, views.HintsHelpOverlay)
 	}
 
 	helpOverlayTextView(t, app.modal).GetInputCapture()(escKey())
@@ -113,7 +130,7 @@ func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after Esc")
 	}
-	if app.hints != "return hints" {
-		t.Errorf("hints after close: got %q, want %q", app.hints, "return hints")
+	if app.hints != views.HintsAccountsPanel {
+		t.Errorf("hints after close: got %q, want %q", app.hints, views.HintsAccountsPanel)
 	}
 }

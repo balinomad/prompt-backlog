@@ -1,10 +1,32 @@
-package views
+package views_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/balinomad/llm-desk/cmd/tui/views"
+
+	"github.com/rivo/tview"
+)
+
+// statusBarTexts returns the hints (left) and message (right) text
+// currently displayed by sb, reached via the exported Flex.GetItem —
+// StatusBar puts hints at index 0, message at index 1 (see statusbar.go).
+func statusBarTexts(t *testing.T, sb *views.StatusBar) (string, string) {
+	t.Helper()
+	hints, ok := sb.GetItem(0).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at index 0, got %T", sb.GetItem(0))
+	}
+	message, ok := sb.GetItem(1).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at index 1, got %T", sb.GetItem(1))
+	}
+	return hints.GetText(false), message.GetText(false)
+}
 
 func TestNewStatusBar(t *testing.T) {
 	t.Parallel()
-	sb := NewStatusBar()
+	sb := views.NewStatusBar()
 	if sb == nil {
 		t.Fatal("expected non-nil StatusBar")
 	}
@@ -12,17 +34,19 @@ func TestNewStatusBar(t *testing.T) {
 
 func TestStatusBar_DefaultHints(t *testing.T) {
 	t.Parallel()
-	sb := NewStatusBar()
-	if got := sb.hintsView.GetText(false); got != HintsAccountsPanel {
-		t.Errorf("default hints: got %q, want HintsAccountsPanel", got)
+	sb := views.NewStatusBar()
+	hints, _ := statusBarTexts(t, sb)
+	if hints != views.HintsAccountsPanel {
+		t.Errorf("default hints: got %q, want HintsAccountsPanel", hints)
 	}
 }
 
 func TestStatusBar_DefaultMessageEmpty(t *testing.T) {
 	t.Parallel()
-	sb := NewStatusBar()
-	if got := sb.messageView.GetText(false); got != "" {
-		t.Errorf("expected empty message, got %q", got)
+	sb := views.NewStatusBar()
+	_, message := statusBarTexts(t, sb)
+	if message != "" {
+		t.Errorf("expected empty message, got %q", message)
 	}
 }
 
@@ -32,22 +56,23 @@ func TestStatusBar_SetHints(t *testing.T) {
 		name  string
 		hints string
 	}{
-		{"accounts panel", HintsAccountsPanel},
-		{"detail panel", HintsDetailPanel},
-		{"projects panel", HintsProjectsPanel},
-		{"providers panel", HintsProvidersPanel},
-		{"queue editor", HintsQueueEditor},
-		{"form", HintsForm},
-		{"confirm modal", HintsConfirmModal},
-		{"help overlay", HintsHelpOverlay},
+		{"accounts panel", views.HintsAccountsPanel},
+		{"detail panel", views.HintsDetailPanel},
+		{"projects panel", views.HintsProjectsPanel},
+		{"providers panel", views.HintsProvidersPanel},
+		{"queue editor", views.HintsQueueEditor},
+		{"form", views.HintsForm},
+		{"confirm modal", views.HintsConfirmModal},
+		{"help overlay", views.HintsHelpOverlay},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			sb := NewStatusBar()
+			sb := views.NewStatusBar()
 			sb.SetHints(tc.hints)
-			if got := sb.hintsView.GetText(false); got != tc.hints {
-				t.Errorf("SetHints(%q): got %q", tc.name, got)
+			hints, _ := statusBarTexts(t, sb)
+			if hints != tc.hints {
+				t.Errorf("SetHints(%q): got %q", tc.name, hints)
 			}
 		})
 	}
@@ -59,14 +84,14 @@ func TestStatusBar_AllHintsConstantsNonEmpty(t *testing.T) {
 		name  string
 		value string
 	}{
-		{"HintsAccountsPanel", HintsAccountsPanel},
-		{"HintsDetailPanel", HintsDetailPanel},
-		{"HintsProjectsPanel", HintsProjectsPanel},
-		{"HintsProvidersPanel", HintsProvidersPanel},
-		{"HintsQueueEditor", HintsQueueEditor},
-		{"HintsForm", HintsForm},
-		{"HintsConfirmModal", HintsConfirmModal},
-		{"HintsHelpOverlay", HintsHelpOverlay},
+		{"HintsAccountsPanel", views.HintsAccountsPanel},
+		{"HintsDetailPanel", views.HintsDetailPanel},
+		{"HintsProjectsPanel", views.HintsProjectsPanel},
+		{"HintsProvidersPanel", views.HintsProvidersPanel},
+		{"HintsQueueEditor", views.HintsQueueEditor},
+		{"HintsForm", views.HintsForm},
+		{"HintsConfirmModal", views.HintsConfirmModal},
+		{"HintsHelpOverlay", views.HintsHelpOverlay},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -91,10 +116,11 @@ func TestStatusBar_SetMessage(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			sb := NewStatusBar()
+			sb := views.NewStatusBar()
 			sb.SetMessage(tc.msg)
-			if got := sb.messageView.GetText(false); got != tc.msg {
-				t.Errorf("SetMessage(%q): got %q", tc.msg, got)
+			_, message := statusBarTexts(t, sb)
+			if message != tc.msg {
+				t.Errorf("SetMessage(%q): got %q", tc.msg, message)
 			}
 		})
 	}

@@ -1,11 +1,13 @@
-package views
+package views_test
 
 import (
 	"testing"
 
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
 	"github.com/balinomad/llm-desk/internal/store"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -64,7 +66,7 @@ type mockApp struct {
 	quitted    bool
 }
 
-var _ App = (*mockApp)(nil)
+var _ views.App = (*mockApp)(nil)
 
 func (m *mockApp) Service() *service.Service { return m.svc }
 

@@ -1,9 +1,10 @@
-package views
+package views_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
 	"github.com/rivo/tview"
@@ -13,7 +14,7 @@ import (
 
 func TestNewDetailPanel(t *testing.T) {
 	t.Parallel()
-	if p := NewDetailPanel(newMockApp(t)); p == nil {
+	if p := views.NewDetailPanel(newMockApp(t)); p == nil {
 		t.Fatal("expected non-nil DetailPanel")
 	}
 }
@@ -48,21 +49,39 @@ func newDetailTestApp(t *testing.T) (*mockApp, *model.Account) {
 	return app, acc
 }
 
+// detailPanelParts returns p's sessions list and info view, reached via
+// the exported Flex.GetItem — DetailPanel puts the list at index 0, the
+// info view at index 1 (see detail.go).
+func detailPanelParts(t *testing.T, p *views.DetailPanel) (*tview.List, *tview.TextView) {
+	t.Helper()
+	list, ok := p.GetItem(0).(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List at index 0, got %T", p.GetItem(0))
+	}
+	info, ok := p.GetItem(1).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at index 1, got %T", p.GetItem(1))
+	}
+	return list, info
+}
+
 func TestDetailPanel_SetAccount_Nil(t *testing.T) {
 	t.Parallel()
-	p := NewDetailPanel(newMockApp(t))
+	p := views.NewDetailPanel(newMockApp(t))
 	p.SetAccount(nil)
-	if p.account != nil {
-		t.Error("account should be nil after SetAccount(nil)")
+	_, info := detailPanelParts(t, p)
+	if !strings.Contains(info.GetText(false), "no account selected") {
+		t.Errorf("expected info panel to show \"no account selected\", got %q", info.GetText(false))
 	}
 }
 
 func TestDetailPanel_SetAccount_ItemCount(t *testing.T) {
 	t.Parallel()
 	app, acc := newDetailTestApp(t)
-	p := NewDetailPanel(app)
+	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	if got := p.sessionsList.GetItemCount(); got != 2 {
+	list, _ := detailPanelParts(t, p)
+	if got := list.GetItemCount(); got != 2 {
 		t.Errorf("expected 2 list items, got %d", got)
 	}
 }
@@ -76,45 +95,73 @@ func TestDetailPanel_Refresh_ClearsOnDeletedAccount(t *testing.T) {
 	must(t, err)
 	app := &mockApp{svc: newTestService(t, reg)}
 
-	p := NewDetailPanel(app)
+	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
 
 	must(t, reg.DeleteAccount(acc))
 	p.Refresh()
-	if p.account != nil {
-		t.Error("account should be nil after deletion from registry")
+
+	list, info := detailPanelParts(t, p)
+	if !strings.Contains(info.GetText(false), "no account selected") {
+		t.Error("expected info panel to show \"no account selected\" after deletion from registry")
 	}
-	if p.sessionsList.GetItemCount() != 0 {
+	if list.GetItemCount() != 0 {
 		t.Error("list should be empty after account deleted")
 	}
 }
 
 // ── keyboard handlers ─────────────────────────────────────────────────────────
 
+// TestDetailPanel_Keys_ShowModal checks not just that a modal opens, but
+// which concrete tview type it is: NewSessionForm and NewHelpOverlay
+// return a centred *tview.Flex, NewConfirmModal returns *tview.Modal,
+// NewQueueEditor returns its *tview.List directly. A wrong-modal
+// regression (e.g. help wired to the wrong handler) would still pass a
+// bare non-nil check; it won't pass this.
 func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
 		key       rune
 		wantHints string
+		wantType  string // "flex" | "modal" | "list"
 	}{
-		{"help", KeyHelp, HintsHelpOverlay},
-		{"quit", KeyQuit, HintsConfirmModal},
-		{"new session", KeyNew, HintsForm},
-		{"edit session", KeyEdit, HintsForm},
-		{"delete session", KeyDelete, HintsConfirmModal},
-		{"queue editor", KeyQueue, HintsQueueEditor},
+		{"help", views.KeyHelp, views.HintsHelpOverlay, "flex"},
+		{"quit", views.KeyQuit, views.HintsConfirmModal, "modal"},
+		{"new session", views.KeyNew, views.HintsForm, "flex"},
+		{"edit session", views.KeyEdit, views.HintsForm, "flex"},
+		{"delete session", views.KeyDelete, views.HintsConfirmModal, "modal"},
+		{"queue editor", views.KeyQueue, views.HintsQueueEditor, "list"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app, acc := newDetailTestApp(t)
-			p := NewDetailPanel(app)
+			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			p.sessionsList.SetCurrentItem(0)
-			p.handleKey(runeKey(tc.key))
+			list, _ := detailPanelParts(t, p)
+			list.SetCurrentItem(0)
+			capture := list.GetInputCapture()
+			if capture == nil {
+				t.Fatal("expected non-nil input capture")
+			}
+			capture(runeKey(tc.key))
 			if app.modal == nil {
-				t.Errorf("key %q: expected modal", string(tc.key))
+				t.Fatalf("key %q: expected modal", string(tc.key))
+			}
+			switch tc.wantType {
+			case "flex":
+				if _, ok := app.modal.(*tview.Flex); !ok {
+					t.Errorf("key %q: expected *tview.Flex, got %T", string(tc.key), app.modal)
+				}
+			case "modal":
+				if _, ok := app.modal.(*tview.Modal); !ok {
+					t.Errorf("key %q: expected *tview.Modal, got %T", string(tc.key), app.modal)
+				}
+			case "list":
+				if _, ok := app.modal.(*tview.List); !ok {
+					t.Errorf("key %q: expected *tview.List, got %T", string(tc.key), app.modal)
+				}
 			}
 			if app.hints != tc.wantHints {
 				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
@@ -129,9 +176,9 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 		name string
 		key  rune
 	}{
-		{"edit", KeyEdit},
-		{"delete", KeyDelete},
-		{"queue", KeyQueue},
+		{"edit", views.KeyEdit},
+		{"delete", views.KeyDelete},
+		{"queue", views.KeyQueue},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -143,9 +190,11 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 			must(t, err)
 			app := &mockApp{svc: newTestService(t, reg)}
 
-			p := NewDetailPanel(app)
+			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			p.handleKey(runeKey(tc.key))
+			list, _ := detailPanelParts(t, p)
+			capture := list.GetInputCapture()
+			capture(runeKey(tc.key))
 			if app.modal != nil {
 				t.Errorf("key %q with no sessions should not open a modal", string(tc.key))
 			}
@@ -153,6 +202,137 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 	}
 }
 
+// TestDetailPanel_NewSession_NilAccount_NoModal covers handleNew's own
+// guard: unlike handleEdit/handleDelete/handleQueue/handleToggle, it does
+// not depend on a selected session, only on p.account being non-nil, so
+// it needs its own case rather than folding into
+// TestDetailPanel_NoSessions_NoModal.
+func TestDetailPanel_NewSession_NilAccount_NoModal(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewDetailPanel(app) // account is nil; SetAccount is never called
+	list, _ := detailPanelParts(t, p)
+	list.GetInputCapture()(runeKey(views.KeyNew))
+	if app.modal != nil {
+		t.Error("KeyNew with no account selected should not open a modal")
+	}
+}
+
+func TestDetailPanel_HandleKey_PassesThroughUnrecognizedKey(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+
+	event := runeKey('z') // not bound to anything in DetailPanel
+	if got := list.GetInputCapture()(event); got != event {
+		t.Error("unrecognized key should pass through unchanged")
+	}
+}
+
+// TestDetailPanel_EditSession_OpensPrepopulatedForm strengthens
+// TestDetailPanel_Keys_ShowModal's "edit session" case, which only
+// checks that *a* form opens: this checks it's a form for the *selected*
+// session specifically, by reading its Topic field back.
+func TestDetailPanel_EditSession_OpensPrepopulatedForm(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(0) // "Architecture review", per newDetailTestApp's doc comment
+
+	list.GetInputCapture()(runeKey(views.KeyEdit))
+
+	form := formFromCenteredModal(t, app.modal)
+	topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
+	if !ok {
+		t.Fatal("expected Topic *tview.InputField")
+	}
+	if got := topicField.GetText(); got != "Architecture review" {
+		t.Errorf("topic: got %q, want %q (the selected session's topic)", got, "Architecture review")
+	}
+}
+
+// TestDetailPanel_Queue_OpensForSelectedSession strengthens
+// TestDetailPanel_Keys_ShowModal's "queue editor" case the same way:
+// checks the opened editor holds the *selected* session's queue, not
+// just that some *tview.List opened.
+func TestDetailPanel_Queue_OpensForSelectedSession(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(0) // "Architecture review", queue=[continue]
+
+	list.GetInputCapture()(runeKey(views.KeyQueue))
+
+	queueList, ok := app.modal.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List (queue editor), got %T", app.modal)
+	}
+	if got := queueList.GetItemCount(); got != 1 {
+		t.Errorf("queue item count: got %d, want 1 (the selected session's queue)", got)
+	}
+}
+
+// TestDetailPanel_DeleteSession_Cancel is as far as handleDelete's
+// confirm modal can be driven black-box. The Confirm button's click
+// path is not reachable from outside tview: it routes through
+// (*tview.Modal).InputHandler, which is gated behind
+// (*tview.Frame).HasFocus → (*tview.Form).HasFocus → a per-button
+// hasFocus flag that only a running tview.Application's real focus
+// delegation ever sets — nothing in this test suite spins one up, and
+// the Form/Button holding that state is an unexported field on Modal,
+// unreachable even if it weren't focus-gated. Esc is different: Modal's
+// SetInputCapture intercepts it directly (see modal.go's comment on
+// why), with no focus dependency, so onCancel is reachable the same way
+// every other capture in this suite is. Confirming an end-session
+// therefore stays unverified black-box; this covers the reachable half —
+// cancelling leaves the session untouched and state restored.
+func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(0)
+
+	sessionsBefore, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+	must(t, err)
+	wantCount := len(sessionsBefore)
+
+	list.GetInputCapture()(runeKey(views.KeyDelete))
+	confirmModal, ok := app.modal.(*tview.Modal)
+	if !ok {
+		t.Fatalf("expected *tview.Modal, got %T", app.modal)
+	}
+	capture := confirmModal.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(escKey())
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after cancelling")
+	}
+	if app.hints != views.HintsDetailPanel {
+		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsDetailPanel)
+	}
+	sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+	must(t, err)
+	if len(sessionsAfter) != wantCount {
+		t.Errorf("session count changed after cancel: got %d, want %d (unchanged)", len(sessionsAfter), wantCount)
+	}
+}
+
+// TestDetailPanel_Toggle_Continue also subsumes the old, unexported
+// toggleContinuePrompt's direct-call table: the three cases below are the
+// same three transformations (empty->append, pending->remove,
+// non-continue-tail->append), verified through the committed session
+// queue instead of the pure function's return value.
 func TestDetailPanel_Toggle_Continue(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -177,10 +357,11 @@ func TestDetailPanel_Toggle_Continue(t *testing.T) {
 			must(t, err)
 			app := &mockApp{svc: newTestService(t, reg)}
 
-			p := NewDetailPanel(app)
+			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			p.sessionsList.SetCurrentItem(0)
-			p.handleKey(runeKey(KeyToggle))
+			list, _ := detailPanelParts(t, p)
+			list.SetCurrentItem(0)
+			list.GetInputCapture()(runeKey(views.KeyToggle))
 
 			updated := app.svc.Session(sess.ID())
 			if updated == nil {
@@ -190,114 +371,132 @@ func TestDetailPanel_Toggle_Continue(t *testing.T) {
 			if len(q) != tc.wantLen {
 				t.Fatalf("queue length: got %d, want %d", len(q), tc.wantLen)
 			}
-			if isContinuePending(q) != tc.wantPending {
-				t.Errorf("isContinuePending: got %v, want %v", isContinuePending(q), tc.wantPending)
+			gotPending := len(q) > 0 && q[len(q)-1] == model.NewPrompt("continue", false)
+			if gotPending != tc.wantPending {
+				t.Errorf("pending continue: got %v, want %v", gotPending, tc.wantPending)
 			}
 		})
+	}
+}
+
+// TestDetailPanel_Toggle_NoSession_NoOp covers handleToggle's own guard.
+// It is not folded into TestDetailPanel_NoSessions_NoModal because
+// handleToggle never opens a modal on any path — the meaningful
+// assertion here is that nothing panics (an unguarded handleToggle would
+// dereference a nil *model.Session) and no status is set.
+func TestDetailPanel_Toggle_NoSession_NoOp(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	app := &mockApp{svc: newTestService(t, reg)}
+
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc) // no sessions
+	list, _ := detailPanelParts(t, p)
+	list.GetInputCapture()(runeKey(views.KeyToggle))
+
+	if app.status != "" {
+		t.Errorf("expected no status message from a no-op toggle, got %q", app.status)
 	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func TestSessionItemText(t *testing.T) {
+// TestDetailPanel_SessionRowText replaces the old direct calls to the
+// unexported sessionItemText and isContinuePending: it builds a real
+// session per case through a registry, sets it on a DetailPanel, and
+// reads the rendered row back via the sessions list's exported
+// GetItemText. Folds in the old isContinuePending cases (marker
+// presence) alongside the old sessionItemText cases (topic, project,
+// queue count, escaping) — both concerns render into the same row, and
+// building a session per case already covers what either would need
+// separately. TestTruncate has no equivalent here: sessionItemText pads
+// its result into a fixed-width column before this test ever sees it, so
+// the exact rune-boundary case isn't recoverable from the rendered
+// string — dropped rather than tested imprecisely.
+func TestDetailPanel_SessionRowText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name         string
 		topic        string
-		project      string
+		projectName  string // empty = no project
 		queue        []model.Prompt
 		wantContains []string
+		wantMarker   bool
 	}{
-		{"untitled no project no queue", "", "", nil, []string{"(untitled)", "queue: 0"}},
-		{"topic and project shown", "Architecture review", "Alpha", nil, []string{"Architecture review", "Alpha", "queue: 0"}},
-		{"pending continue reflected in count", "topic", "", []model.Prompt{model.NewPrompt("continue", false)}, []string{"queue: 1"}},
-		{"bracket in topic and project is escaped", "plan [x]", "proj]y", nil, []string{tview.Escape("plan [x]"), tview.Escape("proj]y")}},
+		{
+			name:         "untitled, no project, empty queue",
+			wantContains: []string{"(untitled)", "queue: 0"},
+		},
+		{
+			name:         "topic and project shown",
+			topic:        "Architecture review",
+			projectName:  "Alpha",
+			wantContains: []string{"Architecture review", "Alpha", "queue: 0"},
+		},
+		{
+			name:         "bracket in topic and project is escaped",
+			topic:        "plan [x]",
+			projectName:  "proj]y",
+			wantContains: []string{tview.Escape("plan [x]"), tview.Escape("proj]y")},
+		},
+		{
+			name:         "pending continue shows marker",
+			topic:        "topic",
+			queue:        []model.Prompt{model.NewPrompt("continue", false)},
+			wantContains: []string{"queue: 1"},
+			wantMarker:   true,
+		},
+		{
+			name:         "continue not last: no marker",
+			queue:        []model.Prompt{model.NewPrompt("continue", false), model.NewPrompt("do X", false)},
+			wantContains: []string{"queue: 2"},
+		},
+		{
+			name:         "continue with spawnsSession true: no marker",
+			queue:        []model.Prompt{model.NewPrompt("continue", true)},
+			wantContains: []string{"queue: 1"},
+		},
+		{
+			name:         "non-continue tail: no marker",
+			queue:        []model.Prompt{model.NewPrompt("do X", false)},
+			wantContains: []string{"queue: 1"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			key := model.AccountKey{Email: "a@x.com", Provider: "p"}
-			s := model.NewSession(key, 1, tc.project, tc.topic, tc.queue)
-			got := sessionItemText(s)
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			must(t, err)
+
+			var proj *model.Project
+			if tc.projectName != "" {
+				must(t, reg.AddProject(model.NewProject(tc.projectName, "", "")))
+				proj = reg.Project(tc.projectName)
+				must(t, reg.AddProjectToAccount(acc, proj))
+			}
+			_, err = reg.AddSession(acc, proj, tc.topic, tc.queue)
+			must(t, err)
+
+			app := &mockApp{svc: newTestService(t, reg)}
+			p := views.NewDetailPanel(app)
+			p.SetAccount(acc)
+			list, _ := detailPanelParts(t, p)
+			got, _ := list.GetItemText(0)
+
 			for _, want := range tc.wantContains {
 				if !strings.Contains(got, want) {
 					t.Errorf("got %q, want it to contain %q", got, want)
 				}
 			}
-		})
-	}
-}
-
-func TestIsContinuePending(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name  string
-		queue []model.Prompt
-		want  bool
-	}{
-		{"empty queue", nil, false},
-		{"last is continue", []model.Prompt{model.NewPrompt("continue", false)}, true},
-		{"last is not continue", []model.Prompt{model.NewPrompt("do X", false)}, false},
-		{"continue not last", []model.Prompt{model.NewPrompt("continue", false), model.NewPrompt("do X", false)}, false},
-		{"continue with spawnsSession true does not match", []model.Prompt{model.NewPrompt("continue", true)}, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if got := isContinuePending(tc.queue); got != tc.want {
-				t.Errorf("got %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestToggleContinuePrompt(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name     string
-		queue    []model.Prompt
-		wantLen  int
-		wantLast string
-	}{
-		{"appends to empty", nil, 1, "continue"},
-		{"removes trailing continue", []model.Prompt{model.NewPrompt("continue", false)}, 0, ""},
-		{"appends after other prompt", []model.Prompt{model.NewPrompt("do X", false)}, 2, "continue"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := toggleContinuePrompt(tc.queue)
-			if len(got) != tc.wantLen {
-				t.Fatalf("length: got %d, want %d", len(got), tc.wantLen)
-			}
-			if tc.wantLen > 0 && got[len(got)-1].Text() != tc.wantLast {
-				t.Errorf("last entry: got %q, want %q", got[len(got)-1].Text(), tc.wantLast)
-			}
-		})
-	}
-}
-
-func TestTruncate(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name  string
-		input string
-		max   int
-		want  string
-	}{
-		{"shorter than max unchanged", "hi", 10, "hi"},
-		{"exactly max unchanged", "hello", 5, "hello"},
-		{"longer truncated to max runes", "hello world", 6, "hello…"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := truncate(tc.input, tc.max)
-			if got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-			if len([]rune(got)) > tc.max {
-				t.Errorf("result longer than max: %d > %d", len([]rune(got)), tc.max)
+			if hasMarker := strings.Contains(got, "↻"); hasMarker != tc.wantMarker {
+				t.Errorf("marker present: got %v, want %v (row: %q)", hasMarker, tc.wantMarker, got)
 			}
 		})
 	}

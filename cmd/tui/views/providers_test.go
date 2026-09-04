@@ -1,17 +1,35 @@
-package views
+package views_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
+// providersPanelParts returns p's provider list and info view, reached
+// via the exported Flex.GetItem — ProvidersPanel puts the list at index
+// 0, the info view at index 1 (see providers.go).
+func providersPanelParts(t *testing.T, p *views.ProvidersPanel) (*tview.List, *tview.TextView) {
+	t.Helper()
+	list, ok := p.GetItem(0).(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List at index 0, got %T", p.GetItem(0))
+	}
+	info, ok := p.GetItem(1).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at index 1, got %T", p.GetItem(1))
+	}
+	return list, info
+}
+
 func TestNewProvidersPanel(t *testing.T) {
 	t.Parallel()
-	if p := NewProvidersPanel(newMockApp(t)); p == nil {
+	if p := views.NewProvidersPanel(newMockApp(t)); p == nil {
 		t.Fatal("expected non-nil ProvidersPanel")
 	}
 }
@@ -34,9 +52,10 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			tc.setup(t, app)
-			p := NewProvidersPanel(app)
+			p := views.NewProvidersPanel(app)
 			p.Refresh()
-			if got := p.list.GetItemCount(); got != tc.wantCount {
+			list, _ := providersPanelParts(t, p)
+			if got := list.GetItemCount(); got != tc.wantCount {
 				t.Errorf("item count: got %d, want %d", got, tc.wantCount)
 			}
 		})
@@ -46,13 +65,14 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 func TestProvidersPanel_Refresh_SortedByName(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := NewProvidersPanel(app)
+	p := views.NewProvidersPanel(app)
 	p.Refresh()
+	list, _ := providersPanelParts(t, p)
 
-	itemCount := p.list.GetItemCount()
+	itemCount := list.GetItemCount()
 	names := make([]string, 0, itemCount)
 	for i := range itemCount {
-		main, _ := p.list.GetItemText(i)
+		main, _ := list.GetItemText(i)
 		names = append(names, main)
 	}
 	for i := 1; i < len(names); i++ {
@@ -65,33 +85,37 @@ func TestProvidersPanel_Refresh_SortedByName(t *testing.T) {
 func TestProvidersPanel_Refresh_PreservesSelection(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := NewProvidersPanel(app)
+	p := views.NewProvidersPanel(app)
 	p.Refresh()
-	p.list.SetCurrentItem(1)
-	want := p.selectedProvider().Name()
+	list, _ := providersPanelParts(t, p)
+	list.SetCurrentItem(1)
+	want, _ := list.GetItemText(1)
 
 	p.Refresh()
-	if got := p.selectedProvider(); got == nil || got.Name() != want {
-		t.Errorf("selection changed: got %v, want %q", got, want)
+
+	got, _ := list.GetItemText(list.GetCurrentItem())
+	if got != want {
+		t.Errorf("selection changed: got %q, want %q", got, want)
 	}
 }
 
 func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		fire func(*ProvidersPanel)
+		name  string
+		event *tcell.EventKey
 	}{
-		{"esc key", func(p *ProvidersPanel) { p.handleKey(escKey()) }},
-		{"r key", func(p *ProvidersPanel) { p.handleKey(runeKey(KeyProviders)) }},
+		{"esc key", escKey()},
+		{"r key", runeKey(views.KeyProviders)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			p := NewProvidersPanel(app)
+			p := views.NewProvidersPanel(app)
 			p.Refresh()
-			tc.fire(p)
+			list, _ := providersPanelParts(t, p)
+			list.GetInputCapture()(tc.event)
 			if app.switchedTo != "main" {
 				t.Errorf("expected switchedTo=main, got %q", app.switchedTo)
 			}
@@ -106,19 +130,24 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 		key       rune
 		wantHints string
 	}{
-		{"new", KeyNew, HintsForm},
-		{"edit", KeyEdit, HintsForm},
-		{"delete", KeyDelete, HintsConfirmModal},
-		{"help", KeyHelp, HintsHelpOverlay},
-		{"quit", KeyQuit, HintsConfirmModal},
+		{"new", views.KeyNew, views.HintsForm},
+		{"edit", views.KeyEdit, views.HintsForm},
+		{"delete", views.KeyDelete, views.HintsConfirmModal},
+		{"help", views.KeyHelp, views.HintsHelpOverlay},
+		{"quit", views.KeyQuit, views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			p := NewProvidersPanel(app)
+			p := views.NewProvidersPanel(app)
 			p.Refresh()
-			p.handleKey(runeKey(tc.key))
+			list, _ := providersPanelParts(t, p)
+			capture := list.GetInputCapture()
+			if capture == nil {
+				t.Fatal("expected non-nil input capture")
+			}
+			capture(runeKey(tc.key))
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", string(tc.key))
 			}
@@ -135,17 +164,18 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 		name string
 		key  rune
 	}{
-		{"edit", KeyEdit},
-		{"delete", KeyDelete},
+		{"edit", views.KeyEdit},
+		{"delete", views.KeyDelete},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			app.svc = newTestService(t, model.NewRegistry())
-			p := NewProvidersPanel(app)
+			p := views.NewProvidersPanel(app)
 			p.Refresh()
-			p.handleKey(runeKey(tc.key))
+			list, _ := providersPanelParts(t, p)
+			list.GetInputCapture()(runeKey(tc.key))
 			if app.modal != nil {
 				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
 			}
@@ -153,6 +183,12 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 	}
 }
 
+// TestProviderItemText replaces the old direct calls to the unexported
+// providerItemText: seeds a single provider through a real registry,
+// refreshes, and reads the rendered row back via the list's exported
+// GetItemText. Same wantEqualName shape as the original — a provider
+// with no capabilities renders as exactly its name; any capability
+// appends a tag, so the row no longer equals the bare name.
 func TestProviderItemText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -169,8 +205,14 @@ func TestProviderItemText(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewProvider("test", tc.hasProjects, tc.hasDeepResearch)
-			got := providerItemText(p)
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("test", tc.hasProjects, tc.hasDeepResearch)))
+			app := &mockApp{svc: newTestService(t, reg)}
+			p := views.NewProvidersPanel(app)
+			p.Refresh()
+			list, _ := providersPanelParts(t, p)
+			got, _ := list.GetItemText(0)
+
 			if tc.wantEqualName && got != "test" {
 				t.Errorf("got %q, want %q", got, "test")
 			}
@@ -183,28 +225,64 @@ func TestProviderItemText(t *testing.T) {
 
 func TestProviderItemText_EscapesName(t *testing.T) {
 	t.Parallel()
-	p := model.NewProvider("claude[red]", true, false)
-	got := providerItemText(p)
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude[red]", true, false)))
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewProvidersPanel(app)
+	p.Refresh()
+	list, _ := providersPanelParts(t, p)
+	got, _ := list.GetItemText(0)
 	want := tview.Escape("claude[red]")
 	if !strings.Contains(got, want) {
 		t.Errorf("got %q, want it to contain %q", got, want)
 	}
 }
 
-func TestBoolTag(t *testing.T) {
+// TestProvidersPanel_InfoPanel_CapabilityDisplay replaces TestBoolTag,
+// which called the unexported boolTag directly and only checked for a
+// non-empty result. This checks the actual rendered Projects/Deep
+// research lines in the info panel show "yes" or "no" per the
+// provider's capabilities — a more precise check than the original's
+// non-emptiness assertion, and the only kind reachable now that boolTag
+// itself isn't callable directly.
+func TestProvidersPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name  string
-		input bool
+		name            string
+		hasProjects     bool
+		hasDeepResearch bool
 	}{
-		{"true produces non-empty tag", true},
-		{"false produces non-empty tag", false},
+		{"both capabilities true", true, true},
+		{"both capabilities false", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := boolTag(tc.input); got == "" {
-				t.Errorf("boolTag(%v): expected non-empty string", tc.input)
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("test", tc.hasProjects, tc.hasDeepResearch)))
+			app := &mockApp{svc: newTestService(t, reg)}
+			p := views.NewProvidersPanel(app)
+			p.Refresh()
+			_, info := providersPanelParts(t, p)
+			lines := strings.Split(info.GetText(false), "\n")
+			if len(lines) < 3 {
+				t.Fatalf("expected at least 3 info lines, got %d: %q", len(lines), lines)
+			}
+
+			wantProjects := "no"
+			if tc.hasProjects {
+				wantProjects = "yes"
+			}
+			if !strings.Contains(lines[1], wantProjects) {
+				t.Errorf("Projects line %q, want it to contain %q", lines[1], wantProjects)
+			}
+
+			wantResearch := "no"
+			if tc.hasDeepResearch {
+				wantResearch = "yes"
+			}
+			if !strings.Contains(lines[2], wantResearch) {
+				t.Errorf("Deep research line %q, want it to contain %q", lines[2], wantResearch)
 			}
 		})
 	}
