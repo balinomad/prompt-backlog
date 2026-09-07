@@ -7,6 +7,7 @@ import (
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -100,6 +101,61 @@ func TestNewQueueEditor(t *testing.T) {
 			}
 			if got := list.GetItemCount(); got != tc.wantItems {
 				t.Errorf("item count: got %d, want %d", got, tc.wantItems)
+			}
+		})
+	}
+}
+
+// ── handleKey: Esc and passthrough ──────────────────────────────────────────
+
+// TestQueueEditor_HandleKey_Esc covers handleKey's own KeyCancel branch,
+// distinct from Esc on any of the modals it opens (help overlay, confirm
+// modals), which are covered separately below.
+func TestQueueEditor_HandleKey_Esc(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	closed := false
+	result := views.NewQueueEditor(app, acc, sess, func() { closed = true })
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+
+	capture := list.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	if got := capture(escKey()); got != nil {
+		t.Error("Esc must consume the event (return nil)")
+	}
+	if !closed {
+		t.Error("Esc must call onClose")
+	}
+}
+
+// TestQueueEditor_HandleKey_PassesThroughUnhandledKeys covers the two
+// remaining unhandled paths through handleKey: a non-rune key other than
+// Esc, and a rune that matches none of the KeyX cases.
+func TestQueueEditor_HandleKey_PassesThroughUnhandledKeys(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		event *tcell.EventKey
+	}{
+		{"non-rune key", tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)},
+		{"unrecognized rune", runeKey('z')},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc, sess := newQueueTestApp(t)
+			result := views.NewQueueEditor(app, acc, sess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			if got := list.GetInputCapture()(tc.event); got != tc.event {
+				t.Error("key must pass through unchanged")
 			}
 		})
 	}
@@ -312,6 +368,147 @@ func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
 	}
 }
 
+// TestQueueEditor_EditPrompt_PrefillsExistingValues strengthens the
+// "edit existing prompt" case above, which only checks that *a* form
+// opens: this checks the form is pre-filled with the *selected* prompt's
+// own text and spawn state, not just any form.
+func TestQueueEditor_EditPrompt_PrefillsExistingValues(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	result := views.NewQueueEditor(app, acc, sess, func() {})
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+	list.SetCurrentItem(1) // "second", spawns=true
+
+	list.GetInputCapture()(runeKey(views.KeyEdit))
+	form := formFromCenteredModal(t, app.modal)
+
+	textField, ok := form.GetFormItemByLabel("Text").(*tview.InputField)
+	if !ok {
+		t.Fatal("expected Text *tview.InputField")
+	}
+	if got := textField.GetText(); got != "second" {
+		t.Errorf("Text = %q, want %q", got, "second")
+	}
+
+	spawnCheckbox, ok := form.GetFormItemByLabel("Spawns new session").(*tview.Checkbox)
+	if !ok {
+		t.Fatal("expected Spawns new session *tview.Checkbox")
+	}
+	if !spawnCheckbox.IsChecked() {
+		t.Error("Spawns new session should be checked for a prompt that spawns a session")
+	}
+}
+
+// TestQueueEditor_NewPrompt_Save covers newPromptForm's isNew branch:
+// the new prompt is appended, committed, and the editor reopens showing
+// the updated queue.
+func TestQueueEditor_NewPrompt_Save(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	result := views.NewQueueEditor(app, acc, sess, func() {})
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+
+	list.GetInputCapture()(runeKey(views.KeyNew))
+	form := formFromCenteredModal(t, app.modal)
+
+	setInputField(t, form, "Text", "fourth")
+	setCheckbox(t, form, "Spawns new session", true)
+	triggerSave(t, form)
+
+	updated := app.svc.Session(sess.ID())
+	if updated == nil {
+		t.Fatal("session no longer exists")
+	}
+	queue := updated.Queue()
+	if len(queue) != 4 {
+		t.Fatalf("queue length: got %d, want 4", len(queue))
+	}
+	last := queue[3]
+	if last.Text() != "fourth" || !last.SpawnsSession() {
+		t.Errorf("queue[3] = %+v, want text %q spawns=true", last, "fourth")
+	}
+
+	// commit() succeeded, so save() calls onDone (qe.reopen): the modal
+	// becomes a fresh queue editor, not the prompt form staying open.
+	newList, ok := app.modal.(*tview.List)
+	if !ok {
+		t.Fatalf("expected reopen to show the queue editor (*tview.List), got %T", app.modal)
+	}
+	if got := newList.GetItemCount(); got != 4 {
+		t.Errorf("reopened list item count: got %d, want 4", got)
+	}
+}
+
+// TestQueueEditor_EditPrompt_Save covers newPromptForm's !isNew branch:
+// the edited prompt replaces its entry in place, the queue length is
+// unchanged, and the other entries are untouched.
+func TestQueueEditor_EditPrompt_Save(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	result := views.NewQueueEditor(app, acc, sess, func() {})
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+	list.SetCurrentItem(0) // "first"
+
+	list.GetInputCapture()(runeKey(views.KeyEdit))
+	form := formFromCenteredModal(t, app.modal)
+
+	setInputField(t, form, "Text", "first, edited")
+	triggerSave(t, form)
+
+	updated := app.svc.Session(sess.ID())
+	if updated == nil {
+		t.Fatal("session no longer exists")
+	}
+	queue := updated.Queue()
+	if len(queue) != 3 {
+		t.Fatalf("queue length: got %d, want 3 (edit in place, not append)", len(queue))
+	}
+	if queue[0].Text() != "first, edited" {
+		t.Errorf("queue[0].Text() = %q, want %q", queue[0].Text(), "first, edited")
+	}
+	if queue[1].Text() != "second" || queue[2].Text() != "third" {
+		t.Errorf("queue[1:] changed unexpectedly: %+v", queue[1:])
+	}
+}
+
+// TestQueueEditor_PromptSave_Failure covers save()'s own guard: when
+// commit fails, save returns before calling onDone, so the prompt form
+// stays open for a retry rather than the editor reopening underneath a
+// change that was never actually persisted.
+func TestQueueEditor_PromptSave_Failure(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	result := views.NewQueueEditor(app, acc, sess, func() {})
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+
+	list.GetInputCapture()(runeKey(views.KeyNew))
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Text", "will not be saved")
+
+	must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+
+	triggerSave(t, form)
+
+	if app.status == "" {
+		t.Error("expected a status message reporting the save failure")
+	}
+	if _, ok := app.modal.(*tview.Flex); !ok {
+		t.Errorf("expected the form to stay open (*tview.Flex) on failure, got %T", app.modal)
+	}
+}
+
 // ── promptItemText ──────────────────────────────────────────────────────────────
 
 // TestPromptItemText builds a real session per case and reads the rendered
@@ -410,4 +607,30 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 			t.Error("cancelling quit must not actually quit")
 		}
 	})
+}
+
+// ── reopen: session vanished before it re-fires ────────────────────────────────
+
+// TestQueueEditor_Reopen_SessionGone covers reopen()'s own dependency on
+// NewQueueEditor's nil-session check: if the session disappears while
+// some other modal (here, the help overlay) is open on top of the
+// editor, reopen must show the resulting error modal rather than assume
+// a fresh queue editor is always what NewQueueEditor hands back.
+func TestQueueEditor_Reopen_SessionGone(t *testing.T) {
+	t.Parallel()
+	app, acc, sess := newQueueTestApp(t)
+	result := views.NewQueueEditor(app, acc, sess, func() {})
+	list, ok := result.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List, got %T", result)
+	}
+
+	list.GetInputCapture()(runeKey(views.KeyHelp))
+	must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+
+	helpOverlayTextView(t, app.modal).GetInputCapture()(escKey())
+
+	if _, ok := app.modal.(*tview.Modal); !ok {
+		t.Errorf("expected reopen to show an error modal (*tview.Modal) once the session is gone, got %T", app.modal)
+	}
 }

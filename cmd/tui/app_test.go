@@ -211,3 +211,114 @@ func TestApp_ShowModal_Success(t *testing.T) {
 		t.Errorf("ShowModal: unexpected error: %v", err)
 	}
 }
+
+// ── AppName ───────────────────────────────────────────────────────────────────
+
+func TestApp_AppName(t *testing.T) {
+	t.Parallel()
+	// Zero-value construction is legal from outside the package (see
+	// TestApp_Mutate_NilFn): AppName does not touch any field, so this
+	// needs neither New nor a real svc.
+	app := &tui.App{}
+	if got := app.AppName(); got != tui.AppName {
+		t.Errorf("got %q, want %q", got, tui.AppName)
+	}
+}
+
+// ── HideModal ─────────────────────────────────────────────────────────────────
+
+// TestApp_HideModal verifies HideModal is safe to call both when no modal
+// was ever shown and after a real ShowModal/HideModal cycle. HideModal
+// clears prevFocus back to nil on its first call, so the second HideModal
+// in each case exercises the same nil guard from a different code path.
+func TestApp_HideModal(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		setup func(*testing.T, *tui.App)
+	}{
+		{"no modal ever shown", func(*testing.T, *tui.App) {}},
+		{"after show modal", func(t *testing.T, app *tui.App) {
+			t.Helper()
+			if err := app.ShowModal(tview.NewFlex()); err != nil {
+				t.Fatalf("ShowModal: %v", err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, err := tui.New(newTestService(t))
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			tc.setup(t, app)
+			app.HideModal()
+			app.HideModal() // Must also be safe to call again
+		})
+	}
+}
+
+// ── Switch screens ────────────────────────────────────────────────────────────
+
+// TestApp_SwitchScreens covers SwitchToMain, SwitchToProviders, and
+// SwitchToProjects. None of the three expose observable state through
+// tui's exported surface (no current-page or current-focus getter), so a
+// clean call is the only assertion available black-box.
+func TestApp_SwitchScreens(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		fn   func(*tui.App)
+	}{
+		{"main", func(a *tui.App) { a.SwitchToMain() }},
+		{"providers", func(a *tui.App) { a.SwitchToProviders() }},
+		{"projects", func(a *tui.App) { a.SwitchToProjects() }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, err := tui.New(newTestService(t))
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			tc.fn(app)
+		})
+	}
+}
+
+// ── Status and hints ──────────────────────────────────────────────────────────
+//
+// Neither setter's effect is observable through tui's exported surface:
+// StatusBar is an unexported field with no accessor on App. As with the
+// screen switches above, a clean call is the only assertion available here.
+
+func TestApp_SetStatus(t *testing.T) {
+	t.Parallel()
+	app, err := tui.New(newTestService(t))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	app.SetStatus("[red]error[-]")
+	app.SetStatus("") // Clears any previous message
+}
+
+func TestApp_SetHints(t *testing.T) {
+	t.Parallel()
+	app, err := tui.New(newTestService(t))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	app.SetHints("test hints")
+}
+
+// ── Quit ──────────────────────────────────────────────────────────────────────
+
+func TestApp_Quit_WithoutRun(t *testing.T) {
+	t.Parallel()
+	app, err := tui.New(newTestService(t))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	app.Quit() // Must not panic when the event loop was never started
+}
