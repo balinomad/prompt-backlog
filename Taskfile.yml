@@ -48,6 +48,11 @@ tasks:
     cmds:
       - go build ./...
 
+  run:
+    desc: Run the application
+    cmds:
+      - go run ./cmd/tui -d data/test.json
+
   test:
     desc: Run standard tests
     cmds:
@@ -82,8 +87,13 @@ tasks:
   check:
     desc: Run the complete CI/CD pipeline
     cmds:
-      - task: upgrade
       - task: build
       - task: lint
       - task: vuln
-      - task: test:full
+      - go test -race -count=1 -shuffle=on -timeout {{.TIMEOUT}} ./...
+
+  check:upgrade:
+    desc: Upgrade all dependencies and run the complete CI/CD pipeline
+    cmds:
+      - task: upgrade
+      - task: check
