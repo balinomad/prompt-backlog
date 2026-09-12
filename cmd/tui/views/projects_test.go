@@ -293,7 +293,7 @@ func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 
 // TestProjectsPanel_Grant_SaveReturnsToPanel closes the loop for
 // handleGrant's onClose closure, granting Orphan (unattached in the
-// fixture) to bob|chatgpt.
+// fixture) to alice|claude.
 func TestProjectsPanel_Grant_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
@@ -309,7 +309,7 @@ func TestProjectsPanel_Grant_SaveReturnsToPanel(t *testing.T) {
 	capture(runeKey(views.KeyGrant))
 
 	form := formFromCenteredModal(t, app.modal)
-	setDropDown(t, form, "Account", 1) // 0 = alice|claude, 1 = bob|chatgpt (sorted by key)
+	setDropDown(t, form, "Account", 0) // 0 = alice|claude, 1 = bob|chatgpt (sorted by key); chatgpt has HasProjects=false
 	triggerSave(t, form)
 
 	if app.modal != nil {
@@ -318,7 +318,7 @@ func TestProjectsPanel_Grant_SaveReturnsToPanel(t *testing.T) {
 	if app.hints != views.HintsProjectsPanel {
 		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
 	}
-	projects, err := app.svc.AccountProjects("bob@example.com", "chatgpt")
+	projects, err := app.svc.AccountProjects("alice@example.com", "claude")
 	must(t, err)
 	var found bool
 	for _, proj := range projects {
@@ -327,7 +327,7 @@ func TestProjectsPanel_Grant_SaveReturnsToPanel(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("Orphan not granted to bob|chatgpt")
+		t.Error("Orphan not granted to alice|claude")
 	}
 }
 
