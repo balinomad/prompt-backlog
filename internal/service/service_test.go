@@ -909,6 +909,72 @@ func TestService_AddAccount(t *testing.T) {
 	}
 }
 
+// TestService_CreateAccount keeps the success/behavioural cases as
+// individual subtests for the same reason TestService_StartSession does:
+// each verifies a different aspect of the on-demand user creation
+// (idempotency, name preservation) or the account itself (duplicate
+// rejection), which a single table would obscure behind a per-row
+// verification function. The pure error-sentinel cases share one action
+// and one assertion shape, so those are tabled.
+func TestService_CreateAccount(t *testing.T) {
+	t.Parallel()
+
+	t.Run("creates user and account on demand", func(t *testing.T) {
+		t.Parallel()
+		svc := newService(t)
+		must(t, svc.AddProvider("claude", true, false))
+		acc, err := svc.CreateAccount("alice@example.com", "Alice", "claude")
+		must(t, err)
+		if acc.UserEmail() != "alice@example.com" || acc.ProviderName() != "claude" {
+			t.Errorf("got %+v, want alice@example.com|claude", acc.Key())
+		}
+		if svc.User("alice@example.com") == nil {
+			t.Error("expected user to be created")
+		}
+	})
+
+	t.Run("does not change an existing user's name", func(t *testing.T) {
+		t.Parallel()
+		svc := newService(t)
+		must(t, svc.AddProvider("claude", true, false))
+		must(t, svc.AddUser("alice@example.com", "Alice"))
+		_, err := svc.CreateAccount("alice@example.com", "ignored name", "claude")
+		must(t, err)
+		if got := svc.User("alice@example.com").Name(); got != "Alice" {
+			t.Errorf("got name %q, want existing name preserved (Alice)", got)
+		}
+	})
+
+	t.Run("duplicate account", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t) // alice|claude already exists
+		_, err := svc.CreateAccount("alice@example.com", "Alice", "claude")
+		if !errors.Is(err, model.ErrAccountExists) {
+			t.Errorf("got %v, want ErrAccountExists", err)
+		}
+	})
+
+	errorCases := []struct {
+		name     string
+		email    string
+		userName string
+		provider string
+		wantErr  error
+	}{
+		{"provider not found", "alice@example.com", "Alice", "ghost", model.ErrProviderNotFound},
+		{"new user creation fails on invalid email", "not-an-email", "Nobody", "claude", apperr.ErrEmailInvalid},
+	}
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := seedService(t).CreateAccount(tc.email, tc.userName, tc.provider)
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
+			}
+		})
+	}
+}
+
 // TestService_DeleteAccount tables the four resolveAccount-shaped cases
 // (success plus its three not-found branches) and keeps the two
 // dependent-check cases as separate subtests, since those two errors carry
@@ -1104,6 +1170,36 @@ func TestService_RevokeProject(t *testing.T) {
 				if !errors.Is(err, tc.wantErr) {
 					t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
 				}
+			}
+		})
+	}
+}
+
+func TestService_ValidateAccount(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		email    string
+		provider string
+		wantErr  error
+	}{
+		{"valid", "alice@example.com", "claude", nil},
+		{"missing email", "", "claude", model.ErrEmailRequired},
+		{"missing provider", "alice@example.com", "", model.ErrNameRequired},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := newService(t).ValidateAccount(tc.email, tc.provider)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Errorf("got %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
 			}
 		})
 	}

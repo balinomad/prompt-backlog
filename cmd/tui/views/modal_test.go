@@ -134,3 +134,47 @@ func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 		t.Errorf("hints after close: got %q, want %q", app.hints, views.HintsAccountsPanel)
 	}
 }
+
+// TestConfirmQuit_EscRestoresHintsAndHidesModal exercises the unexported
+// confirmQuit indirectly through AccountsPanel's KeyQuit handling, the
+// same way TestShowHelp_EscRestoresHintsAndHidesModal reaches showHelp.
+// AccountsPanel embeds *tview.List directly, so its GetInputCapture()
+// reaches handleKey from outside the package. The restored-hints value is
+// necessarily HintsAccountsPanel here, since that's what
+// AccountsPanel.handleKey passes to confirmQuit via dispatchPanelKey; the
+// round trip itself (open, HintsConfirmModal, Esc, hints restored, modal
+// hidden, Quit not called) is what's under test, not the specific string.
+func TestConfirmQuit_EscRestoresHintsAndHidesModal(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+
+	capture := p.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyQuit))
+
+	if app.modal == nil {
+		t.Fatal("expected a modal to be shown")
+	}
+	if app.hints != views.HintsConfirmModal {
+		t.Errorf("hints while open: got %q, want %q", app.hints, views.HintsConfirmModal)
+	}
+
+	confirmModal, ok := app.modal.(*tview.Modal)
+	if !ok {
+		t.Fatalf("expected *tview.Modal, got %T", app.modal)
+	}
+	confirmModal.GetInputCapture()(escKey())
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after Esc")
+	}
+	if app.hints != views.HintsAccountsPanel {
+		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	}
+	if app.quitted {
+		t.Error("cancelling quit must not actually quit")
+	}
+}

@@ -183,6 +183,93 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 	}
 }
 
+// TestProvidersPanel_New_SaveReturnsToPanel closes the loop that
+// TestProvidersPanel_Keys_ShowModal leaves open: that test only checks
+// that pressing 'n' opens a modal with the right hints, not that
+// completing the form hands control back to the panel correctly.
+func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProvidersPanel(app)
+	p.Refresh()
+	list, _ := providersPanelParts(t, p)
+
+	list.GetInputCapture()(runeKey(views.KeyNew))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Name", "gemini")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsProvidersPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProvidersPanel)
+	}
+	if app.svc.Provider("gemini") == nil {
+		t.Error("provider not created")
+	}
+}
+
+// TestProvidersPanel_Edit_SaveReturnsToPanel is the same round trip as
+// TestProvidersPanel_New_SaveReturnsToPanel for handleEdit's own onClose
+// closure.
+func TestProvidersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProvidersPanel(app)
+	p.Refresh() // selects "chatgpt" first (sorted by name)
+	list, _ := providersPanelParts(t, p)
+
+	list.GetInputCapture()(runeKey(views.KeyEdit))
+
+	form := formFromCenteredModal(t, app.modal)
+	setCheckbox(t, form, "Supports projects")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsProvidersPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProvidersPanel)
+	}
+	if got := app.svc.Provider("chatgpt"); !got.HasProjects() {
+		t.Error("HasProjects() = false, want true")
+	}
+}
+
+// TestProvidersPanel_Delete_Cancel is the providers.go counterpart to
+// TestDetailPanel_DeleteSession_Cancel and TestAccountsPanel_Delete_Cancel:
+// confirming the delete is button-click-gated and unreachable black box,
+// so this covers the reachable half.
+func TestProvidersPanel_Delete_Cancel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProvidersPanel(app)
+	p.Refresh()
+	list, _ := providersPanelParts(t, p)
+
+	before := len(app.svc.Providers())
+
+	list.GetInputCapture()(runeKey(views.KeyDelete))
+
+	confirmModal, ok := app.modal.(*tview.Modal)
+	if !ok {
+		t.Fatalf("expected *tview.Modal, got %T", app.modal)
+	}
+	confirmModal.GetInputCapture()(escKey())
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after cancelling")
+	}
+	if app.hints != views.HintsProvidersPanel {
+		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsProvidersPanel)
+	}
+	if got := len(app.svc.Providers()); got != before {
+		t.Errorf("provider count changed after cancel: got %d, want %d (unchanged)", got, before)
+	}
+}
+
 // TestProviderItemText replaces the old direct calls to the unexported
 // providerItemText: seeds a single provider through a real registry,
 // refreshes, and reads the rendered row back via the list's exported

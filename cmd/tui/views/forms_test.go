@@ -96,14 +96,14 @@ func setInputField(t *testing.T, form *tview.Form, label, text string) {
 // setCheckbox sets the checked state of the *tview.Checkbox labelled
 // label on form, failing the test if the label does not resolve to a
 // Checkbox.
-func setCheckbox(t *testing.T, form *tview.Form, label string, checked bool) {
+func setCheckbox(t *testing.T, form *tview.Form, label string) {
 	t.Helper()
 	item := form.GetFormItemByLabel(label)
 	cb, ok := item.(*tview.Checkbox)
 	if !ok {
 		t.Fatalf("expected %q to be *tview.Checkbox, got %T", label, item)
 	}
-	cb.SetChecked(checked)
+	cb.SetChecked(true)
 }
 
 // setDropDown selects option index on the *tview.DropDown labelled label
@@ -747,8 +747,8 @@ func TestNewProviderForm_Save_Edit(t *testing.T) {
 		app := &mockApp{svc: newTestService(t, reg)}
 		form := formFromCenteredModal(t, views.NewProviderForm(app, app.svc.Provider("claude"), func() {}))
 
-		setCheckbox(t, form, "Supports projects", true)
-		setCheckbox(t, form, "Supports deep research", true)
+		setCheckbox(t, form, "Supports projects")
+		setCheckbox(t, form, "Supports deep research")
 		triggerSave(t, form)
 
 		got := app.svc.Provider("claude")
@@ -787,7 +787,7 @@ func TestNewProviderForm_Save_Create(t *testing.T) {
 		form := formFromCenteredModal(t, views.NewProviderForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "gemini")
-		setCheckbox(t, form, "Supports projects", true)
+		setCheckbox(t, form, "Supports projects")
 		triggerSave(t, form)
 
 		got := app.svc.Provider("gemini")

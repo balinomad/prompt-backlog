@@ -403,6 +403,101 @@ func TestDetailPanel_Toggle_NoSession_NoOp(t *testing.T) {
 	}
 }
 
+// TestDetailPanel_NewSession_SaveReturnsToPanel closes the loop that
+// TestDetailPanel_Keys_ShowModal leaves open: that test only checks the
+// modal type and hints when the form opens, not that completing it hands
+// control back to the panel correctly.
+func TestDetailPanel_NewSession_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+
+	list.GetInputCapture()(runeKey(views.KeyNew))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Topic", "Fresh session")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsDetailPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsDetailPanel)
+	}
+	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+	must(t, err)
+	var found bool
+	for _, s := range sessions {
+		if s.Topic() == "Fresh session" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("new session not created")
+	}
+}
+
+// TestDetailPanel_EditSession_SaveReturnsToPanel is the same round trip
+// as TestDetailPanel_NewSession_SaveReturnsToPanel for handleEdit's own
+// onClose closure.
+func TestDetailPanel_EditSession_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(0) // "Architecture review"
+
+	list.GetInputCapture()(runeKey(views.KeyEdit))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Topic", "Renamed topic")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsDetailPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsDetailPanel)
+	}
+	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+	must(t, err)
+	if sessions[0].Topic() != "Renamed topic" {
+		t.Errorf("Topic() = %q, want %q", sessions[0].Topic(), "Renamed topic")
+	}
+}
+
+// TestDetailPanel_Queue_CloseReturnsToPanel closes the loop for
+// handleQueue's own onClose closure: TestDetailPanel_Queue_OpensForSelectedSession
+// only checks the editor opens with the right queue, not that closing it
+// (Esc, the reachable half per queue.go's own handleKey) hands control
+// back to DetailPanel correctly.
+func TestDetailPanel_Queue_CloseReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(0)
+
+	list.GetInputCapture()(runeKey(views.KeyQueue))
+
+	queueList, ok := app.modal.(*tview.List)
+	if !ok {
+		t.Fatalf("expected *tview.List (queue editor), got %T", app.modal)
+	}
+	queueList.GetInputCapture()(escKey())
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after closing the queue editor")
+	}
+	if app.hints != views.HintsDetailPanel {
+		t.Errorf("hints after close: got %q, want %q", app.hints, views.HintsDetailPanel)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // TestDetailPanel_SessionRowText replaces the old direct calls to the

@@ -380,7 +380,7 @@ func TestQueueEditor_EditPrompt_PrefillsExistingValues(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *tview.List, got %T", result)
 	}
-	list.SetCurrentItem(1) // "second", spawns=true
+	list.SetCurrentItem(1) // "second", spawns: true
 
 	list.GetInputCapture()(runeKey(views.KeyEdit))
 	form := formFromCenteredModal(t, app.modal)
@@ -418,7 +418,7 @@ func TestQueueEditor_NewPrompt_Save(t *testing.T) {
 	form := formFromCenteredModal(t, app.modal)
 
 	setInputField(t, form, "Text", "fourth")
-	setCheckbox(t, form, "Spawns new session", true)
+	setCheckbox(t, form, "Spawns new session")
 	triggerSave(t, form)
 
 	updated := app.svc.Session(sess.ID())

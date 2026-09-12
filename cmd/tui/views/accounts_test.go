@@ -8,6 +8,7 @@ import (
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -329,5 +330,162 @@ func TestSortAccountsByAvailability(t *testing.T) {
 				t.Errorf("first item = %q, want it to contain %q (more available than first@x.com, paused to farFuture)", got, "second@x.com")
 			}
 		})
+	}
+}
+
+// TestAccountsPanel_SetCurrentItem_TriggersOnSelect covers the
+// SetChangedFunc wiring specifically, distinct from
+// TestAccountsPanel_Refresh_CallsOnSelect: Refresh calls onSelect
+// directly and guards SetCurrentItem with p.refreshing while it runs, so
+// it never exercises the changed-callback path. Navigating the list
+// outside a refresh (arrow keys, in real use) does, and that path has its
+// own onSelect != nil / index-bounds guard worth verifying independently.
+func TestAccountsPanel_SetCurrentItem_TriggersOnSelect(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh() // populates the list; selection starts at index 0
+
+	var selected *model.Account
+	p.SetOnSelect(func(a *model.Account) { selected = a })
+
+	p.SetCurrentItem(1)
+
+	if selected == nil {
+		t.Fatal("expected onSelect to fire when the selection changes outside Refresh")
+	}
+	if want := p.Selected(); selected.Key() != want.Key() {
+		t.Errorf("onSelect received %+v, want %+v", selected.Key(), want.Key())
+	}
+}
+
+// TestAccountsPanel_NonRuneKey_PassesThrough covers dispatchPanelKey's
+// non-rune early return (keys.go), shared by every panel that calls it.
+// Exercised here via AccountsPanel as the vehicle, same principle as
+// addCtrlS being tested through one form for all eight callers.
+func TestAccountsPanel_NonRuneKey_PassesThrough(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	event := tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)
+	if got := p.GetInputCapture()(event); got != event {
+		t.Error("non-rune key must pass through unchanged")
+	}
+}
+
+// TestAccountsPanel_New_SaveReturnsToPanel closes the loop that
+// TestAccountsPanel_Keys_ShowModal leaves open: that test only checks
+// that pressing 'n' opens a modal with the right hints, not that
+// completing the form hands control back to the panel correctly. The
+// onClose closure passed to NewAccountForm (SetHints + HideModal) is
+// otherwise never actually invoked by any existing test.
+func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	capture := p.GetInputCapture()
+	capture(runeKey(views.KeyNew))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Email", "carol@example.com")
+	setInputField(t, form, "Name", "Carol")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsAccountsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	}
+	if _, err := app.svc.Account("carol@example.com", "chatgpt"); err != nil {
+		t.Errorf("account not created: %v", err)
+	}
+}
+
+// TestAccountsPanel_Edit_SaveReturnsToPanel is the same round trip as
+// TestAccountsPanel_New_SaveReturnsToPanel for handleEdit's own onClose
+// closure.
+func TestAccountsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh() // selects alice|claude first (sorted by key, both unpaused)
+
+	capture := p.GetInputCapture()
+	capture(runeKey(views.KeyEdit))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Pause until", "2026-12-31 23:59")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsAccountsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	}
+}
+
+// TestAccountsPanel_Delete_Cancel is the accounts.go counterpart to
+// TestDetailPanel_DeleteSession_Cancel: confirming the delete is
+// button-click-gated and unreachable black box (see that test's comment
+// for why), so this covers the reachable half, cancelling leaves the
+// account untouched and hands control back to the panel.
+func TestAccountsPanel_Delete_Cancel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	before := len(app.svc.Accounts())
+
+	capture := p.GetInputCapture()
+	capture(runeKey(views.KeyDelete))
+
+	confirmModal, ok := app.modal.(*tview.Modal)
+	if !ok {
+		t.Fatalf("expected *tview.Modal, got %T", app.modal)
+	}
+	confirmModal.GetInputCapture()(escKey())
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after cancelling")
+	}
+	if app.hints != views.HintsAccountsPanel {
+		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	}
+	if got := len(app.svc.Accounts()); got != before {
+		t.Errorf("account count changed after cancel: got %d, want %d (unchanged)", got, before)
+	}
+}
+
+// TestAccountsPanel_RenameUser_SaveReturnsToPanel is the same round trip
+// as TestAccountsPanel_New_SaveReturnsToPanel for handleRenameUser's own
+// onClose closure.
+func TestAccountsPanel_RenameUser_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh() // selects alice|claude first
+
+	capture := p.GetInputCapture()
+	capture(runeKey(views.KeyRenameUser))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Name", "Alice Smith")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsAccountsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	}
+	if got := app.svc.User("alice@example.com").Name(); got != "Alice Smith" {
+		t.Errorf("Name() = %q, want %q", got, "Alice Smith")
 	}
 }

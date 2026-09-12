@@ -188,6 +188,183 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 	}
 }
 
+// TestProjectsPanel_New_SaveReturnsToPanel closes the loop that
+// TestProjectsPanel_Keys_ShowModal leaves open: that test only checks
+// that pressing 'n' opens a modal with the right hints, not that
+// completing the form hands control back to the panel correctly.
+func TestProjectsPanel_New_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProjectsPanel(app)
+	p.Refresh()
+	list, _ := projectsPanelParts(t, p)
+
+	capture := list.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyNew))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Name", "Gamma")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsProjectsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	}
+	if app.svc.Project("Gamma") == nil {
+		t.Error("project not created")
+	}
+}
+
+// TestProjectsPanel_Edit_SaveReturnsToPanel is the same round trip as
+// TestProjectsPanel_New_SaveReturnsToPanel for handleEdit's own onClose
+// closure.
+func TestProjectsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProjectsPanel(app)
+	p.Refresh() // selects "Alpha" first (sorted by name)
+	list, _ := projectsPanelParts(t, p)
+
+	capture := list.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyEdit))
+
+	form := formFromCenteredModal(t, app.modal)
+	setInputField(t, form, "Description", "new desc")
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsProjectsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	}
+	if got := app.svc.Project("Alpha").Description(); got != "new desc" {
+		t.Errorf("Description() = %q, want %q", got, "new desc")
+	}
+}
+
+// TestProjectsPanel_Delete_Cancel is the projects.go counterpart to
+// TestDetailPanel_DeleteSession_Cancel: confirming the delete is
+// button-click-gated and unreachable black box, so this covers the
+// reachable half.
+func TestProjectsPanel_Delete_Cancel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProjectsPanel(app)
+	p.Refresh() // selects "Alpha" first; Alpha is granted, cancelling must leave it untouched
+	list, _ := projectsPanelParts(t, p)
+
+	before := len(app.svc.Projects())
+
+	capture := list.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyDelete))
+
+	confirmModal, ok := app.modal.(*tview.Modal)
+	if !ok {
+		t.Fatalf("expected *tview.Modal, got %T", app.modal)
+	}
+	confirmCapture := confirmModal.GetInputCapture()
+	if confirmCapture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	confirmCapture(escKey())
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after cancelling")
+	}
+	if app.hints != views.HintsProjectsPanel {
+		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	}
+	if got := len(app.svc.Projects()); got != before {
+		t.Errorf("project count changed after cancel: got %d, want %d (unchanged)", got, before)
+	}
+}
+
+// TestProjectsPanel_Grant_SaveReturnsToPanel closes the loop for
+// handleGrant's onClose closure, granting Orphan (unattached in the
+// fixture) to bob|chatgpt.
+func TestProjectsPanel_Grant_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProjectsPanel(app)
+	p.Refresh()
+	list, _ := projectsPanelParts(t, p)
+	list.SetCurrentItem(2) // "Orphan": sorted order is Alpha, Beta, Orphan
+
+	capture := list.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyGrant))
+
+	form := formFromCenteredModal(t, app.modal)
+	setDropDown(t, form, "Account", 1) // 0 = alice|claude, 1 = bob|chatgpt (sorted by key)
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsProjectsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	}
+	projects, err := app.svc.AccountProjects("bob@example.com", "chatgpt")
+	must(t, err)
+	var found bool
+	for _, proj := range projects {
+		if proj.Name() == "Orphan" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Orphan not granted to bob|chatgpt")
+	}
+}
+
+// TestProjectsPanel_Revoke_SaveReturnsToPanel closes the loop for
+// handleRevoke's onClose closure, revoking Alpha from alice|claude.
+func TestProjectsPanel_Revoke_SaveReturnsToPanel(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProjectsPanel(app)
+	p.Refresh() // selects "Alpha" first
+	list, _ := projectsPanelParts(t, p)
+
+	capture := list.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(runeKey(views.KeyRevoke))
+
+	form := formFromCenteredModal(t, app.modal)
+	setDropDown(t, form, "Account", 0) // only alice|claude has Alpha
+	triggerSave(t, form)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hints != views.HintsProjectsPanel {
+		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	}
+	projects, err := app.svc.AccountProjects("alice@example.com", "claude")
+	must(t, err)
+	for _, proj := range projects {
+		if proj.Name() == "Alpha" {
+			t.Error("Alpha should have been revoked")
+		}
+	}
+}
+
 // TestProjectItemText replaces the old direct calls to the unexported
 // projectItemText: grants the project to accountCount real accounts
 // through a registry, refreshes, and reads the rendered row back via the
