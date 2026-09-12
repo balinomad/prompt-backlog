@@ -14,6 +14,7 @@ import (
 
 // ── must ──────────────────────────────────────────────────────────────────────
 
+// must fails the test immediately when err is non-nil.
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -57,13 +58,14 @@ func newTestService(t *testing.T, reg *model.Registry) *service.Service {
 
 // mockApp implements App and records every call for assertion in tests.
 type mockApp struct {
-	svc        *service.Service
-	mutateErr  error
-	modal      tview.Primitive
-	switchedTo string // "main" | "providers" | "projects"
-	status     string
-	hints      string
-	quitted    bool
+	svc          *service.Service
+	mutateErr    error
+	showModalErr error
+	modal        tview.Primitive
+	switchedTo   string // "main" | "providers" | "projects"
+	status       string
+	hints        string
+	quitted      bool
 }
 
 var _ views.App = (*mockApp)(nil)
@@ -77,15 +79,22 @@ func (m *mockApp) Mutate(fn func(*service.Service) error) error {
 	return fn(m.svc)
 }
 
-func (m *mockApp) ShowModal(p tview.Primitive) error { m.modal = p; return nil }
-func (m *mockApp) HideModal()                        { m.modal = nil }
-func (m *mockApp) SwitchToMain()                     { m.switchedTo = "main" }
-func (m *mockApp) SwitchToProviders()                { m.switchedTo = "providers" }
-func (m *mockApp) SwitchToProjects()                 { m.switchedTo = "projects" }
-func (m *mockApp) SetStatus(msg string)              { m.status = msg }
-func (m *mockApp) SetHints(hints string)             { m.hints = hints }
-func (m *mockApp) Quit()                             { m.quitted = true }
-func (m *mockApp) AppName() string                   { return "llm-desk" }
+func (m *mockApp) ShowModal(p tview.Primitive) error {
+	if m.showModalErr != nil {
+		return m.showModalErr
+	}
+	m.modal = p
+	return nil
+}
+
+func (m *mockApp) HideModal()            { m.modal = nil }
+func (m *mockApp) SwitchToMain()         { m.switchedTo = "main" }
+func (m *mockApp) SwitchToProviders()    { m.switchedTo = "providers" }
+func (m *mockApp) SwitchToProjects()     { m.switchedTo = "projects" }
+func (m *mockApp) SetStatus(msg string)  { m.status = msg }
+func (m *mockApp) SetHints(hints string) { m.hints = hints }
+func (m *mockApp) Quit()                 { m.quitted = true }
+func (m *mockApp) AppName() string       { return "llm-desk" }
 
 // newMockApp returns a mock wired with a fully populated registry.
 // Deliberately excludes Sessions: their shape is being redesigned (account-

@@ -1,8 +1,10 @@
 package views_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
@@ -16,6 +18,23 @@ func TestNewDetailPanel(t *testing.T) {
 	t.Parallel()
 	if p := views.NewDetailPanel(newMockApp(t)); p == nil {
 		t.Fatal("expected non-nil DetailPanel")
+	}
+}
+
+// TestDetailPanel_FocusFunc_SetsHints covers NewDetailPanel's
+// SetFocusFunc registration. tview.Box.Focus invokes the registered
+// handler synchronously (confirmed against rivo/tview v0.42.0's box.go),
+// so this is reachable without a running tview.Application.
+func TestDetailPanel_FocusFunc_SetsHints(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewDetailPanel(app)
+	list, _ := detailPanelParts(t, p)
+
+	list.Focus(func(tview.Primitive) {})
+
+	if app.hints != views.HintsDetailPanel {
+		t.Errorf("hints after focus: got %q, want %q", app.hints, views.HintsDetailPanel)
 	}
 }
 
@@ -110,6 +129,70 @@ func TestDetailPanel_Refresh_ClearsOnDeletedAccount(t *testing.T) {
 	}
 }
 
+// TestDetailPanel_Refresh_PreservesSelectionByID mirrors
+// TestAccountsPanel_Refresh_PreservesSelection and
+// TestProjectsPanel_Refresh_PreservesSelection: Refresh must restore the
+// previously selected session by ID, not just re-select index 0.
+func TestDetailPanel_Refresh_PreservesSelectionByID(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(1) // the untitled session, per newDetailTestApp's doc comment
+
+	want := p.Selected()
+	if want == nil {
+		t.Fatal("second item should not be nil")
+	}
+	wantID := want.ID()
+
+	p.Refresh()
+
+	got := p.Selected()
+	if got == nil {
+		t.Fatal("selection should survive Refresh")
+	}
+	if got.ID() != wantID {
+		t.Errorf("selection changed: got session #%d, want #%d", got.ID(), wantID)
+	}
+}
+
+// TestDetailPanel_RenderInfo_PausedAccount covers renderInfo's paused
+// branch, unreached by every other DetailPanel test.
+func TestDetailPanel_RenderInfo_PausedAccount(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		pauseAt      time.Time
+		wantContains string
+	}{
+		{"future pause", time.Now().Add(time.Hour), "Paused"},
+		{"past pause shows ready", time.Now().Add(-time.Hour), "(ready)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := model.NewRegistry()
+			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			must(t, err)
+			must(t, reg.PauseAccount(acc, tc.pauseAt))
+			acc = reg.Account(reg.User("alice@example.com"), reg.Provider("claude")) // re-read: PauseAccount replaces via Copy-on-Write
+
+			app := &mockApp{svc: newTestService(t, reg)}
+			p := views.NewDetailPanel(app)
+			p.SetAccount(acc)
+			_, info := detailPanelParts(t, p)
+
+			if got := info.GetText(false); !strings.Contains(got, tc.wantContains) {
+				t.Errorf("got %q, want it to contain %q", got, tc.wantContains)
+			}
+		})
+	}
+}
+
 // ── keyboard handlers ─────────────────────────────────────────────────────────
 
 // TestDetailPanel_Keys_ShowModal checks not just that a modal opens, but
@@ -165,6 +248,41 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 			}
 			if app.hints != tc.wantHints {
 				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+			}
+		})
+	}
+}
+
+// TestDetailPanel_ShowModalError covers the ShowModal-error branch shared
+// by handleNew, handleEdit, handleDelete, and handleQueue.
+func TestDetailPanel_ShowModalError(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		key  rune
+	}{
+		{"new session", views.KeyNew},
+		{"edit session", views.KeyEdit},
+		{"delete session", views.KeyDelete},
+		{"queue editor", views.KeyQueue},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc := newDetailTestApp(t)
+			app.showModalErr = errors.New("boom")
+			p := views.NewDetailPanel(app)
+			p.SetAccount(acc)
+			list, _ := detailPanelParts(t, p)
+			list.SetCurrentItem(0)
+
+			list.GetInputCapture()(runeKey(tc.key))
+
+			if app.status == "" {
+				t.Errorf("key %q: expected a status message reporting the ShowModal failure", string(tc.key))
+			}
+			if app.modal != nil {
+				t.Errorf("key %q: expected no modal recorded when ShowModal itself fails", string(tc.key))
 			}
 		})
 	}
@@ -294,37 +412,49 @@ func TestDetailPanel_Queue_OpensForSelectedSession(t *testing.T) {
 // cancelling leaves the session untouched and state restored.
 func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 	t.Parallel()
-	app, acc := newDetailTestApp(t)
-	p := views.NewDetailPanel(app)
-	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
-	list.SetCurrentItem(0)
+	cases := []struct {
+		name string
+		idx  int // 0 = has a topic, 1 = untitled (exercises handleDelete's label=="" fallback)
+	}{
+		{"session with topic", 0},
+		{"untitled session", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc := newDetailTestApp(t)
+			p := views.NewDetailPanel(app)
+			p.SetAccount(acc)
+			list, _ := detailPanelParts(t, p)
+			list.SetCurrentItem(tc.idx)
 
-	sessionsBefore, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
-	must(t, err)
-	wantCount := len(sessionsBefore)
+			sessionsBefore, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+			must(t, err)
+			wantCount := len(sessionsBefore)
 
-	list.GetInputCapture()(runeKey(views.KeyDelete))
-	confirmModal, ok := app.modal.(*tview.Modal)
-	if !ok {
-		t.Fatalf("expected *tview.Modal, got %T", app.modal)
-	}
-	capture := confirmModal.GetInputCapture()
-	if capture == nil {
-		t.Fatal("expected non-nil input capture")
-	}
-	capture(escKey())
+			list.GetInputCapture()(runeKey(views.KeyDelete))
+			confirmModal, ok := app.modal.(*tview.Modal)
+			if !ok {
+				t.Fatalf("expected *tview.Modal, got %T", app.modal)
+			}
+			capture := confirmModal.GetInputCapture()
+			if capture == nil {
+				t.Fatal("expected non-nil input capture")
+			}
+			capture(escKey())
 
-	if app.modal != nil {
-		t.Error("expected modal to be hidden after cancelling")
-	}
-	if app.hints != views.HintsDetailPanel {
-		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsDetailPanel)
-	}
-	sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
-	must(t, err)
-	if len(sessionsAfter) != wantCount {
-		t.Errorf("session count changed after cancel: got %d, want %d (unchanged)", len(sessionsAfter), wantCount)
+			if app.modal != nil {
+				t.Error("expected modal to be hidden after cancelling")
+			}
+			if app.hints != views.HintsDetailPanel {
+				t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsDetailPanel)
+			}
+			sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+			must(t, err)
+			if len(sessionsAfter) != wantCount {
+				t.Errorf("session count changed after cancel: got %d, want %d (unchanged)", len(sessionsAfter), wantCount)
+			}
+		})
 	}
 }
 
@@ -400,6 +530,30 @@ func TestDetailPanel_Toggle_NoSession_NoOp(t *testing.T) {
 
 	if app.status != "" {
 		t.Errorf("expected no status message from a no-op toggle, got %q", app.status)
+	}
+}
+
+// TestDetailPanel_Toggle_MutateError covers handleToggle's own
+// SetStatus-on-error branch.
+func TestDetailPanel_Toggle_MutateError(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	_, err = reg.AddSession(acc, nil, "topic", nil)
+	must(t, err)
+	app := &mockApp{svc: newTestService(t, reg), mutateErr: errors.New("boom")}
+
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	list, _ := detailPanelParts(t, p)
+	list.SetCurrentItem(0)
+	list.GetInputCapture()(runeKey(views.KeyToggle))
+
+	if app.status == "" {
+		t.Error("expected a status message reporting the mutate failure")
 	}
 }
 
@@ -559,6 +713,11 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 			name:         "non-continue tail: no marker",
 			queue:        []model.Prompt{model.NewPrompt("do X", false)},
 			wantContains: []string{"queue: 1"},
+		},
+		{
+			name:         "long topic is truncated",
+			topic:        strings.Repeat("A", 40),
+			wantContains: []string{strings.Repeat("A", 25) + "…"},
 		},
 	}
 	for _, tc := range cases {
