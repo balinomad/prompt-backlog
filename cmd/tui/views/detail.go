@@ -147,17 +147,7 @@ func (p *DetailPanel) renderInfo(acc *model.Account) {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "  [::b]User[-::-]     %s (%s)\n", tview.Escape(userName), tview.Escape(email))
 	fmt.Fprintf(&sb, "  [::b]Provider[-::-] %s\n", tview.Escape(provider))
-
-	if pause := acc.PauseUntil(); !pause.IsZero() {
-		timeStr, isPast := formatPauseUntil(pause, time.Now())
-		if isPast {
-			fmt.Fprintf(&sb, "  [::b]Paused[-::-]   [red]%s (ready)[-]\n", timeStr)
-		} else {
-			fmt.Fprintf(&sb, "  [::b]Paused[-::-]   %s\n", timeStr)
-		}
-	} else {
-		fmt.Fprintf(&sb, "  [::b]Paused[-::-]   [green]available[-]\n")
-	}
+	fmt.Fprintf(&sb, "  [::b]Paused[-::-]   %s\n", pauseStatusText(acc.PauseUntil(), time.Now()))
 
 	projects, err := svc.AccountProjects(email, provider)
 	if err != nil {

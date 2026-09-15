@@ -46,6 +46,22 @@ func TestParseTime(t *testing.T) {
 	}
 }
 
+// TestParseTime_InterpretsLocal verifies s is parsed as the operator's
+// local time zone, not UTC: matching the instant time.Date produces for
+// the same wall-clock fields under time.Local is the property ParseTime
+// exists to get right (see its doc comment).
+func TestParseTime_InterpretsLocal(t *testing.T) {
+	t.Parallel()
+	got, err := model.ParseTime("2026-05-20 14:30")
+	if err != nil {
+		t.Fatalf("ParseTime: %v", err)
+	}
+	want := time.Date(2026, 5, 20, 14, 30, 0, 0, time.Local)
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v (2026-05-20 14:30 in local time)", got, want)
+	}
+}
+
 func TestFormatTime(t *testing.T) {
 	t.Parallel()
 
@@ -61,11 +77,12 @@ func TestFormatTime(t *testing.T) {
 		}
 	})
 
-	t.Run("utc preservation", func(t *testing.T) {
+	t.Run("explicit UTC input round-trips", func(t *testing.T) {
 		t.Parallel()
-		// Anchored to UTC explicitly: TimeFormat carries no zone information,
-		// so formatting a non-UTC time and re-parsing it under ParseTime's
-		// forced UTC interpretation would not round-trip to the same instant.
+		// now is explicitly UTC-tagged rather than the Local tag time.Now()
+		// normally carries, to verify FormatTime's own Local conversion
+		// handles an arbitrarily-zoned input correctly, not just an
+		// already-local one; the "round trip" subtest above covers that case.
 		now := time.Now().UTC().Truncate(time.Minute)
 		formatted := model.FormatTime(now)
 		parsed, err := model.ParseTime(formatted)

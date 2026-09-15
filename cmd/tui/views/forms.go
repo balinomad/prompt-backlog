@@ -405,6 +405,11 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 	emailField.SetDisabled(true)
 	providerField.SetDisabled(true)
 	pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
+	pauseField.SetPlaceholder(model.FormatTime(time.Now()) + "  (leave empty to clear)")
+	pauseField.SetPlaceholderStyle(tcell.StyleDefault.
+		Background(tview.Styles.ContrastBackgroundColor).
+		Foreground(tview.Styles.PrimaryTextColor).
+		Dim(true))
 
 	save := func() {
 		field, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)

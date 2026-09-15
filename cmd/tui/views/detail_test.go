@@ -167,8 +167,8 @@ func TestDetailPanel_RenderInfo_PausedAccount(t *testing.T) {
 		pauseAt      time.Time
 		wantContains string
 	}{
-		{"future pause", time.Now().Add(time.Hour), "Paused"},
-		{"past pause shows ready", time.Now().Add(-time.Hour), "(ready)"},
+		{"future pause shown red, still unavailable", time.Now().Add(time.Hour), "[red]"},
+		{"past pause shown green, available again", time.Now().Add(-time.Hour), "[green]"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -190,6 +190,29 @@ func TestDetailPanel_RenderInfo_PausedAccount(t *testing.T) {
 				t.Errorf("got %q, want it to contain %q", got, tc.wantContains)
 			}
 		})
+	}
+}
+
+// TestDetailPanel_RenderInfo_NeverPaused covers renderInfo's remaining
+// pause-status branch: an account with no PauseUntil at all shows the
+// "Paused:" label with nothing after it, matching pauseStatusText's ""
+// return for a zero value, the same way the accounts list omits a pause
+// column entirely for such an account, now that both share one function.
+func TestDetailPanel_RenderInfo_NeverPaused(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t) // alice|claude, never paused
+	acc, err := app.svc.Account("alice@example.com", "claude")
+	must(t, err)
+	p := views.NewDetailPanel(app)
+	p.SetAccount(acc)
+	_, info := detailPanelParts(t, p)
+
+	got := info.GetText(false)
+	if strings.Contains(got, "[red]") || strings.Contains(got, "[green]") {
+		t.Errorf("got %q, want no pause colour tag for a never-paused account", got)
+	}
+	if !strings.Contains(got, "Paused") {
+		t.Errorf("got %q, want it to still contain the Paused label", got)
 	}
 }
 

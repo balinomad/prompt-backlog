@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/apperr"
@@ -16,6 +17,13 @@ import (
 // AppName is the application's display name, used in dialog titles and
 // CLI output.
 const AppName = "llm-desk"
+
+// pauseStatusRefreshInterval is how often the accounts list re-evaluates
+// each account's pause-time display and colour against the current time,
+// independent of any user-triggered mutation. Without this, an account's
+// red/green status stays frozen at whatever was true when the list was
+// last rebuilt.
+const pauseStatusRefreshInterval = time.Minute
 
 // Compile-time check that App implements views.App.
 var _ views.App = (*App)(nil)
@@ -53,7 +61,31 @@ func New(svc *service.Service) (*App, error) {
 }
 
 // Run starts the tview event loop. It blocks until the application stops.
+// A background ticker re-evaluates the accounts list's pause-time status
+// every pauseStatusRefreshInterval, so a paused account's colour flips to
+// available without the operator having to trigger a mutation first; see
+// pauseStatusRefreshInterval's doc comment.
 func (a *App) Run() error {
+	ticker := time.NewTicker(pauseStatusRefreshInterval)
+	done := make(chan struct{})
+	defer func() {
+		ticker.Stop()
+		close(done)
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				a.tv.QueueUpdateDraw(func() {
+					a.accounts.Refresh()
+				})
+			case <-done:
+				return
+			}
+		}
+	}()
+
 	if err := a.tv.Run(); err != nil {
 		return fmt.Errorf("run tview: %w", err)
 	}

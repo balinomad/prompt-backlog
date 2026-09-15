@@ -257,16 +257,17 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 
 // ── sortAccountsByAvailability ────────────────────────────────────────────────
 
-// TestAccountItemText_EscapesEmailAndProvider replaces the old direct call
-// to the unexported accountItemText: builds an account with bracketed
-// email/provider through a real registry, refreshes, and reads the
-// rendered row back via the embedded *tview.List's exported GetItemText.
-func TestAccountItemText_EscapesEmailAndProvider(t *testing.T) {
+// TestAccountItemText_EscapesProviderAndUserName builds an account with
+// bracketed provider/user-name through a real registry, refreshes, and
+// reads the rendered row back via the embedded *tview.List's exported
+// GetItemText. Renamed from EscapesEmailAndProvider: email is no longer
+// part of the rendered row.
+func TestAccountItemText_EscapesProviderAndUserName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude]blue", false, false)))
-	must(t, reg.AddUser(model.NewUser("alice[red]@example.com", "Alice")))
-	_, err := reg.AddAccount(reg.User("alice[red]@example.com"), reg.Provider("claude]blue"))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice[red]")))
+	_, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude]blue"))
 	must(t, err)
 
 	app := &mockApp{svc: newTestService(t, reg)}
@@ -274,11 +275,73 @@ func TestAccountItemText_EscapesEmailAndProvider(t *testing.T) {
 	p.Refresh()
 
 	got, _ := p.GetItemText(0)
-	if !strings.Contains(got, tview.Escape("alice[red]@example.com")) {
-		t.Errorf("got %q, want it to contain the escaped email", got)
-	}
 	if !strings.Contains(got, tview.Escape("claude]blue")) {
 		t.Errorf("got %q, want it to contain the escaped provider", got)
+	}
+	if !strings.Contains(got, tview.Escape("Alice[red]")) {
+		t.Errorf("got %q, want it to contain the escaped user name", got)
+	}
+}
+
+// TestAccountItemText_DynamicColumnWidths verifies column widths are
+// computed per batch from the longest actual value present, not a fixed
+// size: two accounts with short provider/name values produce tightly
+// padded columns (a 2-space gap only), not a fixed, oversized one.
+func TestAccountItemText_DynamicColumnWidths(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("ab", false, false)))
+	must(t, reg.AddProvider(model.NewProvider("wxyz", false, false)))
+	must(t, reg.AddUser(model.NewUser("user1@x.com", "c")))
+	must(t, reg.AddUser(model.NewUser("user2@x.com", "defgh")))
+	_, err := reg.AddAccount(reg.User("user1@x.com"), reg.Provider("ab"))
+	must(t, err)
+	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Provider("wxyz"))
+	must(t, err)
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	// Accounts() sorts by composite key ("email|provider"); user1 < user2.
+	got0, _ := p.GetItemText(0)
+	if want := "ab    c      "; got0 != want {
+		t.Errorf("row 0 = %q, want %q", got0, want)
+	}
+	got1, _ := p.GetItemText(1)
+	if want := "wxyz  defgh  "; got1 != want {
+		t.Errorf("row 1 = %q, want %q", got1, want)
+	}
+}
+
+// TestAccountItemText_ColumnWidthCap verifies a single unusually long
+// provider name is truncated and does not widen the shared column beyond
+// the cap, so a short provider elsewhere in the same batch stays tightly
+// padded instead of inheriting a huge gap.
+func TestAccountItemText_ColumnWidthCap(t *testing.T) {
+	t.Parallel()
+	const longProvider = "abcdefghijklmnopqrst" // 20 runes, over the 12 cap
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider(longProvider, false, false)))
+	must(t, reg.AddProvider(model.NewProvider("cd", false, false)))
+	must(t, reg.AddUser(model.NewUser("user1@x.com", "X")))
+	must(t, reg.AddUser(model.NewUser("user2@x.com", "Y")))
+	_, err := reg.AddAccount(reg.User("user1@x.com"), reg.Provider(longProvider))
+	must(t, err)
+	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Provider("cd"))
+	must(t, err)
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	got0, _ := p.GetItemText(0)
+	if want := "abcdefghijk…  X  "; got0 != want {
+		t.Errorf("row 0 (long provider, truncated) = %q, want %q", got0, want)
+	}
+	got1, _ := p.GetItemText(1)
+	if want := "cd            Y  "; got1 != want {
+		t.Errorf("row 1 (short provider, width capped, not blown out) = %q, want %q", got1, want)
 	}
 }
 
@@ -288,7 +351,7 @@ func TestAccountItemText_EscapesEmailAndProvider(t *testing.T) {
 // checks which one Refresh() places first via GetItemText — the same
 // three pairwise comparisons the original table exercised (unpaused,
 // past, and near-future all sort ahead of a far-future pause), just
-// identified by email instead of by comparing time.Time values directly.
+// identified by name instead of by comparing time.Time values directly.
 func TestSortAccountsByAvailability(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -326,8 +389,8 @@ func TestSortAccountsByAvailability(t *testing.T) {
 			p.Refresh()
 
 			got, _ := p.GetItemText(0)
-			if !strings.Contains(got, "second@x.com") {
-				t.Errorf("first item = %q, want it to contain %q (more available than first@x.com, paused to farFuture)", got, "second@x.com")
+			if !strings.Contains(got, "Second") {
+				t.Errorf("first item = %q, want it to contain %q (more available than First, paused to farFuture)", got, "Second")
 			}
 		})
 	}

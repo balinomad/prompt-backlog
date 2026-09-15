@@ -42,8 +42,7 @@
 - selected item → **reverse video** (default tview behaviour)
 - session with a pending "continue" prompt (session detail list) → item shown in **yellow**, marked `↻`
 - prompt that spawns a new session (queue editor) → marked `→ new session` in **cyan**
-- account with `PauseUntil` in the past ("ready" to resume) → shown in **red**, both in the accounts list and in session detail's account-info panel
-- account available (no pause, or pause in the past) in the account-info panel → shown in **green**
+- account pause status, both the accounts list and session detail's account-info panel: `PauseUntil` in the future (still unavailable) → shown in **red**; in the past (available again) → shown in **green**; never paused → nothing shown
 - provider capability badges (providers screen): `projects` → **green**; `deep-research` → **cyan**
 - boolean capability display (`yes` / `no`): `yes` → **green**; `no` → **dim**
 - project with zero granted accounts (projects screen) → row shown **dim**, flagged `unattached`

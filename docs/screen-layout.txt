@@ -9,13 +9,13 @@ opened from session detail via `u`, not a fourth page.
 ┌ llm-desk ───────────────────────────────────────────────────────────────┐
 │                                                                         │
 │  ┌ Accounts ──────────────────┐  ┌ Sessions ─────────────────────────┐  │
-│  │▶ alice@example.com / claude│  │▶ Architecture review   Alpha   q:1│  │
-│  │  bob@example.com / chatgpt │  │  (untitled)            —       q:0│  │
-│  │  carol@example.com / claude│  └───────────────────────────────────┘  │
+│  │▶ claude   Alice            │  │▶ Architecture review   Alpha   q:1│  │
+│  │  chatgpt  Bob    18:00     │  │  (untitled)            —       q:0│  │
+│  │  claude   Carol  09:15     │  └───────────────────────────────────┘  │
 │  │                            │  ┌ Account ──────────────────────────┐  │
 │  │                            │  │User:     Alice (alice@example.com)│  │
 │  │                            │  │Provider: claude                   │  │
-│  │                            │  │Paused:   available                │  │
+│  │                            │  │Paused:                            │  │
 │  │                            │  │Projects: Alpha, Beta              │  │
 │  └────────────────────────────┘  └───────────────────────────────────┘  │
 │                                                                         │
@@ -23,9 +23,15 @@ opened from session detail via `u`, not a fourth page.
 │  q quit                                                          saved ✓│
 └─────────────────────────────────────────────────────────────────────────┘
 
-Accounts (left) lists every (user, provider) pair, soonest-available first;
-a past-due pause time is shown in red. Session detail (right) splits into
-the selected account's sessions (top, "q:N" = queue length) and a fixed
+Accounts (left) lists every (user, provider) pair as three aligned
+columns, provider, user name, and pause time, soonest-available first.
+Same-day pause times show as "HH:MM"; other days as "HH:MM ±N", the
+number of days from today (e.g. "09:00 +2", "20:00 -1"). Pause time is
+red while the account is still unavailable, green once it is available
+again, and omitted for an account that has never been paused; the
+account-info panel's own "Paused:" line (bottom right) uses this same
+rendering, not a separate one. Session detail (right) splits into the
+selected account's sessions (top, "q:N" = queue length) and a fixed
 account-info panel (bottom).
 
 ── Providers screen ────────────────────────────────────────────────────────

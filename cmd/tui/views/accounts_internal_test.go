@@ -9,9 +9,10 @@ import (
 // otherwise black-box (package views_test) suite: formatPauseUntil takes
 // now as an explicit parameter specifically to keep the same-day /
 // different-day comparison deterministic — see its doc comment.
-// accountItemText, its only caller, uses real time.Now(), so testing this
-// indirectly through AccountsPanel would reintroduce exactly the
-// midnight-boundary flakiness the parameter exists to prevent.
+// formatPauseUntil is called, via pauseStatusText, from both
+// accountItemText and DetailPanel.renderInfo, both of which use real
+// time.Now(), so testing this indirectly through either would reintroduce
+// exactly the midnight-boundary flakiness the parameter exists to prevent.
 func TestFormatPauseUntil(t *testing.T) {
 	t.Parallel()
 	// A fixed reference instant, not time.Now(): now that formatPauseUntil
@@ -20,7 +21,10 @@ func TestFormatPauseUntil(t *testing.T) {
 	// flake this replaces.
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	sameDay := time.Date(2026, 8, 27, 14, 30, 0, 0, time.UTC)
-	otherDay := time.Date(2027, 6, 15, 9, 0, 0, 0, time.UTC)
+	nextDay := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
+	prevDay := time.Date(2026, 8, 26, 20, 0, 0, 0, time.UTC)
+	twoDaysFuture := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	crossMonth := time.Date(2026, 9, 2, 9, 0, 0, 0, time.UTC)
 	past := now.Add(-time.Hour)
 	future := now.Add(time.Hour)
 
@@ -31,7 +35,10 @@ func TestFormatPauseUntil(t *testing.T) {
 		wantIsPast bool
 	}{
 		{"same day format", sameDay, "14:30", sameDay.Before(now)},
-		{"other day format", otherDay, "06-15 09:00", false},
+		{"next day format", nextDay, "09:00 +1", false},
+		{"previous day format", prevDay, "20:00 -1", true},
+		{"two days future format", twoDaysFuture, "09:00 +2", false},
+		{"cross-month format", crossMonth, "09:00 +6", false},
 		{"past is past", past, past.Format("15:04"), true},
 		{"future not past", future, future.Format("15:04"), false},
 	}

@@ -23,18 +23,24 @@ import (
 // Using Go's reference time: Mon Jan 2 15:04:05 MST 2006.
 const TimeFormat = "2006-01-02 15:04"
 
-// ParseTime parses s using TimeFormat in UTC.
+// ParseTime parses s using TimeFormat, interpreted in the operator's
+// local time zone, and returns the equivalent UTC instant. Local, not
+// UTC: TimeFormat carries no zone of its own, so treating typed input as
+// UTC shifts it by the local offset from what the operator actually typed.
 func ParseTime(s string) (time.Time, error) {
-	t, err := time.ParseInLocation(TimeFormat, s, time.UTC)
+	t, err := time.ParseInLocation(TimeFormat, s, time.Local)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("invalid time %q: %w", s, err)
 	}
-	return t, nil
+	return t.UTC(), nil
 }
 
-// FormatTime formats t using TimeFormat.
+// FormatTime converts t to the operator's local time zone and formats it
+// using TimeFormat, the inverse of ParseTime. All PauseUntil values are
+// stored in UTC (see ParseTime); this is the one place conversion back to
+// local time happens for display.
 func FormatTime(t time.Time) string {
-	return t.Format(TimeFormat)
+	return t.Local().Format(TimeFormat)
 }
 
 // NormalizeEmail trims whitespace from the email and converts it to lowercase.
