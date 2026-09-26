@@ -9,6 +9,7 @@ import (
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -228,16 +229,16 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		key       rune
+		key       *tcell.EventKey
 		wantHints string
 		wantType  string // "flex" | "modal" | "list"
 	}{
-		{"help", views.KeyHelp, views.HintsHelpOverlay, "flex"},
-		{"quit", views.KeyQuit, views.HintsConfirmModal, "modal"},
-		{"new session", views.KeyNew, views.HintsForm, "flex"},
-		{"edit session", views.KeyEdit, views.HintsForm, "flex"},
-		{"delete session", views.KeyDelete, views.HintsConfirmModal, "modal"},
-		{"queue editor", views.KeyQueue, views.HintsQueueEditor, "list"},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay, "flex"},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal, "modal"},
+		{"new session", runeKey(views.KeyNew), views.HintsForm, "flex"},
+		{"edit session", runeKey(views.KeySessionFields), views.HintsForm, "flex"},
+		{"delete session", specialKey(views.KeyDelete), views.HintsConfirmModal, "modal"},
+		{"queue editor", runeKey(views.KeyQueue), views.HintsQueueEditor, "list"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -251,26 +252,26 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
 			}
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal == nil {
-				t.Fatalf("key %q: expected modal", string(tc.key))
+				t.Fatalf("key %q: expected modal", tc.name)
 			}
 			switch tc.wantType {
 			case "flex":
 				if _, ok := app.modal.(*tview.Flex); !ok {
-					t.Errorf("key %q: expected *tview.Flex, got %T", string(tc.key), app.modal)
+					t.Errorf("key %q: expected *tview.Flex, got %T", tc.name, app.modal)
 				}
 			case "modal":
 				if _, ok := app.modal.(*tview.Modal); !ok {
-					t.Errorf("key %q: expected *tview.Modal, got %T", string(tc.key), app.modal)
+					t.Errorf("key %q: expected *tview.Modal, got %T", tc.name, app.modal)
 				}
 			case "list":
 				if _, ok := app.modal.(*tview.List); !ok {
-					t.Errorf("key %q: expected *tview.List, got %T", string(tc.key), app.modal)
+					t.Errorf("key %q: expected *tview.List, got %T", tc.name, app.modal)
 				}
 			}
 			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
 			}
 		})
 	}
@@ -282,12 +283,12 @@ func TestDetailPanel_ShowModalError(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"new session", views.KeyNew},
-		{"edit session", views.KeyEdit},
-		{"delete session", views.KeyDelete},
-		{"queue editor", views.KeyQueue},
+		{"new session", runeKey(views.KeyNew)},
+		{"edit session", runeKey(views.KeySessionFields)},
+		{"delete session", specialKey(views.KeyDelete)},
+		{"queue editor", runeKey(views.KeyQueue)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -299,13 +300,13 @@ func TestDetailPanel_ShowModalError(t *testing.T) {
 			list, _ := detailPanelParts(t, p)
 			list.SetCurrentItem(0)
 
-			list.GetInputCapture()(runeKey(tc.key))
+			list.GetInputCapture()(tc.key)
 
 			if app.status == "" {
-				t.Errorf("key %q: expected a status message reporting the ShowModal failure", string(tc.key))
+				t.Errorf("key %q: expected a status message reporting the ShowModal failure", tc.name)
 			}
 			if app.modal != nil {
-				t.Errorf("key %q: expected no modal recorded when ShowModal itself fails", string(tc.key))
+				t.Errorf("key %q: expected no modal recorded when ShowModal itself fails", tc.name)
 			}
 		})
 	}
@@ -315,11 +316,11 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"edit", views.KeyEdit},
-		{"delete", views.KeyDelete},
-		{"queue", views.KeyQueue},
+		{"edit", runeKey(views.KeySessionFields)},
+		{"delete", specialKey(views.KeyDelete)},
+		{"queue", runeKey(views.KeyQueue)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -335,9 +336,9 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 			p.SetAccount(acc)
 			list, _ := detailPanelParts(t, p)
 			capture := list.GetInputCapture()
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal != nil {
-				t.Errorf("key %q with no sessions should not open a modal", string(tc.key))
+				t.Errorf("key %q with no sessions should not open a modal", tc.name)
 			}
 		})
 	}
@@ -384,7 +385,7 @@ func TestDetailPanel_EditSession_OpensPrepopulatedForm(t *testing.T) {
 	list, _ := detailPanelParts(t, p)
 	list.SetCurrentItem(0) // "Architecture review", per newDetailTestApp's doc comment
 
-	list.GetInputCapture()(runeKey(views.KeyEdit))
+	list.GetInputCapture()(runeKey(views.KeySessionFields))
 
 	form := formFromCenteredModal(t, app.modal)
 	topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
@@ -455,7 +456,7 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 			must(t, err)
 			wantCount := len(sessionsBefore)
 
-			list.GetInputCapture()(runeKey(views.KeyDelete))
+			list.GetInputCapture()(specialKey(views.KeyDelete))
 			confirmModal, ok := app.modal.(*tview.Modal)
 			if !ok {
 				t.Fatalf("expected *tview.Modal, got %T", app.modal)
@@ -627,7 +628,7 @@ func TestDetailPanel_EditSession_SaveReturnsToPanel(t *testing.T) {
 	list, _ := detailPanelParts(t, p)
 	list.SetCurrentItem(0) // "Architecture review"
 
-	list.GetInputCapture()(runeKey(views.KeyEdit))
+	list.GetInputCapture()(runeKey(views.KeySessionFields))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Topic", "Renamed topic")

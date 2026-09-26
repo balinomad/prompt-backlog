@@ -158,7 +158,8 @@ func (s helpSection) String() string {
 }
 
 // helpSections is the content of the help overlay, grouped by screen.
-// Uses string(KeyX) throughout so a rebind needs no second edit.
+// Rune-bound keys use string(KeyX); special keys (no printable rune) use
+// a literal display string instead.
 var helpSections = []helpSection{
 	{"Navigation", hints{
 		{"↑ ↓", "Move through list items"},
@@ -167,35 +168,35 @@ var helpSections = []helpSection{
 	}},
 	{"Accounts list", hints{
 		{string(KeyNew), "New account"},
-		{string(KeyEdit), "Edit selected account"},
-		{string(KeyDelete), "Delete selected account"},
-		{string(KeyRenameUser), "Rename user of selected account"},
+		{"Enter", "Edit selected account"},
+		{"Del", "Delete selected account"},
+		{"F2", "Rename user of selected account"},
 		{string(KeyProviders), "Providers screen"},
 		{string(KeyProjects), "Projects screen"},
 	}},
 	{"Session detail", hints{
 		{string(KeyNew), "New session"},
-		{string(KeyEdit), "Edit selected session"},
-		{string(KeyDelete), "End selected session"},
+		{string(KeySessionFields), "Edit selected session"},
+		{"Del", "End selected session"},
 		{string(KeyQueue), "Open queue editor"},
 		{"Space", `Toggle "continue" prompt`},
 	}},
 	{"Providers screen", hints{
 		{string(KeyNew), "New provider"},
-		{string(KeyEdit), "Edit selected provider"},
-		{string(KeyDelete), "Delete selected provider"},
+		{"Enter", "Edit selected provider"},
+		{"Del", "Delete selected provider"},
 	}},
 	{"Projects screen", hints{
 		{string(KeyNew), "New project"},
-		{string(KeyEdit), "Edit selected project"},
-		{string(KeyDelete), "Delete selected project"},
+		{"Enter", "Edit selected project"},
+		{"Del", "Delete selected project"},
 		{string(KeyGrant), "Grant to an account"},
 		{string(KeyRevoke), "Revoke from an account"},
 	}},
 	{"Queue editor", hints{
 		{string(KeyNew), "New prompt"},
-		{string(KeyEdit), "Edit selected prompt"},
-		{string(KeyDelete), "Delete selected prompt"},
+		{"Enter", "Edit selected prompt"},
+		{"Del", "Delete selected prompt"},
 		{string(KeyMoveUp), "Move prompt up"},
 		{string(KeyMoveDown), "Move prompt down"},
 	}},

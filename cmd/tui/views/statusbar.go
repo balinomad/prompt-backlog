@@ -12,9 +12,9 @@ var (
 	// HintsAccountsPanel is shown when the accounts list has focus.
 	HintsAccountsPanel = hints{
 		{string(KeyNew), "new"},
-		{string(KeyEdit), "edit"},
-		{string(KeyDelete), "del"},
-		{string(KeyRenameUser), "rename"},
+		{"Enter", "edit"},
+		{"Del", "del"},
+		{"F2", "rename"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
 		{string(KeyProviders), "providers"},
@@ -26,8 +26,8 @@ var (
 	// has focus.
 	HintsDetailPanel = hints{
 		{string(KeyNew), "new"},
-		{string(KeyEdit), "edit"},
-		{string(KeyDelete), "end"},
+		{string(KeySessionFields), "edit"},
+		{"Del", "end"},
 		{string(KeyQueue), "queue"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
@@ -38,8 +38,8 @@ var (
 	// HintsProvidersPanel is shown when the providers screen has focus.
 	HintsProvidersPanel = hints{
 		{string(KeyNew), "new"},
-		{string(KeyEdit), "edit"},
-		{string(KeyDelete), "del"},
+		{"Enter", "edit"},
+		{"Del", "del"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
 		{"Tab", "focus"},
@@ -48,8 +48,8 @@ var (
 	// HintsProjectsPanel is shown when the projects screen has focus.
 	HintsProjectsPanel = hints{
 		{string(KeyNew), "new"},
-		{string(KeyEdit), "edit"},
-		{string(KeyDelete), "del"},
+		{"Enter", "edit"},
+		{"Del", "del"},
 		{string(KeyGrant), "grant"},
 		{string(KeyRevoke), "revoke"},
 		{string(KeyHelp), "help"},
@@ -66,8 +66,8 @@ var (
 	// HintsQueueEditor is shown when the queue editor modal is open.
 	HintsQueueEditor = hints{
 		{string(KeyNew), "add"},
-		{string(KeyEdit), "edit"},
-		{string(KeyDelete), "del"},
+		{"Enter", "edit"},
+		{"Del", "del"},
 		{string(KeyHelp), "help"},
 		{string(KeyQuit), "quit"},
 		{string(KeyMoveUp), "up"},

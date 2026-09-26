@@ -135,6 +135,18 @@ func (p *AccountsPanel) Refresh() {
 
 // handleKey processes keyboard input for this panel.
 func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case KeyEdit:
+		return p.handleEdit()
+	case KeyDelete:
+		return p.handleDelete()
+	case KeyRenameUser:
+		return p.handleRenameUser()
+	default:
+		// Every other special key falls through to dispatchPanelKey and
+		// the rune switch below.
+	}
+
 	if result, ok := dispatchPanelKey(event, p.app, HintsAccountsPanel); ok {
 		return result
 	}
@@ -142,12 +154,6 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Rune() {
 	case KeyNew:
 		return p.handleNew()
-	case KeyEdit:
-		return p.handleEdit()
-	case KeyDelete:
-		return p.handleDelete()
-	case KeyRenameUser:
-		return p.handleRenameUser()
 	case KeyProviders:
 		p.app.SwitchToProviders()
 		return nil

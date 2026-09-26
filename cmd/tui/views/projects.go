@@ -160,11 +160,20 @@ func (p *ProjectsPanel) renderInfo(proj *model.Project) {
 
 // handleKey processes keyboard input for this panel.
 func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	// Esc and 'p' both return to the main screen.
-	if event.Key() == KeyCancel {
+	switch event.Key() {
+	case KeyCancel:
+		// Esc and 'p' both return to the main screen.
 		p.app.SwitchToMain()
 		return nil
+	case KeyEdit:
+		return p.handleEdit()
+	case KeyDelete:
+		return p.handleDelete()
+	default:
+		// Every other special key falls through to dispatchPanelKey and
+		// the rune switch below.
 	}
+
 	if result, ok := dispatchPanelKey(event, p.app, HintsProjectsPanel); ok {
 		return result
 	}
@@ -175,10 +184,6 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case KeyNew:
 		return p.handleNew()
-	case KeyEdit:
-		return p.handleEdit()
-	case KeyDelete:
-		return p.handleDelete()
 	case KeyGrant:
 		return p.handleGrant()
 	case KeyRevoke:

@@ -122,9 +122,17 @@ func (qe *queueEditor) commit(newQueue []model.Prompt) bool {
 }
 
 func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() == KeyCancel {
+	switch event.Key() {
+	case KeyCancel:
 		qe.onClose()
 		return nil
+	case KeyEdit:
+		return qe.handleEdit()
+	case KeyDelete:
+		return qe.handleDelete()
+	default:
+		// Every other special key falls through to the rune-only guard
+		// and switch below.
 	}
 	if event.Key() != tcell.KeyRune {
 		return event
@@ -133,10 +141,6 @@ func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Rune() {
 	case KeyNew:
 		return qe.handleNew()
-	case KeyEdit:
-		return qe.handleEdit()
-	case KeyDelete:
-		return qe.handleDelete()
 	case KeyMoveUp:
 		return qe.handleMoveUp()
 	case KeyMoveDown:

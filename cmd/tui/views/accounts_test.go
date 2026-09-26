@@ -193,15 +193,15 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		key       rune
+		key       *tcell.EventKey
 		wantHints string
 	}{
-		{"new", views.KeyNew, views.HintsForm},
-		{"edit", views.KeyEdit, views.HintsForm},
-		{"delete", views.KeyDelete, views.HintsConfirmModal},
-		{"rename user", views.KeyRenameUser, views.HintsForm},
-		{"help", views.KeyHelp, views.HintsHelpOverlay},
-		{"quit", views.KeyQuit, views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsForm},
+		{"edit", specialKey(views.KeyEdit), views.HintsForm},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
+		{"rename user", specialKey(views.KeyRenameUser), views.HintsForm},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -213,12 +213,12 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
 			}
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal == nil {
-				t.Errorf("key %q: expected modal to be shown", string(tc.key))
+				t.Errorf("key %q: expected modal to be shown", tc.name)
 			}
 			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
 			}
 		})
 	}
@@ -228,11 +228,11 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"delete", views.KeyDelete},
-		{"edit", views.KeyEdit},
-		{"rename user", views.KeyRenameUser},
+		{"delete", specialKey(views.KeyDelete)},
+		{"edit", specialKey(views.KeyEdit)},
+		{"rename user", specialKey(views.KeyRenameUser)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -247,9 +247,9 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
 			}
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal != nil {
-				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
+				t.Errorf("key %q with empty list should not open a modal", tc.name)
 			}
 		})
 	}
@@ -479,7 +479,7 @@ func TestAccountsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	p.Refresh() // selects alice|claude first (sorted by key, both unpaused)
 
 	capture := p.GetInputCapture()
-	capture(runeKey(views.KeyEdit))
+	capture(specialKey(views.KeyEdit))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Pause until", "2026-12-31 23:59")
@@ -507,7 +507,7 @@ func TestAccountsPanel_Delete_Cancel(t *testing.T) {
 	before := len(app.svc.Accounts())
 
 	capture := p.GetInputCapture()
-	capture(runeKey(views.KeyDelete))
+	capture(specialKey(views.KeyDelete))
 
 	confirmModal, ok := app.modal.(*tview.Modal)
 	if !ok {
@@ -536,7 +536,7 @@ func TestAccountsPanel_RenameUser_SaveReturnsToPanel(t *testing.T) {
 	p.Refresh() // selects alice|claude first
 
 	capture := p.GetInputCapture()
-	capture(runeKey(views.KeyRenameUser))
+	capture(specialKey(views.KeyRenameUser))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Name", "Alice Smith")

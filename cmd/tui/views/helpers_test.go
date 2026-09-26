@@ -136,3 +136,10 @@ func runeKey(r rune) *tcell.EventKey {
 func escKey() *tcell.EventKey {
 	return tcell.NewEventKey(tcell.KeyEscape, 0, tcell.ModNone)
 }
+
+// specialKey returns a key event for a non-rune special key (Enter,
+// Delete, F2, etc.) — anything checked via event.Key() rather than
+// event.Rune().
+func specialKey(k tcell.Key) *tcell.EventKey {
+	return tcell.NewEventKey(k, 0, tcell.ModNone)
+}

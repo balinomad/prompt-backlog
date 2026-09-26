@@ -128,16 +128,16 @@ func TestProjectsPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		key       rune
+		key       *tcell.EventKey
 		wantHints string
 	}{
-		{"new", views.KeyNew, views.HintsForm},
-		{"edit", views.KeyEdit, views.HintsForm},
-		{"delete", views.KeyDelete, views.HintsConfirmModal},
-		{"grant", views.KeyGrant, views.HintsForm},
-		{"revoke", views.KeyRevoke, views.HintsForm},
-		{"help", views.KeyHelp, views.HintsHelpOverlay},
-		{"quit", views.KeyQuit, views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsForm},
+		{"edit", specialKey(views.KeyEdit), views.HintsForm},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
+		{"grant", runeKey(views.KeyGrant), views.HintsForm},
+		{"revoke", runeKey(views.KeyRevoke), views.HintsForm},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,12 +150,12 @@ func TestProjectsPanel_Keys_ShowModal(t *testing.T) {
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
 			}
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal == nil {
-				t.Errorf("key %q: expected modal", string(tc.key))
+				t.Errorf("key %q: expected modal", tc.name)
 			}
 			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
 			}
 		})
 	}
@@ -165,12 +165,12 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"edit", views.KeyEdit},
-		{"delete", views.KeyDelete},
-		{"grant", views.KeyGrant},
-		{"revoke", views.KeyRevoke},
+		{"edit", specialKey(views.KeyEdit)},
+		{"delete", specialKey(views.KeyDelete)},
+		{"grant", runeKey(views.KeyGrant)},
+		{"revoke", runeKey(views.KeyRevoke)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -180,9 +180,9 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 			p := views.NewProjectsPanel(app)
 			p.Refresh()
 			list, _ := projectsPanelParts(t, p)
-			list.GetInputCapture()(runeKey(tc.key))
+			list.GetInputCapture()(tc.key)
 			if app.modal != nil {
-				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
+				t.Errorf("key %q with empty list should not open a modal", tc.name)
 			}
 		})
 	}
@@ -234,7 +234,7 @@ func TestProjectsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if capture == nil {
 		t.Fatal("expected non-nil input capture")
 	}
-	capture(runeKey(views.KeyEdit))
+	capture(specialKey(views.KeyEdit))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Description", "new desc")
@@ -268,7 +268,7 @@ func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 	if capture == nil {
 		t.Fatal("expected non-nil input capture")
 	}
-	capture(runeKey(views.KeyDelete))
+	capture(specialKey(views.KeyDelete))
 
 	confirmModal, ok := app.modal.(*tview.Modal)
 	if !ok {

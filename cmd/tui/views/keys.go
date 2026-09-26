@@ -13,11 +13,11 @@ const (
 	// depending on focus).
 	KeyNew rune = 'n'
 
-	// KeyEdit opens the edit form for the selected item.
-	KeyEdit rune = 'e'
-
-	// KeyDelete opens the delete confirmation modal for the selected item.
-	KeyDelete rune = 'd'
+	// KeySessionFields opens the edit form for a session's topic and
+	// project (DetailPanel only). Every other "edit" action uses KeyEdit
+	// (Enter); this one stays on its own key pending the session/queue
+	// key redesign — see TODO.md.
+	KeySessionFields rune = 'e'
 
 	// KeyToggle toggles a "continue" prompt entry on the selected session's
 	// queue. Space is the standard TUI convention for toggling item state.
@@ -39,25 +39,31 @@ const (
 	KeyQueue rune = 'u'
 
 	// KeyGrant grants the selected project to an account (ProjectsPanel).
-	KeyGrant rune = 'g'
+	KeyGrant rune = '+'
 
 	// KeyRevoke revokes the selected project from an account (ProjectsPanel).
-	KeyRevoke rune = 'x'
+	KeyRevoke rune = '-'
 
 	// KeyMoveUp moves the selected queue entry one position earlier.
 	KeyMoveUp rune = 'K'
 
 	// KeyMoveDown moves the selected queue entry one position later.
 	KeyMoveDown rune = 'J'
-
-	// KeyRenameUser opens the rename form for the user backing the
-	// selected account (AccountsPanel).
-	KeyRenameUser rune = 'R'
 )
 
 // ── Special keys (checked via event.Key()) ───────────────────────────────────
 
 const (
+	// KeyEdit opens the edit form for the selected item.
+	KeyEdit = tcell.KeyEnter
+
+	// KeyDelete opens the delete confirmation modal for the selected item.
+	KeyDelete = tcell.KeyDelete
+
+	// KeyRenameUser opens the rename form for the user backing the
+	// selected account (AccountsPanel).
+	KeyRenameUser = tcell.KeyF2
+
 	// KeySave submits the active form.
 	// Ctrl+S is borrowed from editor convention; it is unambiguous in forms.
 	KeySave = tcell.KeyCtrlS

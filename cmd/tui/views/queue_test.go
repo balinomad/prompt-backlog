@@ -167,12 +167,12 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		key       rune
+		key       *tcell.EventKey
 		wantHints string
 	}{
-		{"new", views.KeyNew, views.HintsForm},
-		{"edit", views.KeyEdit, views.HintsForm},
-		{"delete", views.KeyDelete, views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsForm},
+		{"edit", specialKey(views.KeyEdit), views.HintsForm},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -187,12 +187,12 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
 			}
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal == nil {
-				t.Errorf("key %q: expected modal to be shown", string(tc.key))
+				t.Errorf("key %q: expected modal to be shown", tc.name)
 			}
 			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
 			}
 		})
 	}
@@ -206,10 +206,10 @@ func TestQueueEditor_EmptyQueue_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"edit", views.KeyEdit},
-		{"delete", views.KeyDelete},
+		{"edit", specialKey(views.KeyEdit)},
+		{"delete", specialKey(views.KeyDelete)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,9 +229,9 @@ func TestQueueEditor_EmptyQueue_NoModal(t *testing.T) {
 				t.Fatalf("expected *tview.List, got %T", result)
 			}
 			capture := list.GetInputCapture()
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal != nil {
-				t.Errorf("key %q with empty queue should not open a modal", string(tc.key))
+				t.Errorf("key %q with empty queue should not open a modal", tc.name)
 			}
 		})
 	}
@@ -345,10 +345,10 @@ func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"new prompt", views.KeyNew},
-		{"edit existing prompt", views.KeyEdit},
+		{"new prompt", runeKey(views.KeyNew)},
+		{"edit existing prompt", specialKey(views.KeyEdit)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -360,9 +360,9 @@ func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
 				t.Fatalf("expected *tview.List, got %T", result)
 			}
 			list.SetCurrentItem(0)
-			list.GetInputCapture()(runeKey(tc.key))
+			list.GetInputCapture()(tc.key)
 			if _, ok := app.modal.(*tview.Flex); !ok {
-				t.Errorf("key %q: expected centred form (*tview.Flex), got %T", string(tc.key), app.modal)
+				t.Errorf("key %q: expected centred form (*tview.Flex), got %T", tc.name, app.modal)
 			}
 		})
 	}
@@ -382,7 +382,7 @@ func TestQueueEditor_EditPrompt_PrefillsExistingValues(t *testing.T) {
 	}
 	list.SetCurrentItem(1) // "second", spawns: true
 
-	list.GetInputCapture()(runeKey(views.KeyEdit))
+	list.GetInputCapture()(specialKey(views.KeyEdit))
 	form := formFromCenteredModal(t, app.modal)
 
 	textField, ok := form.GetFormItemByLabel("Text").(*tview.InputField)
@@ -458,7 +458,7 @@ func TestQueueEditor_EditPrompt_Save(t *testing.T) {
 	}
 	list.SetCurrentItem(0) // "first"
 
-	list.GetInputCapture()(runeKey(views.KeyEdit))
+	list.GetInputCapture()(specialKey(views.KeyEdit))
 	form := formFromCenteredModal(t, app.modal)
 
 	setInputField(t, form, "Text", "first, edited")

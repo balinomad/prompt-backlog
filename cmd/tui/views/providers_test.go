@@ -127,14 +127,14 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		key       rune
+		key       *tcell.EventKey
 		wantHints string
 	}{
-		{"new", views.KeyNew, views.HintsForm},
-		{"edit", views.KeyEdit, views.HintsForm},
-		{"delete", views.KeyDelete, views.HintsConfirmModal},
-		{"help", views.KeyHelp, views.HintsHelpOverlay},
-		{"quit", views.KeyQuit, views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsForm},
+		{"edit", specialKey(views.KeyEdit), views.HintsForm},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -147,12 +147,12 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
 			}
-			capture(runeKey(tc.key))
+			capture(tc.key)
 			if app.modal == nil {
-				t.Errorf("key %q: expected modal", string(tc.key))
+				t.Errorf("key %q: expected modal", tc.name)
 			}
 			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", string(tc.key), app.hints, tc.wantHints)
+				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
 			}
 		})
 	}
@@ -162,10 +162,10 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
-		key  rune
+		key  *tcell.EventKey
 	}{
-		{"edit", views.KeyEdit},
-		{"delete", views.KeyDelete},
+		{"edit", specialKey(views.KeyEdit)},
+		{"delete", specialKey(views.KeyDelete)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -175,9 +175,9 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 			p := views.NewProvidersPanel(app)
 			p.Refresh()
 			list, _ := providersPanelParts(t, p)
-			list.GetInputCapture()(runeKey(tc.key))
+			list.GetInputCapture()(tc.key)
 			if app.modal != nil {
-				t.Errorf("key %q with empty list should not open a modal", string(tc.key))
+				t.Errorf("key %q with empty list should not open a modal", tc.name)
 			}
 		})
 	}
@@ -221,7 +221,7 @@ func TestProvidersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	p.Refresh() // selects "chatgpt" first (sorted by name)
 	list, _ := providersPanelParts(t, p)
 
-	list.GetInputCapture()(runeKey(views.KeyEdit))
+	list.GetInputCapture()(specialKey(views.KeyEdit))
 
 	form := formFromCenteredModal(t, app.modal)
 	setCheckbox(t, form, "Supports projects")
@@ -251,7 +251,7 @@ func TestProvidersPanel_Delete_Cancel(t *testing.T) {
 
 	before := len(app.svc.Providers())
 
-	list.GetInputCapture()(runeKey(views.KeyDelete))
+	list.GetInputCapture()(specialKey(views.KeyDelete))
 
 	confirmModal, ok := app.modal.(*tview.Modal)
 	if !ok {

@@ -119,11 +119,20 @@ func (p *ProvidersPanel) renderInfo(prov *model.Provider) {
 
 // handleKey processes keyboard input for this panel.
 func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	// Esc and 'r' both return to the main screen.
-	if event.Key() == KeyCancel {
+	switch event.Key() {
+	case KeyCancel:
+		// Esc and 'r' both return to the main screen.
 		p.app.SwitchToMain()
 		return nil
+	case KeyEdit:
+		return p.handleEdit()
+	case KeyDelete:
+		return p.handleDelete()
+	default:
+		// Every other special key falls through to dispatchPanelKey and
+		// the rune switch below.
 	}
+
 	if result, ok := dispatchPanelKey(event, p.app, HintsProvidersPanel); ok {
 		return result
 	}
@@ -134,10 +143,6 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	case KeyNew:
 		return p.handleNew()
-	case KeyEdit:
-		return p.handleEdit()
-	case KeyDelete:
-		return p.handleDelete()
 	}
 	return event
 }
