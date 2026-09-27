@@ -304,22 +304,15 @@ func formatPauseUntil(t, now time.Time) (string, bool) {
 	return fmt.Sprintf("%s %+d", t.Format("15:04"), days), isPast
 }
 
-// sortAccountsByAvailability sorts accounts so that available accounts (no
-// pause, or pause in the past) appear first, followed by paused accounts
-// ordered by soonest available time.
+// sortAccountsByAvailability sorts accounts by PauseUntil ascending: never
+// paused (zero value) or already past always sorts before any future
+// pause, and accounts stay ordered by that same value throughout — not
+// just grouped at the available/paused boundary, which previously left
+// available accounts in whatever order Accounts() happened to hand them
+// instead of by time. Ties (e.g. two never-paused accounts) keep their
+// incoming order via the stable sort.
 func sortAccountsByAvailability(accounts []*model.Account) {
-	now := time.Now()
 	sort.SliceStable(accounts, func(i, j int) bool {
-		ti := accounts[i].PauseUntil()
-		tj := accounts[j].PauseUntil()
-		iAvail := ti.IsZero() || ti.Before(now)
-		jAvail := tj.IsZero() || tj.Before(now)
-		if iAvail != jAvail {
-			return iAvail
-		}
-		if ti.IsZero() || iAvail {
-			return false // stable among available
-		}
-		return ti.Before(tj)
+		return accounts[i].PauseUntil().Before(accounts[j].PauseUntil())
 	})
 }

@@ -159,9 +159,25 @@ func (p *DetailPanel) renderInfo(acc *model.Account) {
 	if len(projects) == 0 {
 		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", dimText("none"))
 	} else {
-		names := make([]string, len(projects))
-		for i, proj := range projects {
-			names[i] = tview.Escape(proj.Name())
+		// Latest session = p.sessions' last entry (sorted by ID in Refresh,
+		// always in sync with acc). No sessions, or no project on the
+		// latest one, leaves order/colour untouched below.
+		var latestProjectName string
+		if len(p.sessions) > 0 {
+			latestProjectName = p.sessions[len(p.sessions)-1].ProjectName()
+		}
+
+		names := make([]string, 0, len(projects))
+		var highlighted string
+		for _, proj := range projects {
+			if proj.Name() == latestProjectName {
+				highlighted = fmt.Sprintf("[green]%s[-]", tview.Escape(proj.Name()))
+				continue
+			}
+			names = append(names, tview.Escape(proj.Name()))
+		}
+		if highlighted != "" {
+			names = append([]string{highlighted}, names...)
 		}
 		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", strings.Join(names, ", "))
 	}

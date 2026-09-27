@@ -5,9 +5,18 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
+
+// compareFold compares a and b case-insensitively, for name-based sorting.
+// Providers, Projects, and AccountKey (whose provider segment is not
+// case-normalised the way User.email already is) are ordered with this;
+// email-keyed sorts don't need it since NormalizeEmail lowercases first.
+func compareFold(a, b string) int {
+	return cmp.Compare(strings.ToLower(a), strings.ToLower(b))
+}
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
@@ -91,7 +100,7 @@ func (r *Registry) Providers() []*Provider {
 	defer r.mu.RUnlock()
 
 	providers := slices.Collect(maps.Values(r.providers))
-	slices.SortFunc(providers, func(a, b *Provider) int { return cmp.Compare(a.name, b.name) })
+	slices.SortFunc(providers, func(a, b *Provider) int { return compareFold(a.name, b.name) })
 	return providers
 }
 
@@ -295,7 +304,7 @@ func (r *Registry) Projects() []*Project {
 	defer r.mu.RUnlock()
 
 	projects := slices.Collect(maps.Values(r.projects))
-	slices.SortFunc(projects, func(a, b *Project) int { return cmp.Compare(a.name, b.name) })
+	slices.SortFunc(projects, func(a, b *Project) int { return compareFold(a.name, b.name) })
 	return projects
 }
 
@@ -368,7 +377,7 @@ func (r *Registry) ProjectAccounts(p *Project) ([]*Account, error) {
 			result = append(result, acc)
 		}
 	}
-	slices.SortFunc(result, func(a, b *Account) int { return cmp.Compare(a.key.String(), b.key.String()) })
+	slices.SortFunc(result, func(a, b *Account) int { return compareFold(a.key.String(), b.key.String()) })
 	return result, nil
 }
 
@@ -460,7 +469,7 @@ func (r *Registry) Accounts() []*Account {
 	defer r.mu.RUnlock()
 
 	accounts := slices.Collect(maps.Values(r.accounts))
-	slices.SortFunc(accounts, func(a, b *Account) int { return cmp.Compare(a.key.String(), b.key.String()) })
+	slices.SortFunc(accounts, func(a, b *Account) int { return compareFold(a.key.String(), b.key.String()) })
 	return accounts
 }
 
@@ -598,7 +607,7 @@ func (r *Registry) AccountProjects(acc *Account) ([]*Project, error) {
 			result = append(result, p)
 		}
 	}
-	slices.SortFunc(result, func(a, b *Project) int { return cmp.Compare(a.name, b.name) })
+	slices.SortFunc(result, func(a, b *Project) int { return compareFold(a.name, b.name) })
 	return result, nil
 }
 
