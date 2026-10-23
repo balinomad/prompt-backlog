@@ -57,8 +57,8 @@ func NewProjectsPanel(app App) *ProjectsPanel {
 		p.renderInfo(p.selectedProject())
 	})
 
-	list.SetFocusFunc(func() {
-		app.SetHints(HintsProjectsPanel)
+	wirePanelFocus(list, func() {
+		app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 	})
 
 	list.SetInputCapture(p.handleKey)
@@ -174,7 +174,7 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		// the rune switch below.
 	}
 
-	if result, ok := dispatchPanelKey(event, p.app, HintsProjectsPanel); ok {
+	if result, ok := dispatchPanelKey(event, p.app, HintsProjectsPanelSpecific, HintsProjectsPanelCommon); ok {
 		return result
 	}
 
@@ -194,14 +194,14 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 func (p *ProjectsPanel) handleNew() *tcell.EventKey {
 	modal := NewProjectForm(p.app, nil, func() {
-		p.app.SetHints(HintsProjectsPanel)
+		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -211,14 +211,14 @@ func (p *ProjectsPanel) handleEdit() *tcell.EventKey {
 		return nil
 	}
 	modal := NewProjectForm(p.app, proj, func() {
-		p.app.SetHints(HintsProjectsPanel)
+		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -236,11 +236,11 @@ func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
 			}); err != nil {
 				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 			}
-			p.app.SetHints(HintsProjectsPanel)
+			p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 			p.app.HideModal()
 		},
 		func() {
-			p.app.SetHints(HintsProjectsPanel)
+			p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 			p.app.HideModal()
 		},
 	)
@@ -248,7 +248,7 @@ func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsConfirmModal)
+	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -258,14 +258,14 @@ func (p *ProjectsPanel) handleGrant() *tcell.EventKey {
 		return nil
 	}
 	modal := NewGrantForm(p.app, proj, func() {
-		p.app.SetHints(HintsProjectsPanel)
+		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -275,14 +275,14 @@ func (p *ProjectsPanel) handleRevoke() *tcell.EventKey {
 		return nil
 	}
 	modal := NewRevokeForm(p.app, proj, func() {
-		p.app.SetHints(HintsProjectsPanel)
+		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 

@@ -192,16 +192,17 @@ func TestAccountsPanel_Keys_SwitchScreens(t *testing.T) {
 func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name      string
-		key       *tcell.EventKey
-		wantHints string
+		name         string
+		key          *tcell.EventKey
+		wantSpecific string
+		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsForm},
-		{"edit", specialKey(views.KeyEdit), views.HintsForm},
-		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
-		{"rename user", specialKey(views.KeyRenameUser), views.HintsForm},
-		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay},
-		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
+		{"rename user", specialKey(views.KeyRenameUser), views.HintsFormSpecific, views.HintsFormCommon},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -217,8 +218,9 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal to be shown", tc.name)
 			}
-			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
+			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
+				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
+					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
 			}
 		})
 	}
@@ -345,6 +347,208 @@ func TestAccountItemText_ColumnWidthCap(t *testing.T) {
 	}
 }
 
+// newProjectAccountsTestApp returns a mock app with one account, ready for
+// project and session setup in latest-project tests.
+func newProjectAccountsTestApp(t *testing.T) (*mockApp, *model.Registry, *model.Account) {
+	t.Helper()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	return &mockApp{svc: newTestService(t, reg)}, reg, acc
+}
+
+// addProjectSession grants projectName to acc when needed and adds a session
+// under it. An empty projectName adds a session with no project.
+func addProjectSession(t *testing.T, reg *model.Registry, acc *model.Account, projectName string) {
+	t.Helper()
+	var proj *model.Project
+	if projectName != "" {
+		proj = reg.Project(projectName)
+		if proj == nil {
+			proj = model.NewProject(projectName, "", "")
+			must(t, reg.AddProject(proj))
+			must(t, reg.AddProjectToAccount(acc, proj))
+		}
+	}
+	_, err := reg.AddSession(acc, proj, "", nil)
+	must(t, err)
+}
+
+// TestAccountsPanel_LatestProject covers the trailing project column: it must
+// mirror DetailPanel's green Projects entry exactly, showing only the latest
+// session's project when that project is still granted.
+func TestAccountsPanel_LatestProject(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		setup      func(*testing.T, *model.Registry, *model.Account)
+		wantSuffix string
+		wantAbsent string
+	}{
+		{
+			name: "latest granted project",
+			setup: func(t *testing.T, reg *model.Registry, acc *model.Account) {
+				t.Helper()
+				addProjectSession(t, reg, acc, "Alpha")
+				addProjectSession(t, reg, acc, "Beta")
+			},
+			wantSuffix: "Beta",
+			wantAbsent: "Alpha",
+		},
+		{
+			name: "older project hidden when latest session has none",
+			setup: func(t *testing.T, reg *model.Registry, acc *model.Account) {
+				t.Helper()
+				addProjectSession(t, reg, acc, "Alpha")
+				addProjectSession(t, reg, acc, "")
+			},
+			wantAbsent: "Alpha",
+		},
+		{
+			name: "project name escaped",
+			setup: func(t *testing.T, reg *model.Registry, acc *model.Account) {
+				t.Helper()
+				addProjectSession(t, reg, acc, "Be[ta]")
+			},
+			wantSuffix: tview.Escape("Be[ta]"),
+		},
+		{
+			name: "long project name truncated",
+			setup: func(t *testing.T, reg *model.Registry, acc *model.Account) {
+				t.Helper()
+				addProjectSession(t, reg, acc, "abcdefghijklmnopqrst")
+			},
+			wantSuffix: "abcdefghijklm…",
+		},
+		{
+			name: "project follows pause status",
+			setup: func(t *testing.T, reg *model.Registry, acc *model.Account) {
+				t.Helper()
+				addProjectSession(t, reg, acc, "Alpha")
+				must(t, reg.PauseAccount(acc, time.Now().Add(time.Hour)))
+			},
+			wantSuffix: "Alpha",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, reg, acc := newProjectAccountsTestApp(t)
+			tc.setup(t, reg, acc)
+
+			p := views.NewAccountsPanel(app)
+			p.Refresh()
+
+			got, _ := p.GetItemText(0)
+			if tc.wantSuffix != "" && !strings.HasSuffix(got, tc.wantSuffix) {
+				t.Errorf("row = %q, want suffix %q", got, tc.wantSuffix)
+			}
+			if tc.wantAbsent != "" && strings.Contains(got, tc.wantAbsent) {
+				t.Errorf("row = %q, want it not to contain %q", got, tc.wantAbsent)
+			}
+			if want := tview.TaggedStringWidth(got) + 2; p.RequiredWidth() < want {
+				t.Errorf("RequiredWidth() = %d, want at least %d to fit row %q", p.RequiredWidth(), want, got)
+			}
+		})
+	}
+}
+
+// TestAccountsPanel_RequiredWidth verifies the panel reports the widest row
+// plus its border, the value the host App uses to size the Accounts window.
+func TestAccountsPanel_RequiredWidth(t *testing.T) {
+	t.Parallel()
+	app, reg, acc := newProjectAccountsTestApp(t)
+	addProjectSession(t, reg, acc, "Alpha")
+
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	row, _ := p.GetItemText(0)
+	want := tview.TaggedStringWidth(row) + 2
+	if got := p.RequiredWidth(); got != want {
+		t.Errorf("RequiredWidth() = %d, want %d", got, want)
+	}
+}
+
+// TestAccountsPanel_RequiredWidth_GlobalColumns verifies that the Accounts
+// width follows the longest provider, user, and project in the store, not just
+// the values currently rendered in a row.
+func TestAccountsPanel_RequiredWidth_GlobalColumns(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("p", false, false)))
+	must(t, reg.AddProvider(model.NewProvider("provider-long", false, false)))
+	must(t, reg.AddUser(model.NewUser("used@example.com", "U")))
+	must(t, reg.AddUser(model.NewUser("unused@example.com", "LongUserNameExceedingCap")))
+	_, err := reg.AddAccount(reg.User("used@example.com"), reg.Provider("p"))
+	must(t, err)
+	must(t, reg.AddProject(model.NewProject("project-long-name", "", "")))
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	row, _ := p.GetItemText(0)
+	rowWidth := tview.TaggedStringWidth(row)
+	want := 12 + 2 + 20 + 2 + 0 + 2 + 14 + 2
+	if got := p.RequiredWidth(); got != want {
+		t.Errorf("RequiredWidth() = %d, want %d", got, want)
+	}
+	if rowWidth >= want-2 {
+		t.Errorf("row width = %d, want less than reserved content width %d", rowWidth, want-2)
+	}
+}
+
+// TestAccountsPanel_RequiredWidth_FullPauseStatus verifies that the pause
+// column is measured from the full rendered status, including a day offset,
+// rather than only HH:MM.
+func TestAccountsPanel_RequiredWidth_FullPauseStatus(t *testing.T) {
+	t.Parallel()
+	app, reg, acc := newProjectAccountsTestApp(t)
+	must(t, reg.PauseAccount(acc, time.Now().AddDate(0, 0, -5)))
+
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	row, _ := p.GetItemText(0)
+	if !strings.Contains(row, " -") {
+		t.Fatalf("row = %q, want full pause status with day offset", row)
+	}
+	minRowWidth := len("claude") + 2 + len("Alice") + 2 + len("12:34 -5")
+	if got := tview.TaggedStringWidth(row); got < minRowWidth {
+		t.Errorf("row width = %d, want at least %d to fit the full pause status", got, minRowWidth)
+	}
+	want := tview.TaggedStringWidth(row) + 2
+	if got := p.RequiredWidth(); got != want {
+		t.Errorf("RequiredWidth() = %d, want %d", got, want)
+	}
+}
+
+// TestAccountsPanel_RequiredWidth_UpdatesWithContent verifies that Refresh
+// both grows and shrinks the reported width as store content changes.
+func TestAccountsPanel_RequiredWidth_UpdatesWithContent(t *testing.T) {
+	t.Parallel()
+	app, reg, _ := newProjectAccountsTestApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+	initial := p.RequiredWidth()
+
+	longProject := model.NewProject("abcdefghijklmnopqrst", "", "")
+	must(t, reg.AddProject(longProject))
+	p.Refresh()
+	if got := p.RequiredWidth(); got <= initial {
+		t.Fatalf("RequiredWidth() did not grow: initial %d, after project %d", initial, got)
+	}
+
+	must(t, reg.DeleteProject(longProject))
+	p.Refresh()
+	if got := p.RequiredWidth(); got != initial {
+		t.Errorf("RequiredWidth() after project removal = %d, want initial %d", got, initial)
+	}
+}
+
 // TestSortAccountsByAvailability replaces the old direct call to the
 // unexported sortAccountsByAvailability: two accounts share one registry
 // (firstAcc pinned to farFuture; secondAcc varies by case), and each case
@@ -461,8 +665,9 @@ func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsAccountsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	}
 	if _, err := app.svc.Account("carol@example.com", "chatgpt"); err != nil {
 		t.Errorf("account not created: %v", err)
@@ -488,8 +693,9 @@ func TestAccountsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsAccountsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	}
 }
 
@@ -518,8 +724,9 @@ func TestAccountsPanel_Delete_Cancel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hints != views.HintsAccountsPanel {
-		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	}
 	if got := len(app.svc.Accounts()); got != before {
 		t.Errorf("account count changed after cancel: got %d, want %d (unchanged)", got, before)
@@ -545,8 +752,9 @@ func TestAccountsPanel_RenameUser_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsAccountsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	}
 	if got := app.svc.User("alice@example.com").Name(); got != "Alice Smith" {
 		t.Errorf("Name() = %q, want %q", got, "Alice Smith")

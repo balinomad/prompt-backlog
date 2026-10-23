@@ -121,8 +121,9 @@ func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 	if app.modal == nil {
 		t.Fatal("expected a modal to be shown")
 	}
-	if app.hints != views.HintsHelpOverlay {
-		t.Errorf("hints while open: got %q, want %q", app.hints, views.HintsHelpOverlay)
+	if app.hintsSpecific != views.HintsHelpOverlaySpecific || app.hintsCommon != views.HintsHelpOverlayCommon {
+		t.Errorf("hints while open: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon)
 	}
 
 	helpOverlayTextView(t, app.modal).GetInputCapture()(escKey())
@@ -130,8 +131,9 @@ func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after Esc")
 	}
-	if app.hints != views.HintsAccountsPanel {
-		t.Errorf("hints after close: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after close: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	}
 }
 
@@ -158,8 +160,9 @@ func TestConfirmQuit_EscRestoresHintsAndHidesModal(t *testing.T) {
 	if app.modal == nil {
 		t.Fatal("expected a modal to be shown")
 	}
-	if app.hints != views.HintsConfirmModal {
-		t.Errorf("hints while open: got %q, want %q", app.hints, views.HintsConfirmModal)
+	if app.hintsSpecific != views.HintsConfirmModalSpecific || app.hintsCommon != views.HintsConfirmModalCommon {
+		t.Errorf("hints while open: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon)
 	}
 
 	confirmModal, ok := app.modal.(*tview.Modal)
@@ -171,8 +174,9 @@ func TestConfirmQuit_EscRestoresHintsAndHidesModal(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after Esc")
 	}
-	if app.hints != views.HintsAccountsPanel {
-		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsAccountsPanel)
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	}
 	if app.quitted {
 		t.Error("cancelling quit must not actually quit")

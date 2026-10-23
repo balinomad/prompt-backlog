@@ -166,13 +166,14 @@ func TestQueueEditor_HandleKey_PassesThroughUnhandledKeys(t *testing.T) {
 func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name      string
-		key       *tcell.EventKey
-		wantHints string
+		name         string
+		key          *tcell.EventKey
+		wantSpecific string
+		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsForm},
-		{"edit", specialKey(views.KeyEdit), views.HintsForm},
-		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -191,8 +192,9 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal to be shown", tc.name)
 			}
-			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
+			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
+				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
+					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
 			}
 		})
 	}
@@ -576,8 +578,9 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 		if _, ok := app.modal.(*tview.List); !ok {
 			t.Fatalf("expected Esc on help to reopen the queue editor (*tview.List), got %T", app.modal)
 		}
-		if app.hints != views.HintsQueueEditor {
-			t.Errorf("hints after reopen: got %q, want %q", app.hints, views.HintsQueueEditor)
+		if app.hintsSpecific != views.HintsQueueEditorSpecific || app.hintsCommon != views.HintsQueueEditorCommon {
+			t.Errorf("hints after reopen: got (%q, %q), want (%q, %q)",
+				app.hintsSpecific, app.hintsCommon, views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon)
 		}
 	})
 
@@ -600,8 +603,9 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 		if _, ok := app.modal.(*tview.List); !ok {
 			t.Fatalf("expected cancelling quit to reopen the queue editor (*tview.List), got %T", app.modal)
 		}
-		if app.hints != views.HintsQueueEditor {
-			t.Errorf("hints after reopen: got %q, want %q", app.hints, views.HintsQueueEditor)
+		if app.hintsSpecific != views.HintsQueueEditorSpecific || app.hintsCommon != views.HintsQueueEditorCommon {
+			t.Errorf("hints after reopen: got (%q, %q), want (%q, %q)",
+				app.hintsSpecific, app.hintsCommon, views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon)
 		}
 		if app.quitted {
 			t.Error("cancelling quit must not actually quit")

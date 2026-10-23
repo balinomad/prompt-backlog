@@ -23,6 +23,7 @@ func TestFormatPauseUntil(t *testing.T) {
 	sameDay := time.Date(2026, 8, 27, 14, 30, 0, 0, time.UTC)
 	nextDay := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)
 	prevDay := time.Date(2026, 8, 26, 20, 0, 0, 0, time.UTC)
+	fiveDaysPast := time.Date(2026, 8, 22, 12, 34, 0, 0, time.UTC)
 	twoDaysFuture := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
 	crossMonth := time.Date(2026, 9, 2, 9, 0, 0, 0, time.UTC)
 	past := now.Add(-time.Hour)
@@ -37,6 +38,7 @@ func TestFormatPauseUntil(t *testing.T) {
 		{"same day format", sameDay, "14:30", sameDay.Before(now)},
 		{"next day format", nextDay, "09:00 +1", false},
 		{"previous day format", prevDay, "20:00 -1", true},
+		{"five days past format", fiveDaysPast, "12:34 -5", true},
 		{"two days future format", twoDaysFuture, "09:00 +2", false},
 		{"cross-month format", crossMonth, "09:00 +6", false},
 		{"past is past", past, past.Format("15:04"), true},

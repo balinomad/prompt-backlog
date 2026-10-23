@@ -45,15 +45,15 @@ func NewConfirmModal(message string, onConfirm, onCancel func()) tview.Primitive
 }
 
 // confirmQuit opens the "Quit llm-desk?" confirmation modal, shared by
-// every panel's KeyQuit case. returnHints is the hint line restored if the
-// operator cancels, so each panel returns to its own hint line rather than
-// a neighbour's.
-func confirmQuit(app App, returnHints string) {
+// every panel's KeyQuit case. returnSpecific/returnCommon are the hint
+// lines restored if the operator cancels, so each panel returns to its
+// own hint lines rather than a neighbour's.
+func confirmQuit(app App, returnSpecific, returnCommon string) {
 	modal := NewConfirmModal(
 		"Quit "+app.AppName()+"?",
 		func() { app.Quit() },
 		func() {
-			app.SetHints(returnHints)
+			app.SetHints(returnSpecific, returnCommon)
 			app.HideModal()
 		},
 	)
@@ -61,7 +61,7 @@ func confirmQuit(app App, returnHints string) {
 		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return
 	}
-	app.SetHints(HintsConfirmModal)
+	app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 }
 
 // ── Help overlay ──────────────────────────────────────────────────────────────
@@ -103,18 +103,19 @@ func NewHelpOverlay(onClose func()) tview.Primitive {
 }
 
 // showHelp opens the help overlay, shared by every panel's KeyHelp case.
-// returnHints is the hint line restored when the overlay closes, so each
-// panel returns to its own hint line rather than a neighbour's.
-func showHelp(app App, returnHints string) {
+// returnSpecific/returnCommon are the hint lines restored when the overlay
+// closes, so each panel returns to its own hint lines rather than a
+// neighbour's.
+func showHelp(app App, returnSpecific, returnCommon string) {
 	onClose := func() {
-		app.SetHints(returnHints)
+		app.SetHints(returnSpecific, returnCommon)
 		app.HideModal()
 	}
 	if err := app.ShowModal(NewHelpOverlay(onClose)); err != nil {
 		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return
 	}
-	app.SetHints(HintsHelpOverlay)
+	app.SetHints(HintsHelpOverlaySpecific, HintsHelpOverlayCommon)
 }
 
 // errorModal returns a simple message modal for conditions where a form

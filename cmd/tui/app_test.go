@@ -179,6 +179,8 @@ func TestApp_Mutate_SaveError(t *testing.T) {
 func TestApp_ShowModal_NilPrimitive(t *testing.T) {
 	t.Parallel()
 	var nilFlex *tview.Flex // typed nil, deliberately not a nil interface
+	var nilModal *tview.Modal
+	var nilList *tview.List
 
 	cases := []struct {
 		name string
@@ -186,6 +188,8 @@ func TestApp_ShowModal_NilPrimitive(t *testing.T) {
 	}{
 		{"literal nil interface", nil},
 		{"typed nil pointer wrapped in interface", nilFlex},
+		{"typed nil modal wrapped in interface", nilModal},
+		{"typed nil list wrapped in interface", nilList},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -203,12 +207,25 @@ func TestApp_ShowModal_NilPrimitive(t *testing.T) {
 
 func TestApp_ShowModal_Success(t *testing.T) {
 	t.Parallel()
-	app, err := tui.New(newTestService(t))
-	if err != nil {
-		t.Fatalf("New: %v", err)
+	cases := []struct {
+		name string
+		p    tview.Primitive
+	}{
+		{"flex", tview.NewFlex()},
+		{"modal", tview.NewModal()},
+		{"list", tview.NewList()},
 	}
-	if err := app.ShowModal(tview.NewFlex()); err != nil {
-		t.Errorf("ShowModal: unexpected error: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, err := tui.New(newTestService(t))
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			if err := app.ShowModal(tc.p); err != nil {
+				t.Errorf("ShowModal: unexpected error: %v", err)
+			}
+		})
 	}
 }
 
@@ -309,7 +326,7 @@ func TestApp_SetHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	app.SetHints("test hints")
+	app.SetHints("test hints", "test hints")
 }
 
 // ── Quit ──────────────────────────────────────────────────────────────────────

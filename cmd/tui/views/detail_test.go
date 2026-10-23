@@ -34,8 +34,9 @@ func TestDetailPanel_FocusFunc_SetsHints(t *testing.T) {
 
 	list.Focus(func(tview.Primitive) {})
 
-	if app.hints != views.HintsDetailPanel {
-		t.Errorf("hints after focus: got %q, want %q", app.hints, views.HintsDetailPanel)
+	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
+		t.Errorf("hints after focus: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 	}
 }
 
@@ -228,17 +229,18 @@ func TestDetailPanel_RenderInfo_NeverPaused(t *testing.T) {
 func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name      string
-		key       *tcell.EventKey
-		wantHints string
-		wantType  string // "flex" | "modal" | "list"
+		name         string
+		key          *tcell.EventKey
+		wantSpecific string
+		wantCommon   string
+		wantType     string // "flex" | "modal" | "list"
 	}{
-		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay, "flex"},
-		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal, "modal"},
-		{"new session", runeKey(views.KeyNew), views.HintsForm, "flex"},
-		{"edit session", runeKey(views.KeySessionFields), views.HintsForm, "flex"},
-		{"delete session", specialKey(views.KeyDelete), views.HintsConfirmModal, "modal"},
-		{"queue editor", runeKey(views.KeyQueue), views.HintsQueueEditor, "list"},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon, "flex"},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon, "modal"},
+		{"new session", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon, "flex"},
+		{"edit session", runeKey(views.KeySessionFields), views.HintsFormSpecific, views.HintsFormCommon, "flex"},
+		{"delete session", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon, "modal"},
+		{"queue editor", runeKey(views.KeyQueue), views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon, "list"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,8 +272,9 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 					t.Errorf("key %q: expected *tview.List, got %T", tc.name, app.modal)
 				}
 			}
-			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
+			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
+				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
+					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
 			}
 		})
 	}
@@ -470,8 +473,9 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 			if app.modal != nil {
 				t.Error("expected modal to be hidden after cancelling")
 			}
-			if app.hints != views.HintsDetailPanel {
-				t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsDetailPanel)
+			if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
+				t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
+					app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 			}
 			sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
 			must(t, err)
@@ -601,8 +605,9 @@ func TestDetailPanel_NewSession_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsDetailPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsDetailPanel)
+	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 	}
 	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
 	must(t, err)
@@ -637,8 +642,9 @@ func TestDetailPanel_EditSession_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsDetailPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsDetailPanel)
+	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 	}
 	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
 	must(t, err)
@@ -671,8 +677,9 @@ func TestDetailPanel_Queue_CloseReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after closing the queue editor")
 	}
-	if app.hints != views.HintsDetailPanel {
-		t.Errorf("hints after close: got %q, want %q", app.hints, views.HintsDetailPanel)
+	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
+		t.Errorf("hints after close: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 	}
 }
 

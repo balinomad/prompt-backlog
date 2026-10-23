@@ -8,20 +8,32 @@ import (
 	"github.com/rivo/tview"
 )
 
-// statusBarTexts returns the hints (left) and message (right) text
-// currently displayed by sb, reached via the exported Flex.GetItem —
-// StatusBar puts hints at index 0, message at index 1 (see statusbar.go).
-func statusBarTexts(t *testing.T, sb *views.StatusBar) (string, string) {
+// statusBarParts returns sb's three text views: the upper, context-specific
+// hints, the lower common hints, and the message, reached via the exported
+// Flex.GetItem — StatusBar puts the specific-hints line at index 0 and a
+// lower row (itself a Flex) at index 1, with common hints at its index 0
+// and the message at its index 1 (see statusbar.go).
+//
+//nolint:nonamedreturns // multiple returns of the same type, hard to differentiate
+func statusBarParts(t *testing.T, sb *views.StatusBar) (specificHints, commonHints, message *tview.TextView) {
 	t.Helper()
-	hints, ok := sb.GetItem(0).(*tview.TextView)
+	spec, ok := sb.GetItem(0).(*tview.TextView)
 	if !ok {
 		t.Fatalf("expected *tview.TextView at index 0, got %T", sb.GetItem(0))
 	}
-	message, ok := sb.GetItem(1).(*tview.TextView)
+	lowerRow, ok := sb.GetItem(1).(*tview.Flex)
 	if !ok {
-		t.Fatalf("expected *tview.TextView at index 1, got %T", sb.GetItem(1))
+		t.Fatalf("expected inner *tview.Flex at index 1, got %T", sb.GetItem(1))
 	}
-	return hints.GetText(false), message.GetText(false)
+	common, ok := lowerRow.GetItem(0).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at lower row index 0, got %T", lowerRow.GetItem(0))
+	}
+	msg, ok := lowerRow.GetItem(1).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected *tview.TextView at lower row index 1, got %T", lowerRow.GetItem(1))
+	}
+	return spec, common, msg
 }
 
 func TestNewStatusBar(t *testing.T) {
@@ -35,63 +47,75 @@ func TestNewStatusBar(t *testing.T) {
 func TestStatusBar_DefaultHints(t *testing.T) {
 	t.Parallel()
 	sb := views.NewStatusBar()
-	hints, _ := statusBarTexts(t, sb)
-	if hints != views.HintsAccountsPanel {
-		t.Errorf("default hints: got %q, want HintsAccountsPanel", hints)
+	spec, common, _ := statusBarParts(t, sb)
+	if spec.GetText(false) != views.HintsAccountsPanelSpecific {
+		t.Errorf("default specific hints: got %q, want HintsAccountsPanelSpecific", spec.GetText(false))
+	}
+	if common.GetText(false) != views.HintsAccountsPanelCommon {
+		t.Errorf("default common hints: got %q, want HintsAccountsPanelCommon", common.GetText(false))
 	}
 }
 
 func TestStatusBar_DefaultMessageEmpty(t *testing.T) {
 	t.Parallel()
 	sb := views.NewStatusBar()
-	_, message := statusBarTexts(t, sb)
-	if message != "" {
-		t.Errorf("expected empty message, got %q", message)
+	_, _, message := statusBarParts(t, sb)
+	if message.GetText(false) != "" {
+		t.Errorf("expected empty message, got %q", message.GetText(false))
 	}
 }
 
 func TestStatusBar_SetHints(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name  string
-		hints string
+		name     string
+		specific string
+		common   string
 	}{
-		{"accounts panel", views.HintsAccountsPanel},
-		{"detail panel", views.HintsDetailPanel},
-		{"projects panel", views.HintsProjectsPanel},
-		{"providers panel", views.HintsProvidersPanel},
-		{"queue editor", views.HintsQueueEditor},
-		{"form", views.HintsForm},
-		{"confirm modal", views.HintsConfirmModal},
-		{"help overlay", views.HintsHelpOverlay},
+		{"accounts panel", views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon},
+		{"detail panel", views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon},
+		{"projects panel", views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon},
+		{"providers panel", views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon},
+		{"queue editor", views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon},
+		{"form", views.HintsFormSpecific, views.HintsFormCommon},
+		{"confirm modal", views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
+		{"help overlay", views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			sb := views.NewStatusBar()
-			sb.SetHints(tc.hints)
-			hints, _ := statusBarTexts(t, sb)
-			if hints != tc.hints {
-				t.Errorf("SetHints(%q): got %q", tc.name, hints)
+			sb.SetHints(tc.specific, tc.common)
+			spec, common, _ := statusBarParts(t, sb)
+			if spec.GetText(false) != tc.specific {
+				t.Errorf("SetHints(%q): specific got %q", tc.name, spec.GetText(false))
+			}
+			if common.GetText(false) != tc.common {
+				t.Errorf("SetHints(%q): common got %q", tc.name, common.GetText(false))
 			}
 		})
 	}
 }
 
-func TestStatusBar_AllHintsConstantsNonEmpty(t *testing.T) {
+// TestStatusBar_CommonHintsConstantsNonEmpty replaces
+// TestStatusBar_AllHintsConstantsNonEmpty: every context has at least one
+// common hint (help/quit at minimum, confirm/cancel, or close), but a
+// context-specific line can legitimately be empty (confirm modal and help
+// overlay have none), so only the common half is checked.
+func TestStatusBar_CommonHintsConstantsNonEmpty(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name  string
 		value string
 	}{
-		{"HintsAccountsPanel", views.HintsAccountsPanel},
-		{"HintsDetailPanel", views.HintsDetailPanel},
-		{"HintsProjectsPanel", views.HintsProjectsPanel},
-		{"HintsProvidersPanel", views.HintsProvidersPanel},
-		{"HintsQueueEditor", views.HintsQueueEditor},
-		{"HintsForm", views.HintsForm},
-		{"HintsConfirmModal", views.HintsConfirmModal},
-		{"HintsHelpOverlay", views.HintsHelpOverlay},
+		{"HintsAccountsPanelCommon", views.HintsAccountsPanelCommon},
+		{"HintsDetailPanelCommon", views.HintsDetailPanelCommon},
+		{"HintsProjectsPanelCommon", views.HintsProjectsPanelCommon},
+		{"HintsProvidersPanelCommon", views.HintsProvidersPanelCommon},
+		{"HintsQueueEditorCommon", views.HintsQueueEditorCommon},
+		{"HintsFormCommon", views.HintsFormCommon},
+		{"HintsConfirmModalCommon", views.HintsConfirmModalCommon},
+		{"HintsHelpOverlayCommon", views.HintsHelpOverlayCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -118,9 +142,9 @@ func TestStatusBar_SetMessage(t *testing.T) {
 			t.Parallel()
 			sb := views.NewStatusBar()
 			sb.SetMessage(tc.msg)
-			_, message := statusBarTexts(t, sb)
-			if message != tc.msg {
-				t.Errorf("SetMessage(%q): got %q", tc.msg, message)
+			_, _, message := statusBarParts(t, sb)
+			if message.GetText(false) != tc.msg {
+				t.Errorf("SetMessage(%q): got %q", tc.msg, message.GetText(false))
 			}
 		})
 	}

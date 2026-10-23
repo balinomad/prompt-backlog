@@ -127,17 +127,18 @@ func TestProjectsPanel_Keys_SwitchToMain(t *testing.T) {
 func TestProjectsPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name      string
-		key       *tcell.EventKey
-		wantHints string
+		name         string
+		key          *tcell.EventKey
+		wantSpecific string
+		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsForm},
-		{"edit", specialKey(views.KeyEdit), views.HintsForm},
-		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
-		{"grant", runeKey(views.KeyGrant), views.HintsForm},
-		{"revoke", runeKey(views.KeyRevoke), views.HintsForm},
-		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay},
-		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
+		{"grant", runeKey(views.KeyGrant), views.HintsFormSpecific, views.HintsFormCommon},
+		{"revoke", runeKey(views.KeyRevoke), views.HintsFormSpecific, views.HintsFormCommon},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -154,8 +155,9 @@ func TestProjectsPanel_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", tc.name)
 			}
-			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
+			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
+				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
+					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
 			}
 		})
 	}
@@ -212,8 +214,9 @@ func TestProjectsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsProjectsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	}
 	if app.svc.Project("Gamma") == nil {
 		t.Error("project not created")
@@ -243,8 +246,9 @@ func TestProjectsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsProjectsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	}
 	if got := app.svc.Project("Alpha").Description(); got != "new desc" {
 		t.Errorf("Description() = %q, want %q", got, "new desc")
@@ -283,8 +287,9 @@ func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hints != views.HintsProjectsPanel {
-		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
+		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	}
 	if got := len(app.svc.Projects()); got != before {
 		t.Errorf("project count changed after cancel: got %d, want %d (unchanged)", got, before)
@@ -315,8 +320,9 @@ func TestProjectsPanel_Grant_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsProjectsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	}
 	projects, err := app.svc.AccountProjects("alice@example.com", "claude")
 	must(t, err)
@@ -353,8 +359,9 @@ func TestProjectsPanel_Revoke_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsProjectsPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProjectsPanel)
+	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	}
 	projects, err := app.svc.AccountProjects("alice@example.com", "claude")
 	must(t, err)

@@ -12,6 +12,9 @@ import (
 	"github.com/rivo/tview"
 )
 
+// projectColumnWidth caps project names in the sessions list and account rows.
+const projectColumnWidth = 14
+
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
 // DetailPanel occupies the right side of the screen. The upper section lists
@@ -50,8 +53,8 @@ func NewDetailPanel(app App) *DetailPanel {
 		app:          app,
 	}
 
-	list.SetFocusFunc(func() {
-		app.SetHints(HintsDetailPanel)
+	wirePanelFocus(list, func() {
+		app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 	})
 
 	list.SetInputCapture(p.handleKey)
@@ -159,13 +162,9 @@ func (p *DetailPanel) renderInfo(acc *model.Account) {
 	if len(projects) == 0 {
 		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", dimText("none"))
 	} else {
-		// Latest session = p.sessions' last entry (sorted by ID in Refresh,
-		// always in sync with acc). No sessions, or no project on the
-		// latest one, leaves order/colour untouched below.
-		var latestProjectName string
-		if len(p.sessions) > 0 {
-			latestProjectName = p.sessions[len(p.sessions)-1].ProjectName()
-		}
+		// No sessions, or no project on the latest one, leaves order and
+		// colour untouched below.
+		latestProjectName := latestSessionProjectName(p.sessions)
 
 		names := make([]string, 0, len(projects))
 		var highlighted string
@@ -192,7 +191,7 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleDelete()
 	}
 
-	if result, ok := dispatchPanelKey(event, p.app, HintsDetailPanel); ok {
+	if result, ok := dispatchPanelKey(event, p.app, HintsDetailPanelSpecific, HintsDetailPanelCommon); ok {
 		return result
 	}
 
@@ -214,14 +213,14 @@ func (p *DetailPanel) handleNew() *tcell.EventKey {
 		return nil
 	}
 	modal := NewSessionForm(p.app, p.account, nil, func() {
-		p.app.SetHints(HintsDetailPanel)
+		p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -231,14 +230,14 @@ func (p *DetailPanel) handleEdit() *tcell.EventKey {
 		return nil
 	}
 	modal := NewSessionForm(p.app, p.account, s, func() {
-		p.app.SetHints(HintsDetailPanel)
+		p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -262,11 +261,11 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 			}); err != nil {
 				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 			}
-			p.app.SetHints(HintsDetailPanel)
+			p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 			p.app.HideModal()
 		},
 		func() {
-			p.app.SetHints(HintsDetailPanel)
+			p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 			p.app.HideModal()
 		},
 	)
@@ -274,7 +273,7 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsConfirmModal)
+	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -284,14 +283,14 @@ func (p *DetailPanel) handleQueue() *tcell.EventKey {
 		return nil
 	}
 	modal := NewQueueEditor(p.app, p.account, s, func() {
-		p.app.SetHints(HintsDetailPanel)
+		p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsQueueEditor)
+	p.app.SetHints(HintsQueueEditorSpecific, HintsQueueEditorCommon)
 	return nil
 }
 
@@ -314,6 +313,16 @@ func (p *DetailPanel) handleToggle() *tcell.EventKey {
 
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
+// latestSessionProjectName returns the project name of the latest session in
+// sessions, or "" when there are no sessions. AccountSessions sorts by ID, so
+// the last entry is the most recently added session.
+func latestSessionProjectName(sessions []*model.Session) string {
+	if len(sessions) == 0 {
+		return ""
+	}
+	return sessions[len(sessions)-1].ProjectName()
+}
+
 // sessionItemText formats a session row for the list: topic, project, and
 // queue length. A pending trailing "continue" prompt — the queue-based
 // equivalent of the old mid-answer flag — is highlighted in yellow.
@@ -322,7 +331,7 @@ func sessionItemText(s *model.Session) string {
 	if topic == "" {
 		topic = dimText("(untitled)")
 	}
-	proj := tview.Escape(truncate(s.ProjectName(), 14))
+	proj := tview.Escape(truncate(s.ProjectName(), projectColumnWidth))
 	if proj == "" {
 		proj = dimText("—")
 	}

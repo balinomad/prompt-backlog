@@ -126,15 +126,16 @@ func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
 func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name      string
-		key       *tcell.EventKey
-		wantHints string
+		name         string
+		key          *tcell.EventKey
+		wantSpecific string
+		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsForm},
-		{"edit", specialKey(views.KeyEdit), views.HintsForm},
-		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModal},
-		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlay},
-		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModal},
+		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
+		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
+		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -151,8 +152,9 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", tc.name)
 			}
-			if app.hints != tc.wantHints {
-				t.Errorf("key %q: hints got %q, want %q", tc.name, app.hints, tc.wantHints)
+			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
+				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
+					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
 			}
 		})
 	}
@@ -203,8 +205,9 @@ func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsProvidersPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProvidersPanel)
+	if app.hintsSpecific != views.HintsProvidersPanelSpecific || app.hintsCommon != views.HintsProvidersPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
 	}
 	if app.svc.Provider("gemini") == nil {
 		t.Error("provider not created")
@@ -230,8 +233,9 @@ func TestProvidersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hints != views.HintsProvidersPanel {
-		t.Errorf("hints after save: got %q, want %q", app.hints, views.HintsProvidersPanel)
+	if app.hintsSpecific != views.HintsProvidersPanelSpecific || app.hintsCommon != views.HintsProvidersPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
 	}
 	if got := app.svc.Provider("chatgpt"); !got.HasProjects() {
 		t.Error("HasProjects() = false, want true")
@@ -262,8 +266,9 @@ func TestProvidersPanel_Delete_Cancel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hints != views.HintsProvidersPanel {
-		t.Errorf("hints after cancel: got %q, want %q", app.hints, views.HintsProvidersPanel)
+	if app.hintsSpecific != views.HintsProvidersPanelSpecific || app.hintsCommon != views.HintsProvidersPanelCommon {
+		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
 	}
 	if got := len(app.svc.Providers()); got != before {
 		t.Errorf("provider count changed after cancel: got %d, want %d (unchanged)", got, before)

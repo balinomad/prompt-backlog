@@ -102,7 +102,7 @@ func (qe *queueEditor) reopen() {
 		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return
 	}
-	qe.app.SetHints(HintsQueueEditor)
+	qe.app.SetHints(HintsQueueEditorSpecific, HintsQueueEditorCommon)
 }
 
 // commit persists newQueue and reports success. Callers that cannot
@@ -160,7 +160,7 @@ func (qe *queueEditor) handleNew() *tcell.EventKey {
 		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	qe.app.SetHints(HintsForm)
+	qe.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -175,7 +175,7 @@ func (qe *queueEditor) handleEdit() *tcell.EventKey {
 		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	qe.app.SetHints(HintsForm)
+	qe.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -198,7 +198,7 @@ func (qe *queueEditor) handleDelete() *tcell.EventKey {
 		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	qe.app.SetHints(HintsConfirmModal)
+	qe.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -246,7 +246,7 @@ func (qe *queueEditor) handleHelp() *tcell.EventKey {
 		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	qe.app.SetHints(HintsHelpOverlay)
+	qe.app.SetHints(HintsHelpOverlaySpecific, HintsHelpOverlayCommon)
 	return nil
 }
 
@@ -264,7 +264,7 @@ func (qe *queueEditor) handleQuit() *tcell.EventKey {
 		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	qe.app.SetHints(HintsConfirmModal)
+	qe.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 

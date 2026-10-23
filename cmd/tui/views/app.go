@@ -65,10 +65,14 @@ type App interface {
 	// Callers may include tview color tags (e.g. "[red]error[-]").
 	SetStatus(msg string)
 
-	// SetHints replaces the keyboard-hint line in the status bar.
-	// Views call this in their focus handler to show context-relevant bindings.
-	// Use the pre-defined Hints* constants from statusbar.go.
-	SetHints(hints string)
+	// SetHints replaces the keyboard-hint lines in the status bar: specific
+	// is the upper, context-specific line; common is the lower line for
+	// roles that repeat across contexts with the same general meaning
+	// regardless of the exact key (edit, delete, help, quit, focus,
+	// cancel/close). Views call this in their focus handler. Use the
+	// pre-defined Hints*Specific/Hints*Common constant pairs from
+	// statusbar.go.
+	SetHints(specific, common string)
 
 	// Quit stops the application. Called by the quit confirmation modal after
 	// the operator confirms.

@@ -51,8 +51,8 @@ func NewProvidersPanel(app App) *ProvidersPanel {
 		p.renderInfo(p.selectedProvider())
 	})
 
-	list.SetFocusFunc(func() {
-		app.SetHints(HintsProvidersPanel)
+	wirePanelFocus(list, func() {
+		app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 	})
 
 	list.SetInputCapture(p.handleKey)
@@ -133,7 +133,7 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		// the rune switch below.
 	}
 
-	if result, ok := dispatchPanelKey(event, p.app, HintsProvidersPanel); ok {
+	if result, ok := dispatchPanelKey(event, p.app, HintsProvidersPanelSpecific, HintsProvidersPanelCommon); ok {
 		return result
 	}
 
@@ -149,14 +149,14 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 func (p *ProvidersPanel) handleNew() *tcell.EventKey {
 	modal := NewProviderForm(p.app, nil, func() {
-		p.app.SetHints(HintsProvidersPanel)
+		p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -166,14 +166,14 @@ func (p *ProvidersPanel) handleEdit() *tcell.EventKey {
 		return nil
 	}
 	modal := NewProviderForm(p.app, prov, func() {
-		p.app.SetHints(HintsProvidersPanel)
+		p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -191,11 +191,11 @@ func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
 			}); err != nil {
 				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 			}
-			p.app.SetHints(HintsProvidersPanel)
+			p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 			p.app.HideModal()
 		},
 		func() {
-			p.app.SetHints(HintsProvidersPanel)
+			p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 			p.app.HideModal()
 		},
 	)
@@ -203,7 +203,7 @@ func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsConfirmModal)
+	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 

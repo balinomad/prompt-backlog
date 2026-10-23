@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // ── Rune keys (single character, checked via event.Rune()) ───────────────────
@@ -131,17 +132,35 @@ func (hs hints) HelpLines() string {
 // was fully handled here — a non-rune event, KeyHelp, or KeyQuit — and
 // the caller should return the first value unchanged. It is false for any
 // other rune, leaving the caller's own switch to dispatch it.
-func dispatchPanelKey(event *tcell.EventKey, app App, hints string) (*tcell.EventKey, bool) {
+func dispatchPanelKey(event *tcell.EventKey, app App, specific, common string) (*tcell.EventKey, bool) {
 	if event.Key() != tcell.KeyRune {
 		return event, true
 	}
 	switch event.Rune() {
 	case KeyHelp:
-		showHelp(app, hints)
+		showHelp(app, specific, common)
 		return nil, true
 	case KeyQuit:
-		confirmQuit(app, hints)
+		confirmQuit(app, specific, common)
 		return nil, true
 	}
 	return nil, false
+}
+
+// ── Focus/border wiring ───────────────────────────────────────────────────────
+
+// wirePanelFocus registers list's focus and blur callbacks: onFocus runs
+// first (e.g. status-bar hints), then the border turns yellow while list
+// has focus, reverting to the current default border color on blur.
+// Shared by every top-level panel, whose sole focus target is always a
+// *tview.List (see tview's Flex.Focus / Application.SetFocus). Modals
+// opened via App.ShowModal are out of scope here.
+func wirePanelFocus(list *tview.List, onFocus func()) {
+	list.SetFocusFunc(func() {
+		onFocus()
+		list.SetBorderColor(tcell.ColorYellow)
+	})
+	list.SetBlurFunc(func() {
+		list.SetBorderColor(tview.Styles.BorderColor)
+	})
 }

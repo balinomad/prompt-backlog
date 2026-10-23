@@ -3,7 +3,7 @@ package main
 
 import (
 	"fmt"
-	"reflect"
+	"sync"
 	"time"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
@@ -35,6 +35,7 @@ type App struct {
 	tv        *tview.Application
 	svc       *service.Service
 	pages     *tview.Pages
+	mainFlex  *tview.Flex
 	prevFocus tview.Primitive // saved by ShowModal, restored by HideModal
 
 	statusBar *views.StatusBar
@@ -73,12 +74,31 @@ func (a *App) Run() error {
 		close(done)
 	}()
 
+	// tcell switches the terminal to application keypad mode at startup. In
+	// that mode most terminals send the numeric keypad as SS3 sequences
+	// (ESC O p..y) that tcell v2 cannot decode as digits, so numpad digits
+	// never reach an input field. Switch back to numeric keypad mode
+	// (DECKPNM) once the screen is up. Best effort: a screen without a tty
+	// is left untouched.
+	var numericKeypad sync.Once
+	a.tv.SetAfterDrawFunc(func(screen tcell.Screen) {
+		numericKeypad.Do(func() {
+			tty, ok := screen.Tty()
+			if !ok {
+				return
+			}
+			if _, err := tty.Write([]byte("\x1b>")); err != nil {
+				a.statusBar.SetMessage(fmt.Sprintf("[red]numeric keypad: %v[-]", err))
+			}
+		})
+	})
+
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
 				a.tv.QueueUpdateDraw(func() {
-					a.accounts.Refresh()
+					a.refreshAccounts()
 				})
 			case <-done:
 				return
@@ -130,12 +150,28 @@ func (a *App) Mutate(fn func(*service.Service) error) error {
 
 // ShowModal displays p as a centred transparent overlay. The currently focused
 // primitive is saved so HideModal can restore it.
-// Returns an error if p is nil — including a non-nil interface wrapping a
-// nil concrete pointer, which a plain p == nil check would miss.
+// Returns an error if p is nil, including a non-nil interface wrapping a nil
+// pointer of type *tview.Modal, *tview.Flex, or *tview.List, which a plain
+// p == nil check would miss.
 func (a *App) ShowModal(p tview.Primitive) error {
-	if isNilPrimitive(p) {
+	// Closed set of the concrete types passed to ShowModal. Keep one type per
+	// case: a multi-type case leaves v as tview.Primitive, so v == nil would
+	// miss a typed nil.
+	var isNil bool
+	switch v := p.(type) {
+	case nil:
+		isNil = true
+	case *tview.Modal:
+		isNil = v == nil
+	case *tview.Flex:
+		isNil = v == nil
+	case *tview.List:
+		isNil = v == nil
+	}
+	if isNil {
 		return fmt.Errorf("show modal: primitive %w", apperr.ErrNil)
 	}
+
 	a.prevFocus = a.tv.GetFocus()
 	a.pages.AddPage("modal", p, true, true)
 	a.tv.SetFocus(p)
@@ -180,9 +216,9 @@ func (a *App) SetStatus(msg string) {
 	a.statusBar.SetMessage(msg)
 }
 
-// SetHints replaces the keyboard-hint line in the left section of the status bar.
-func (a *App) SetHints(hints string) {
-	a.statusBar.SetHints(hints)
+// SetHints replaces the keyboard-hint lines in the status bar.
+func (a *App) SetHints(specific, common string) {
+	a.statusBar.SetHints(specific, common)
 }
 
 // Quit stops the tview event loop.
@@ -204,15 +240,15 @@ func (a *App) build() {
 	// Wire account-list selection changes to the detail panel.
 	a.accounts.SetOnSelect(a.detail.SetAccount)
 
-	// Main split: accounts panel (1 part) beside detail panel (2 parts).
-	mainFlex := tview.NewFlex().
+	// Main split: accounts panel (sized to its widest row) beside detail panel.
+	a.mainFlex = tview.NewFlex().
 		AddItem(a.accounts, 0, 1, true).
 		AddItem(a.detail, 0, 2, false)
 
 	// Pages for full-screen switching.
 	// The "modal" page is added/removed dynamically by ShowModal/HideModal.
 	a.pages = tview.NewPages().
-		AddPage("main", mainFlex, true, true).
+		AddPage("main", a.mainFlex, true, true).
 		AddPage("providers", a.providers, true, false).
 		AddPage("projects", a.projects, true, false)
 
@@ -220,7 +256,7 @@ func (a *App) build() {
 	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(a.pages, 0, 1, true).
-		AddItem(a.statusBar, 1, 0, false)
+		AddItem(a.statusBar, 2, 0, false)
 
 	a.tv.SetRoot(root, true).EnableMouse(true)
 	a.tv.SetInputCapture(a.handleGlobalKeys)
@@ -245,9 +281,16 @@ func (a *App) refreshAll() {
 	// the onSelect callback wired to a.detail.SetAccount in build(), which
 	// calls a.detail.Refresh() itself. An explicit call here would run it
 	// a second time for no benefit.
-	a.accounts.Refresh()
+	a.refreshAccounts()
 	a.providers.Refresh()
 	a.projects.Refresh()
+}
+
+// refreshAccounts repopulates the accounts panel and sizes it to fit the
+// widest rendered row.
+func (a *App) refreshAccounts() {
+	a.accounts.Refresh()
+	a.mainFlex.ResizeItem(a.accounts, a.accounts.RequiredWidth(), 0)
 }
 
 // handleGlobalKeys toggles focus between the accounts and detail panels on
@@ -268,20 +311,4 @@ func (a *App) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 		a.tv.SetFocus(a.accounts)
 	}
 	return nil
-}
-
-// isNilPrimitive reports whether p is nil — including the case where p is a
-// non-nil interface wrapping a nil concrete pointer (e.g. a *tview.Flex(nil)
-// returned as a tview.Primitive), which p == nil does not detect.
-func isNilPrimitive(p tview.Primitive) bool {
-	if p == nil {
-		return true
-	}
-	v := reflect.ValueOf(p)
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func, reflect.Interface:
-		return v.IsNil()
-	default:
-		return false
-	}
 }

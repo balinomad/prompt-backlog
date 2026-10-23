@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -12,15 +13,27 @@ import (
 	"github.com/rivo/tview"
 )
 
+// minAccountsPanelWidth is wide enough to show the list title and border.
+const minAccountsPanelWidth = len(" Accounts ") + 2
+
+// providerColumnWidthCap and nameColumnWidthCap bound the padded columns so a
+// single unusually long value cannot push the pause and project columns off
+// screen.
+const (
+	providerColumnWidthCap = 12
+	nameColumnWidthCap     = 20
+)
+
 // AccountsPanel is the left panel that lists all accounts with their
 // rate-limit status. Selecting an account notifies the detail panel via
 // the onSelect callback wired by the host App.
 type AccountsPanel struct {
 	*tview.List
-	app        App
-	accounts   []*model.Account // mirrors list order; rebuilt on every Refresh
-	onSelect   func(*model.Account)
-	refreshing bool // suppresses onSelect during Refresh
+	app         App
+	accounts    []*model.Account // mirrors list order; rebuilt on every Refresh
+	onSelect    func(*model.Account)
+	refreshing  bool // suppresses onSelect during Refresh
+	maxRowWidth int  // widest rendered or reserved row, excluding the border
 }
 
 // NewAccountsPanel constructs the accounts list. Call SetOnSelect to wire
@@ -45,8 +58,8 @@ func NewAccountsPanel(app App) *AccountsPanel {
 		}
 	})
 
-	list.SetFocusFunc(func() {
-		app.SetHints(HintsAccountsPanel)
+	wirePanelFocus(list, func() {
+		app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 	})
 
 	list.SetInputCapture(p.handleKey)
@@ -70,6 +83,12 @@ func (p *AccountsPanel) Selected() *model.Account {
 	return p.accounts[idx]
 }
 
+// RequiredWidth returns the outer width needed to render every row without
+// clipping, including the list border.
+func (p *AccountsPanel) RequiredWidth() int {
+	return max(p.maxRowWidth+2, minAccountsPanelWidth)
+}
+
 // Refresh repopulates the list from the current service state.
 // The previously selected account is re-selected by identity (its
 // AccountKey) if it still exists; otherwise the first item is selected.
@@ -85,30 +104,63 @@ func (p *AccountsPanel) Refresh() {
 		prevKey = a.Key()
 	}
 
-	// Resolve each account's user name and the batch's column widths in
-	// one pass. Widths are capped so one unusually long provider or name
-	// can't push the pause-time column off screen the way the old
-	// fixed-width columns did.
+	// Resolve each account's user name, latest project, and the display
+	// widths. Provider, user, and project widths come from the longest
+	// store-wide values, so a long value that is configured but not currently
+	// in a row is still accounted for. They are capped so one unusually long
+	// value cannot push the pause column off screen. The pause width is
+	// measured from the full rendered status, including day offsets such as
+	// "12:34 -5".
+	now := time.Now()
+	providerWidth := 0
+	for _, provider := range svc.Providers() {
+		providerWidth = max(providerWidth, len([]rune(provider.Name())))
+	}
+	providerWidth = min(providerWidth, providerColumnWidthCap)
+
+	nameWidth := 0
+	for _, u := range svc.Users() {
+		nameWidth = max(nameWidth, len([]rune(u.Name())))
+	}
+
 	names := make([]string, len(all))
-	var providerWidth, nameWidth int
+	latestProjects := make([]string, len(all))
+	var pauseWidth int
 	for i, a := range all {
 		names[i] = a.UserEmail()
 		if u := svc.User(a.UserEmail()); u != nil {
 			names[i] = u.Name()
+		} else {
+			nameWidth = max(nameWidth, len([]rune(names[i])))
 		}
-		providerWidth = max(providerWidth, len([]rune(a.ProviderName())))
-		nameWidth = max(nameWidth, len([]rune(names[i])))
+		latestProjects[i] = latestGrantedProject(svc, a)
+		pauseWidth = max(pauseWidth, tview.TaggedStringWidth(pauseStatusText(a.PauseUntil(), now)))
 	}
-	providerWidth = min(providerWidth, 12)
-	nameWidth = min(nameWidth, 20)
+	nameWidth = min(nameWidth, nameColumnWidthCap)
+
+	projectWidth := 0
+	for _, project := range svc.Projects() {
+		projectWidth = max(projectWidth, len([]rune(project.Name())))
+	}
+	projectWidth = min(projectWidth, projectColumnWidth)
 
 	p.refreshing = true
 	p.accounts = all
 	p.Clear()
+	p.maxRowWidth = 0
 	for i, a := range p.accounts {
-		p.AddItem(accountItemText(a, names[i], providerWidth, nameWidth), "", 0, nil)
+		row := accountItemText(a, names[i], latestProjects[i], providerWidth, nameWidth, projectWidth, now)
+		p.maxRowWidth = max(p.maxRowWidth, tview.TaggedStringWidth(row))
+		p.AddItem(row, "", 0, nil)
 	}
 	p.refreshing = false
+
+	// Reserve the project column even when no current row has a project, so a
+	// later project assignment does not force a resize to avoid clipping.
+	if len(all) > 0 && projectWidth > 0 {
+		reserved := providerWidth + 2 + nameWidth + 2 + pauseWidth + 2 + projectWidth
+		p.maxRowWidth = max(p.maxRowWidth, reserved)
+	}
 
 	// Restore selection by identity.
 	restored := false
@@ -147,7 +199,7 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		// the rune switch below.
 	}
 
-	if result, ok := dispatchPanelKey(event, p.app, HintsAccountsPanel); ok {
+	if result, ok := dispatchPanelKey(event, p.app, HintsAccountsPanelSpecific, HintsAccountsPanelCommon); ok {
 		return result
 	}
 
@@ -166,14 +218,14 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 func (p *AccountsPanel) handleNew() *tcell.EventKey {
 	modal := NewAccountForm(p.app, nil, func() {
-		p.app.SetHints(HintsAccountsPanel)
+		p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -183,14 +235,14 @@ func (p *AccountsPanel) handleEdit() *tcell.EventKey {
 		return nil
 	}
 	modal := NewAccountForm(p.app, a, func() {
-		p.app.SetHints(HintsAccountsPanel)
+		p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -210,11 +262,11 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 			}); err != nil {
 				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 			}
-			p.app.SetHints(HintsAccountsPanel)
+			p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 			p.app.HideModal()
 		},
 		func() {
-			p.app.SetHints(HintsAccountsPanel)
+			p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 			p.app.HideModal()
 		},
 	)
@@ -222,7 +274,7 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsConfirmModal)
+	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -232,30 +284,61 @@ func (p *AccountsPanel) handleRenameUser() *tcell.EventKey {
 		return nil
 	}
 	modal := NewUserForm(p.app, a, func() {
-		p.app.SetHints(HintsAccountsPanel)
+		p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsForm)
+	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
+// latestGrantedProject returns the project name of the account's latest
+// session when that project is still granted to the account, or "" otherwise.
+// Resolution errors degrade to "", matching the detail panel's passive reads.
+func latestGrantedProject(svc *service.Service, a *model.Account) string {
+	sessions, err := svc.AccountSessions(a.UserEmail(), a.ProviderName())
+	if err != nil {
+		return ""
+	}
+	projectName := latestSessionProjectName(sessions)
+	if projectName == "" {
+		return ""
+	}
+	projects, err := svc.AccountProjects(a.UserEmail(), a.ProviderName())
+	if err != nil {
+		return ""
+	}
+	if slices.ContainsFunc(projects, func(p *model.Project) bool {
+		return p.Name() == projectName
+	}) {
+		return projectName
+	}
+	return ""
+}
+
 // accountItemText formats one account as a row: provider, user name,
-// then pause status, each column padded to providerWidth/nameWidth,
-// which the caller computes once per batch (the current list's longest
-// value, capped) so columns align to the actual data instead of a fixed,
-// oversized gap. userName is resolved by the caller; a missing user
-// record is the caller's own fallback to handle, not this function's.
-func accountItemText(a *model.Account, userName string, providerWidth, nameWidth int) string {
+// pause status, then the latest project when there is one. Provider and
+// user name are padded to providerWidth/nameWidth, and the project is
+// truncated to projectWidth; the caller computes those once per batch from
+// the longest store-wide values, capped so one unusually long value cannot
+// push the pause column off screen. now is shared with the caller's width
+// measurement so the row and its measured width use the same pause status.
+// userName is resolved by the caller; a missing user record is the caller's
+// own fallback to handle, not this function's.
+func accountItemText(a *model.Account, userName, latestProject string, providerWidth, nameWidth, projectWidth int, now time.Time) string {
 	provider := tview.Escape(truncate(a.ProviderName(), providerWidth))
 	name := tview.Escape(truncate(userName, nameWidth))
-	pause := pauseStatusText(a.PauseUntil(), time.Now())
-	return fmt.Sprintf("%-*s  %-*s  %s", providerWidth, provider, nameWidth, name, pause)
+	pause := pauseStatusText(a.PauseUntil(), now)
+	row := fmt.Sprintf("%-*s  %-*s  %s", providerWidth, provider, nameWidth, name, pause)
+	if latestProject != "" && projectWidth > 0 {
+		row += "  " + tview.Escape(truncate(latestProject, projectWidth))
+	}
+	return row
 }
 
 // pauseStatusText is the single, shared rendering of an account's pause
