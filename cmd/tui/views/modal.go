@@ -124,14 +124,10 @@ func errorModal(message string, onClose func()) tview.Primitive {
 	return NewConfirmModal(message, onClose, onClose)
 }
 
-// centeredModal wraps content in a flex overlay so that it appears
-// centred on screen at a fixed width of 64 columns. height is content's
-// own height, not the overlay's.
-func centeredModal(content tview.Primitive, height int) tview.Primitive {
-	const (
-		width   = 64
-		padding = 1 // rows of solid background directly touching content
-	)
+// centeredModal wraps content in a flex overlay so that it appears centred on
+// screen at the given width. height is content's own height, not the overlay's.
+func centeredModal(content tview.Primitive, width, height int) tview.Primitive {
+	const padding = 1 // rows of solid background directly touching content
 	inner := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
@@ -164,45 +160,48 @@ func (s helpSection) String() string {
 var helpSections = []helpSection{
 	{"Navigation", hints{
 		{"↑ ↓", "Move through list items"},
-		{"Tab", "Rotate focus forward"},
-		{"Shift+Tab", "Rotate focus backward"},
+		{"Tab", "Switch focus (multi-pane)"},
+		{"Shift+Tab", "Switch focus back (multi-pane)"},
 	}},
 	{"Accounts list", hints{
-		{string(KeyNew), "New account"},
 		{"Enter", "Edit selected account"},
+		{"Ins", "Add account"},
 		{"Del", "Delete selected account"},
-		{"F2", "Rename user of selected account"},
 		{string(KeyProviders), "Providers screen"},
 		{string(KeyProjects), "Projects screen"},
 	}},
 	{"Session detail", hints{
-		{string(KeyNew), "New session"},
-		{string(KeySessionFields), "Edit selected session"},
-		{"Del", "End selected session"},
+		{"Enter", "Edit selected session"},
+		{"Ins", "Add session"},
+		{"Del", "Delete selected session"},
 		{string(KeyQueue), "Open queue editor"},
 		{"Space", `Toggle "continue" prompt`},
 	}},
 	{"Providers screen", hints{
-		{string(KeyNew), "New provider"},
 		{"Enter", "Edit selected provider"},
+		{"Ins", "Add provider"},
 		{"Del", "Delete selected provider"},
 	}},
 	{"Projects screen", hints{
-		{string(KeyNew), "New project"},
 		{"Enter", "Edit selected project"},
+		{"Ins", "Add project"},
 		{"Del", "Delete selected project"},
-		{string(KeyGrant), "Grant to an account"},
-		{string(KeyRevoke), "Revoke from an account"},
+		{"Tab", "Switch to project accounts"},
+	}},
+	{"Project accounts", hints{
+		{"Ins", "Add account to project"},
+		{"Del", "Delete selected account from project"},
+		{"Tab", "Switch to projects"},
 	}},
 	{"Queue editor", hints{
-		{string(KeyNew), "New prompt"},
 		{"Enter", "Edit selected prompt"},
+		{"Ins", "Add prompt"},
 		{"Del", "Delete selected prompt"},
-		{string(KeyMoveUp), "Move prompt up"},
-		{string(KeyMoveDown), "Move prompt down"},
+		{"Ctrl+↑", "Move prompt up"},
+		{"Ctrl+↓", "Move prompt down"},
 	}},
 	{"Forms", hints{
-		{"Ctrl+S", "Save"},
+		{"Tab", "Next field"},
 		{"Esc", "Cancel / close"},
 	}},
 	{"Global", hints{

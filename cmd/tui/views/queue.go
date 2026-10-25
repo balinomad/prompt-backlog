@@ -126,10 +126,26 @@ func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case KeyCancel:
 		qe.onClose()
 		return nil
+	case KeyInsert:
+		return qe.handleNew()
 	case KeyEdit:
 		return qe.handleEdit()
 	case KeyDelete:
 		return qe.handleDelete()
+	case KeyFocusNext, KeyFocusPrev:
+		// The queue editor is a single-pane modal; Tab must not move focus
+		// into the editor's underlying list or form fields.
+		return nil
+	case tcell.KeyUp:
+		if event.Modifiers()&tcell.ModCtrl == 0 {
+			return event
+		}
+		return qe.handleMoveUp()
+	case tcell.KeyDown:
+		if event.Modifiers()&tcell.ModCtrl == 0 {
+			return event
+		}
+		return qe.handleMoveDown()
 	default:
 		// Every other special key falls through to the rune-only guard
 		// and switch below.
@@ -139,12 +155,6 @@ func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	switch event.Rune() {
-	case KeyNew:
-		return qe.handleNew()
-	case KeyMoveUp:
-		return qe.handleMoveUp()
-	case KeyMoveDown:
-		return qe.handleMoveDown()
 	case KeyHelp:
 		return qe.handleHelp()
 	case KeyQuit:
@@ -283,15 +293,13 @@ func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.P
 		initSpawn = queue[idx].SpawnsSession()
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
-	if isNew {
-		form.SetTitle(" New Prompt ")
-	} else {
-		form.SetTitle(" Edit Prompt ")
+	title := "New Prompt"
+	if !isNew {
+		title = "Edit Prompt"
 	}
+	form := newForm(title)
 
-	form.AddInputField("Text", initText, 40, nil, nil)
+	form.AddInputField("Text", initText, formFieldWidth, nil, nil)
 	form.AddCheckbox("Spawns new session", initSpawn, nil)
 
 	save := func() {
@@ -328,14 +336,14 @@ func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.P
 	form.SetCancelFunc(onDone)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 11)
+	return formModal(form)
 }
 
 // promptItemText formats a prompt row for the queue list.
 func promptItemText(p model.Prompt) string {
 	text := tview.Escape(p.Text())
 	if p.SpawnsSession() {
-		return text + "  [cyan]→ new session[-]"
+		text += "  [cyan]→ new session[-]"
 	}
-	return text
+	return insetListRow(text)
 }

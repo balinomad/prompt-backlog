@@ -6,135 +6,133 @@ import (
 
 // ── Context hint strings ──────────────────────────────────────────────────────
 // Pre-defined hint lines for each focus context, split in two: Specific is
-// the upper, context-specific line; Common is the lower line for roles that
-// repeat across contexts with the same general meaning regardless of the
-// exact key (edit, delete, help, quit, focus, cancel/close). Views pass both
-// to app.SetHints in their focus handlers. Key names are bold via tview color
+// the upper row of item actions for the focused list or modal; Common is the
+// lower row of navigation, escape, help, and quit hints. Views pass both to
+// app.SetHints in their focus handlers. Key names are bold via tview color
 // tags.
 
 var (
+	// Canonical hint fragments. Reuse these so repeated actions keep the
+	// same wording everywhere.
+	hintEdit      = hint{"Enter", "edit"}
+	hintAdd       = hint{"Ins", "add"}
+	hintDelete    = hint{"Del", "delete"}
+	hintQueue     = hint{"u", "queue"}
+	hintContinue  = hint{"Space", "continue"}
+	hintMoveUp    = hint{"Ctrl+↑", "up"}
+	hintMoveDown  = hint{"Ctrl+↓", "down"}
+	hintHelp      = hint{"?", "help"}
+	hintQuit      = hint{"q", "quit"}
+	hintBack      = hint{"Esc", "back"}
+	hintClose     = hint{"Esc", "close"}
+	hintCancel    = hint{"Esc", "cancel"}
+	hintConfirm   = hint{"Enter", "confirm"}
+	hintProviders = hint{"r", "providers"}
+	hintProjects  = hint{"p", "projects"}
+
 	// HintsAccountsPanelSpecific is the context-specific hint line shown when
 	// the accounts list has focus.
 	HintsAccountsPanelSpecific = hints{
-		{string(KeyNew), "new"},
-		{"F2", "rename"},
-		{string(KeyProviders), "providers"},
-		{string(KeyProjects), "projects"},
+		hintEdit, hintAdd, hintDelete,
 	}.String()
 
 	// HintsAccountsPanelCommon is the common hint line shown when the
 	// accounts list has focus.
 	HintsAccountsPanelCommon = hints{
-		{"Enter", "edit"},
-		{"Del", "del"},
-		{string(KeyHelp), "help"},
-		{string(KeyQuit), "quit"},
-		{"Tab", "focus"},
+		{"Tab", "sessions"}, hintProviders, hintProjects, hintHelp, hintQuit,
 	}.String()
 
 	// HintsDetailPanelSpecific is the context-specific hint line shown when
 	// the sessions sub-list in the detail panel has focus.
 	HintsDetailPanelSpecific = hints{
-		{string(KeyNew), "new"},
-		{string(KeyQueue), "queue"},
-		{"Space", "continue"},
+		hintEdit, hintAdd, hintDelete, hintQueue, hintContinue,
 	}.String()
 
 	// HintsDetailPanelCommon is the common hint line shown when the sessions
 	// sub-list in the detail panel has focus.
 	HintsDetailPanelCommon = hints{
-		{string(KeySessionFields), "edit"},
-		{"Del", "end"},
-		{string(KeyHelp), "help"},
-		{string(KeyQuit), "quit"},
-		{"Tab", "focus"},
+		{"Tab", "accounts"}, hintHelp, hintQuit,
 	}.String()
 
 	// HintsProvidersPanelSpecific is the context-specific hint line shown when
 	// the providers screen has focus.
 	HintsProvidersPanelSpecific = hints{
-		{string(KeyNew), "new"},
+		hintEdit, hintAdd, hintDelete,
 	}.String()
 
 	// HintsProvidersPanelCommon is the common hint line shown when the
 	// providers screen has focus.
 	HintsProvidersPanelCommon = hints{
-		{"Enter", "edit"},
-		{"Del", "del"},
-		{string(KeyHelp), "help"},
-		{string(KeyQuit), "quit"},
-		{"Tab", "focus"},
+		hintBack, hintHelp, hintQuit,
 	}.String()
 
 	// HintsProjectsPanelSpecific is the context-specific hint line shown when
-	// the projects screen has focus.
+	// the projects list has focus.
 	HintsProjectsPanelSpecific = hints{
-		{string(KeyNew), "new"},
-		{string(KeyGrant), "grant"},
-		{string(KeyRevoke), "revoke"},
+		hintEdit, hintAdd, hintDelete,
 	}.String()
 
 	// HintsProjectsPanelCommon is the common hint line shown when the
-	// projects screen has focus.
+	// projects list has focus.
 	HintsProjectsPanelCommon = hints{
-		{"Enter", "edit"},
-		{"Del", "del"},
-		{string(KeyHelp), "help"},
-		{string(KeyQuit), "quit"},
-		{"Tab", "focus"},
+		{"Tab", "accounts"}, hintBack, hintHelp, hintQuit,
+	}.String()
+
+	// HintsProjectAccountsSpecific is the context-specific hint line shown
+	// when the granted-accounts list has focus.
+	HintsProjectAccountsSpecific = hints{
+		hintAdd, hintDelete,
+	}.String()
+
+	// HintsProjectAccountsCommon is the common hint line shown when the
+	// granted-accounts list has focus.
+	HintsProjectAccountsCommon = hints{
+		{"Tab", "projects"}, hintBack, hintHelp, hintQuit,
 	}.String()
 
 	// HintsFormSpecific is the context-specific hint line shown when a form
-	// modal is open.
-	HintsFormSpecific = hints{
-		{"Ctrl+S", "save"},
-	}.String()
+	// modal is open. It is empty because the Save button is the submit path.
+	HintsFormSpecific = hints{}.String()
 
 	// HintsFormCommon is the common hint line shown when a form modal is
 	// open.
 	HintsFormCommon = hints{
-		{"Esc", "cancel"},
+		{"Tab", "next"}, hintCancel,
 	}.String()
 
 	// HintsQueueEditorSpecific is the context-specific hint line shown when
 	// the queue editor modal is open.
 	HintsQueueEditorSpecific = hints{
-		{string(KeyNew), "add"},
-		{string(KeyMoveUp), "up"},
-		{string(KeyMoveDown), "down"},
+		hintEdit, hintAdd, hintDelete, hintMoveUp, hintMoveDown,
 	}.String()
 
 	// HintsQueueEditorCommon is the common hint line shown when the queue
 	// editor modal is open.
 	HintsQueueEditorCommon = hints{
-		{"Enter", "edit"},
-		{"Del", "del"},
-		{string(KeyHelp), "help"},
-		{string(KeyQuit), "quit"},
-		{"Esc", "close"},
+		hintClose, hintHelp, hintQuit,
 	}.String()
 
 	// HintsConfirmModalSpecific is the context-specific hint line shown when a
-	// confirmation dialog is open. It is empty: a confirm dialog has no
-	// context-specific action beyond confirm/cancel, both common roles.
-	HintsConfirmModalSpecific = hints{}.String()
+	// confirmation dialog is open.
+	HintsConfirmModalSpecific = hints{
+		hintConfirm,
+	}.String()
 
 	// HintsConfirmModalCommon is the common hint line shown when a
 	// confirmation dialog is open.
 	HintsConfirmModalCommon = hints{
-		{"Enter", "confirm"},
-		{"Esc", "cancel"},
+		hintCancel,
 	}.String()
 
 	// HintsHelpOverlaySpecific is the context-specific hint line shown when
-	// the help overlay is open. It is empty, for the same reason as
-	// HintsConfirmModalSpecific.
+	// the help overlay is open. It is empty because the overlay has no
+	// context-specific action.
 	HintsHelpOverlaySpecific = hints{}.String()
 
 	// HintsHelpOverlayCommon is the common hint line shown when the help
 	// overlay is open.
 	HintsHelpOverlayCommon = hints{
-		{"Esc", "close"},
+		hintClose,
 	}.String()
 )
 

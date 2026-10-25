@@ -1,87 +1,111 @@
-llm-desk has four distinct views. The main screen (accounts + session
-detail) is always one of the three full-screen pages; providers and
+llm-desk has four distinct views. The main screen (accounts, sessions, and
+account info) is always one of the three full-screen pages; providers and
 projects are the other two, reached from the accounts list via `r` / `p`
-and returned from via `Esc` or the same key. The queue editor is a modal
-opened from session detail via `u`, not a fourth page.
+and returned from via `Esc`. The queue editor is a modal opened from
+session detail via `u`, not a fourth page. All list rows use a single
+leading space so text does not touch the panel frame. Detail rows use a
+one-cell inset on both sides that also applies to wrapped lines.
 
-── Main screen (accounts list + session detail) ──────────────────────────────
+── Main screen (accounts, sessions, and account info) ────────────────────────
 
 ┌ llm-desk ───────────────────────────────────────────────────────────────┐
 │                                                                         │
 │  ┌ Accounts ──────────────────┐  ┌ Sessions ─────────────────────────┐  │
-│  │▶ claude   Alice            │  │▶ Architecture review   Alpha   q:1│  │
-│  │  chatgpt  Bob    18:00     │  │  (untitled)            —       q:0│  │
-│  │  claude   Carol  09:15     │  └───────────────────────────────────┘  │
-│  │                            │  ┌ Account ──────────────────────────┐  │
-│  │                            │  │User:     Alice (alice@example.com)│  │
-│  │                            │  │Provider: claude                   │  │
-│  │                            │  │Paused:                            │  │
-│  │                            │  │Projects: Alpha, Beta              │  │
-│  └────────────────────────────┘  └───────────────────────────────────┘  │
+│  │▶ claude   │ Alice │        │  │▶ Architecture review   Alpha   q:1│  │
+│  │  chatgpt  │ Bob   │ 18:00  │  │  (untitled)            —       q:0│  │
+│  │  claude   │ Carol │ 09:15  │  └───────────────────────────────────┘  │
+│  │           │       │        │                                        │
+│  └────────────────────────────┘                                        │
+│  ┌ Account Details ──────────────────────────────────────────────────┐  │
+│  │ User     Alice (alice@example.com)                                │  │
+│  │ Provider claude                                                   │  │
+│  │ Projects Alpha, Beta                                              │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
-│  n new  e edit  d del  r providers  p projects  Tab focus  h help       │
-│  q quit                                                          saved ✓│
+│  Enter edit  Ins add  Del delete                                        │
+│  Tab sessions  r providers  p projects  ? help  q quit           saved ✓│
 └─────────────────────────────────────────────────────────────────────────┘
 
-Accounts (left) lists every (user, provider) pair as three aligned
-columns, provider, user name, and pause time, soonest-available first.
-Same-day pause times show as "HH:MM"; other days as "HH:MM ±N", the
-number of days from today (e.g. "09:00 +2", "20:00 -1"). Pause time is
-red while the account is still unavailable, green once it is available
-again, and omitted for an account that has never been paused; the
-account-info panel's own "Paused:" line (bottom right) uses this same
-rendering, not a separate one. Session detail (right) splits into the
-selected account's sessions (top, "q:N" = queue length) and a fixed
-account-info panel (bottom).
+Accounts (left) lists every (user, provider) pair as aligned columns:
+provider, user name, pause time, and latest project, soonest-available
+first. Columns are padded and separated by " │ "; blank cells keep their
+separator and padding so later columns stay aligned. Multi-column rows
+also pad a trailing cell. The pause and project columns are omitted
+only when no rendered row has a value. Provider, user, and project values
+are capped and truncated with an ellipsis when needed; widths come from the
+values actually rendered. Same-day pause times show as "HH:MM"; other
+days as "HH:MM ±N", the number of days from today (for example,
+"09:00 +2", "20:00 -1"). Pause time is red while the account is still
+unavailable, green once it is available again, and omitted for an account
+that has never been paused. Pause status appears only in the accounts
+list. Session detail (top right) lists the selected account's sessions
+("q:N" = queue length). The full-width Account Details panel below both
+panels shows the user, provider, and granted projects, and grows with
+wrapped project text. The Account Details, Provider Details, and Project
+Details panels size their label columns from their own longest labels and
+grow with their wrapped content.
 
 ── Providers screen ────────────────────────────────────────────────────────
 
 ┌ Providers screen ──────────────────────────────────────────────────┐
 │                                                                    │
 │  ┌ Providers ───────────────────────────────────────────────────┐  │
-│  │▶ claude    projects  deep-research                           │  │
-│  │  chatgpt                                                     │  │
+│  │▶ claude   │ projects, deep-research                          │  │
+│  │  chatgpt  │                                                  │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │  ┌ Provider Details ────────────────────────────────────────────┐  │
-│  │Name:          claude                                         │  │
-│  │Projects:      yes                                            │  │
-│  │Deep research: yes                                            │  │
+│  │ Name          claude                                         │  │
+│  │ Projects      yes                                            │  │
+│  │ Deep research yes                                            │  │
 │  └──────────────────────────────────────────────────────────────┘  │
-│                                                                    │
-│  n new  e edit  d del  Tab focus  h help  q quit  (Esc/r: back)    │
+│  Enter edit  Ins add  Del delete                                   │
+│  Esc back  ? help  q quit                                          │
 └────────────────────────────────────────────────────────────────────┘
+
+Provider names and capabilities are padded columns separated by " │ ",
+with the same single leading space as the other lists. The capability
+column is shown only when at least one provider has a capability. The
+Provider Details panel below grows with wrapped text.
 
 ── Projects screen ─────────────────────────────────────────────────────────
 
 ┌ Projects screen ───────────────────────────────────────────────────┐
 │                                                                    │
-│  ┌ Projects ────────────────────────────────────────────────────┐  │
-│  │▶ Alpha                                                       │  │
-│  │  Beta                                                        │  │
-│  │  Orphan             unattached                               │  │
-│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌ Projects ───────────────────┐  ┌ Project Accounts ───────────┐  │
+│  │▶ Alpha                      │  │▶ claude │ Alice            │  │
+│  │  Beta                       │  │  claude │ Bob              │  │
+│  │  Orphan                     │  │  qwen   │ Carol            │  │
+│  └─────────────────────────────┘  └─────────────────────────────┘  │
+│                                                                    │
 │  ┌ Project Details ─────────────────────────────────────────────┐  │
-│  │Name:         Alpha                                           │  │
-│  │Description:  Backend rewrite                                 │  │
-│  │Instructions: Use Go interfaces                               │  │
-│  │Accounts:     alice@example.com/claude                        │  │
+│  │ Name         Alpha                                           │  │
+│  │ Description  Backend rewrite                                 │  │
+│  │ Instructions Use Go interfaces                               │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
-│  n new  e edit  d del  g grant  x revoke  h help  (Esc/p: back)    │
+│  Enter edit  Ins add  Del delete                                   │
+│  Tab accounts  Esc back  ? help  q quit                            │
 └────────────────────────────────────────────────────────────────────┘
 
-A project with zero granted accounts is flagged "unattached" rather than
-hidden or shown in a separate list.
+The right pane lists only the accounts granted the selected project,
+ordered by provider and then user name. Provider and user cells use the
+same " │ " separator and padding as the main accounts list, with the same
+single leading space. Insert adds another account to the project; Del
+deletes the selected account from it after confirmation. Tab switches
+panes. Esc from the account list returns to the project list; Esc from
+the project list returns to the main screen. The Project Details panel
+below grows with wrapped description or instructions.
 
 ── Queue editor (modal, opened from session detail) ──────────────────────────
 
-┌ Queue: session #1 ──────────────────────────┐
-│▶ first                                      │
-│  second   → new session                     │
-│  third                                      │
-│                                             │
-│n add  e edit  d del  K up  J down  Esc close│
-└─────────────────────────────────────────────┘
+┌ Queue: session #1 ────────────────────────────────────┐
+│▶ first                                                │
+│  second   → new session                               │
+│  third                                                │
+│Enter edit  Ins add  Del delete  Ctrl+↑ up  Ctrl+↓ down│
+│Esc close  ? help  q quit                              │
+└───────────────────────────────────────────────────────┘
 
-Every action here — add, edit, delete, reorder — commits immediately; there
-is no separate save step for the editor as a whole.
+Queue rows use the same single leading space as the other lists. Every
+action here (add, edit, delete, reorder) commits immediately; there is no
+separate save step for the editor as a whole.

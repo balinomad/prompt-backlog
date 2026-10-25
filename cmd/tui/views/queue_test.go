@@ -139,11 +139,14 @@ func TestQueueEditor_HandleKey_Esc(t *testing.T) {
 func TestQueueEditor_HandleKey_PassesThroughUnhandledKeys(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name  string
-		event *tcell.EventKey
+		name         string
+		event        *tcell.EventKey
+		wantConsumed bool
 	}{
-		{"non-rune key", tcell.NewEventKey(tcell.KeyTab, 0, tcell.ModNone)},
-		{"unrecognized rune", runeKey('z')},
+		{"unhandled special key", specialKey(tcell.KeyF1), false},
+		{"unrecognized rune", runeKey('z'), false},
+		{"tab", specialKey(views.KeyFocusNext), true},
+		{"backtab", specialKey(views.KeyFocusPrev), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -154,7 +157,14 @@ func TestQueueEditor_HandleKey_PassesThroughUnhandledKeys(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected *tview.List, got %T", result)
 			}
-			if got := list.GetInputCapture()(tc.event); got != tc.event {
+			got := list.GetInputCapture()(tc.event)
+			if tc.wantConsumed {
+				if got != nil {
+					t.Error("key must be consumed (return nil)")
+				}
+				return
+			}
+			if got != tc.event {
 				t.Error("key must pass through unchanged")
 			}
 		})
@@ -171,7 +181,7 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 		wantSpecific string
 		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon},
 		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
@@ -245,35 +255,35 @@ func TestQueueEditor_Reorder(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		key       rune
+		key       *tcell.EventKey
 		startIdx  int
 		wantOrder []string
 		wantIdx   int
 	}{
 		{
 			name:      "move up from first item is a no-op",
-			key:       views.KeyMoveUp,
+			key:       ctrlKey(tcell.KeyUp),
 			startIdx:  0,
 			wantOrder: []string{"first", "second", "third"},
 			wantIdx:   0,
 		},
 		{
 			name:      "move up swaps with previous",
-			key:       views.KeyMoveUp,
+			key:       ctrlKey(tcell.KeyUp),
 			startIdx:  1,
 			wantOrder: []string{"second", "first", "third"},
 			wantIdx:   0,
 		},
 		{
 			name:      "move down from last item is a no-op",
-			key:       views.KeyMoveDown,
+			key:       ctrlKey(tcell.KeyDown),
 			startIdx:  2,
 			wantOrder: []string{"first", "second", "third"},
 			wantIdx:   2,
 		},
 		{
 			name:      "move down swaps with next",
-			key:       views.KeyMoveDown,
+			key:       ctrlKey(tcell.KeyDown),
 			startIdx:  0,
 			wantOrder: []string{"second", "first", "third"},
 			wantIdx:   1,
@@ -291,7 +301,7 @@ func TestQueueEditor_Reorder(t *testing.T) {
 			list.SetCurrentItem(tc.startIdx)
 
 			capture := list.GetInputCapture()
-			capture(runeKey(tc.key))
+			capture(tc.key)
 
 			if got := list.GetCurrentItem(); got != tc.wantIdx {
 				t.Errorf("selected index after reorder: got %d, want %d", got, tc.wantIdx)
@@ -314,6 +324,42 @@ func TestQueueEditor_Reorder(t *testing.T) {
 	}
 }
 
+func TestQueueEditor_MoveAliasesRemoved(t *testing.T) {
+	t.Parallel()
+	for _, key := range []rune{'K', 'J'} {
+		t.Run(string(key), func(t *testing.T) {
+			t.Parallel()
+			app, acc, sess := newQueueTestApp(t)
+			result := views.NewQueueEditor(app, acc, sess, func() {})
+			list, ok := result.(*tview.List)
+			if !ok {
+				t.Fatalf("expected *tview.List, got %T", result)
+			}
+			list.SetCurrentItem(1)
+
+			event := runeKey(key)
+			if got := list.GetInputCapture()(event); got != event {
+				t.Error("removed alias must pass through unchanged")
+			}
+			if got := list.GetCurrentItem(); got != 1 {
+				t.Errorf("selection changed: got %d, want 1", got)
+			}
+
+			updated := app.svc.Session(sess.ID())
+			if updated == nil {
+				t.Fatal("session not found")
+			}
+			queue := updated.Queue()
+			want := []string{"first", "second", "third"}
+			for i, text := range want {
+				if queue[i].Text() != text {
+					t.Errorf("queue[%d] = %q, want %q", i, queue[i].Text(), text)
+				}
+			}
+		})
+	}
+}
+
 func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 	t.Parallel()
 	app, acc, sess := newQueueTestApp(t)
@@ -329,7 +375,7 @@ func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 
 	list.SetCurrentItem(1)
 	capture := list.GetInputCapture()
-	capture(runeKey(views.KeyMoveUp))
+	capture(ctrlKey(tcell.KeyUp))
 
 	if app.status == "" {
 		t.Error("expected a status message reporting the commit failure")
@@ -340,7 +386,7 @@ func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 
 // TestQueueEditor_NewAndEditPrompt_OpensForm replaces the old direct call
 // to the unexported newPromptForm: it drives the same two code paths
-// (KeyNew, KeyEdit) through the queue editor's own reachable key capture
+// (KeyInsert, KeyEdit) through the queue editor's own reachable key capture
 // and checks the resulting modal is a centred form (*tview.Flex), not
 // e.g. an error modal.
 func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
@@ -349,7 +395,7 @@ func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
 		name string
 		key  *tcell.EventKey
 	}{
-		{"new prompt", runeKey(views.KeyNew)},
+		{"new prompt", specialKey(views.KeyInsert)},
 		{"edit existing prompt", specialKey(views.KeyEdit)},
 	}
 	for _, tc := range cases {
@@ -416,7 +462,7 @@ func TestQueueEditor_NewPrompt_Save(t *testing.T) {
 		t.Fatalf("expected *tview.List, got %T", result)
 	}
 
-	list.GetInputCapture()(runeKey(views.KeyNew))
+	list.GetInputCapture()(specialKey(views.KeyInsert))
 	form := formFromCenteredModal(t, app.modal)
 
 	setInputField(t, form, "Text", "fourth")
@@ -495,7 +541,7 @@ func TestQueueEditor_PromptSave_Failure(t *testing.T) {
 		t.Fatalf("expected *tview.List, got %T", result)
 	}
 
-	list.GetInputCapture()(runeKey(views.KeyNew))
+	list.GetInputCapture()(specialKey(views.KeyInsert))
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Text", "will not be saved")
 
@@ -525,9 +571,9 @@ func TestPromptItemText(t *testing.T) {
 		wantContains string
 		wantEqual    string
 	}{
-		{"no spawn returns plain text", "continue", false, "", "continue"},
+		{"no spawn returns plain text", "continue", false, "", " continue"},
 		{"spawns appends marker", "start fresh", true, "new session", ""},
-		{"bracket in text is escaped", "do [x]", false, "", tview.Escape("do [x]")},
+		{"bracket in text is escaped", "do [x]", false, "", " " + tview.Escape("do [x]")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -547,6 +593,9 @@ func TestPromptItemText(t *testing.T) {
 				t.Fatalf("expected *tview.List, got %T", result)
 			}
 			got, _ := list.GetItemText(0)
+			if !strings.HasPrefix(got, " ") {
+				t.Errorf("got %q, want a leading one-cell inset", got)
+			}
 
 			if tc.wantEqual != "" && got != tc.wantEqual {
 				t.Errorf("got %q, want %q", got, tc.wantEqual)

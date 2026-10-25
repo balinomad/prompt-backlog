@@ -62,6 +62,7 @@ type mockApp struct {
 	mutateErr     error
 	showModalErr  error
 	modal         tview.Primitive
+	focused       tview.Primitive
 	switchedTo    string // "main" | "providers" | "projects"
 	status        string
 	hintsSpecific string
@@ -88,11 +89,12 @@ func (m *mockApp) ShowModal(p tview.Primitive) error {
 	return nil
 }
 
-func (m *mockApp) HideModal()           { m.modal = nil }
-func (m *mockApp) SwitchToMain()        { m.switchedTo = "main" }
-func (m *mockApp) SwitchToProviders()   { m.switchedTo = "providers" }
-func (m *mockApp) SwitchToProjects()    { m.switchedTo = "projects" }
-func (m *mockApp) SetStatus(msg string) { m.status = msg }
+func (m *mockApp) HideModal()                 { m.modal = nil }
+func (m *mockApp) SetFocus(p tview.Primitive) { m.focused = p }
+func (m *mockApp) SwitchToMain()              { m.switchedTo = "main" }
+func (m *mockApp) SwitchToProviders()         { m.switchedTo = "providers" }
+func (m *mockApp) SwitchToProjects()          { m.switchedTo = "projects" }
+func (m *mockApp) SetStatus(msg string)       { m.status = msg }
 func (m *mockApp) SetHints(specific, common string) {
 	m.hintsSpecific = specific
 	m.hintsCommon = common
@@ -142,8 +144,14 @@ func escKey() *tcell.EventKey {
 }
 
 // specialKey returns a key event for a non-rune special key (Enter,
-// Delete, F2, etc.) — anything checked via event.Key() rather than
+// Delete, etc.) — anything checked via event.Key() rather than
 // event.Rune().
 func specialKey(k tcell.Key) *tcell.EventKey {
 	return tcell.NewEventKey(k, 0, tcell.ModNone)
+}
+
+// ctrlKey returns a Ctrl-modified special key event (Ctrl+Up, Ctrl+Down,
+// etc.).
+func ctrlKey(k tcell.Key) *tcell.EventKey {
+	return tcell.NewEventKey(k, 0, tcell.ModCtrl)
 }

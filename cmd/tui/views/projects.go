@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/balinomad/llm-desk/internal/model"
@@ -15,17 +16,19 @@ import (
 // editing, deleting, and granting/revoking account access. The operator
 // navigates to it with 'p' and returns to the main view with 'Esc' or 'p'.
 //
-// This screen is the resolution of the TODO.md question "should we just
-// have a project list with an indicator that it is unattached?" — projects
-// with zero granted accounts are listed and flagged here, rather than being
-// reachable only through a session's own project list as before.
+// This screen is the resolution of the TODO.md question about project
+// visibility: all projects are listed here, and the right pane shows the
+// selected project's grants, rather than projects being reachable only
+// through a session's own project list as before.
 type ProjectsPanel struct {
 	*tview.Flex
-	list       *tview.List
-	infoView   *tview.TextView
-	app        App
-	projects   []*model.Project // mirrors list order; rebuilt on Refresh
-	refreshing bool
+	list        *tview.List
+	accountList *tview.List
+	infoView    *tview.TextView
+	app         App
+	projects    []*model.Project // mirrors list order; rebuilt on Refresh
+	accounts    []*model.Account // mirrors accountList order; granted accounts for selected project
+	refreshing  bool
 }
 
 // NewProjectsPanel constructs the projects management screen.
@@ -34,34 +37,49 @@ func NewProjectsPanel(app App) *ProjectsPanel {
 	list.SetBorder(true)
 	list.SetTitle(" Projects ")
 
-	info := tview.NewTextView().SetDynamicColors(true)
-	info.SetBorder(true)
-	info.SetTitle(" Project Details ")
+	accountList := tview.NewList().ShowSecondaryText(false)
+	accountList.SetBorder(true)
+	accountList.SetTitle(" Project Accounts ")
+
+	info := newInfoView("Project Details")
+
+	body := tview.NewFlex().
+		AddItem(list, 0, 1, true).
+		AddItem(accountList, 0, 1, false)
 
 	flex := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(list, 0, 1, true).
-		AddItem(info, 8, 0, false) // fixed 8-row info panel (4 content lines + border + spare)
+		AddItem(body, 0, 1, true).
+		AddItem(info, 0, 0, false) // Height is set from content before each draw.
 
 	p := &ProjectsPanel{
-		Flex:     flex,
-		list:     list,
-		infoView: info,
-		app:      app,
+		Flex:        flex,
+		list:        list,
+		accountList: accountList,
+		infoView:    info,
+		app:         app,
 	}
 
 	list.SetChangedFunc(func(index int, _, _ string, _ rune) {
 		if p.refreshing {
 			return
 		}
-		p.renderInfo(p.selectedProject())
+		// tview invokes the changed callback before updating currentItem, so
+		// use the callback's index rather than selectedProject here.
+		proj := p.projectAt(index)
+		p.refreshAccountList(proj, false)
+		p.renderInfo(proj)
 	})
 
 	wirePanelFocus(list, func() {
 		app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 	})
+	wirePanelFocus(accountList, func() {
+		app.SetHints(HintsProjectAccountsSpecific, HintsProjectAccountsCommon)
+	})
 
-	list.SetInputCapture(p.handleKey)
+	list.SetInputCapture(p.handleProjectKey)
+	accountList.SetInputCapture(p.handleAccountKey)
 
 	return p
 }
@@ -80,13 +98,8 @@ func (p *ProjectsPanel) Refresh() {
 	p.projects = all
 	p.list.Clear()
 	for _, proj := range p.projects {
-		accounts, err := svc.ProjectAccounts(proj.Name())
-		if err != nil {
-			accounts = nil
-		}
-		p.list.AddItem(projectItemText(proj, len(accounts)), "", 0, nil)
+		p.list.AddItem(projectItemText(proj), "", 0, nil)
 	}
-	p.refreshing = false
 
 	// Restore selection by name.
 	restored := false
@@ -100,30 +113,117 @@ func (p *ProjectsPanel) Refresh() {
 	if !restored && len(p.projects) > 0 {
 		p.list.SetCurrentItem(0)
 	}
+	p.refreshing = false
 
-	p.renderInfo(p.selectedProject())
+	proj := p.selectedProject()
+	p.refreshAccountList(proj, true)
+	p.renderInfo(proj)
+}
+
+// RequiredInfoHeight returns the outer height needed to render the current
+// detail text at outerWidth, including the border and wrapped lines.
+func (p *ProjectsPanel) RequiredInfoHeight(outerWidth int) int {
+	return infoTextHeight(p.infoView.GetText(false), outerWidth)
+}
+
+// ResizeInfo sizes the detail panel to its content at outerWidth, leaving at
+// least minListPanelHeight rows for the lists.
+func (p *ProjectsPanel) ResizeInfo(outerWidth, availableHeight int) {
+	p.ResizeItem(
+		p.infoView,
+		fitInfoHeight(p.RequiredInfoHeight(outerWidth), availableHeight, minListPanelHeight),
+		0,
+	)
 }
 
 // selectedProject returns the currently highlighted project, or nil when
 // the list is empty.
 func (p *ProjectsPanel) selectedProject() *model.Project {
-	idx := p.list.GetCurrentItem()
-	if idx < 0 || idx >= len(p.projects) {
+	return p.projectAt(p.list.GetCurrentItem())
+}
+
+// projectAt returns the project at index, or nil when index is out of range.
+func (p *ProjectsPanel) projectAt(index int) *model.Project {
+	if index < 0 || index >= len(p.projects) {
 		return nil
 	}
-	return p.projects[idx]
+	return p.projects[index]
+}
+
+// selectedAccount returns the currently highlighted granted account, or nil
+// when the account list is empty.
+func (p *ProjectsPanel) selectedAccount() *model.Account {
+	idx := p.accountList.GetCurrentItem()
+	if idx < 0 || idx >= len(p.accounts) {
+		return nil
+	}
+	return p.accounts[idx]
+}
+
+// refreshAccountList repopulates the granted-accounts list for proj.
+// preserveSelection keeps the selected account by key when it still exists;
+// otherwise the nearest row is selected. Without preservation the first row
+// is selected, which is the expected behaviour after a project change.
+func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelection bool) {
+	prevKey := model.AccountKey{}
+	prevIdx := 0
+	if preserveSelection {
+		prevIdx = p.accountList.GetCurrentItem()
+		if acc := p.selectedAccount(); acc != nil {
+			prevKey = acc.Key()
+		}
+	}
+
+	var accounts []*model.Account
+	if proj != nil {
+		var err error
+		accounts, err = p.app.Service().ProjectAccounts(proj.Name())
+		if err != nil {
+			accounts = nil
+		}
+	}
+	sortProjectAccounts(p.app.Service(), accounts)
+	providerWidth, nameWidth := projectAccountWidths(p.app.Service())
+
+	rows := make([][]string, len(accounts))
+	for i, acc := range accounts {
+		rows[i] = []string{
+			tview.Escape(truncateWidth(acc.ProviderName(), providerWidth)),
+			tview.Escape(truncateWidth(projectAccountUserName(p.app.Service(), acc), nameWidth)),
+		}
+	}
+	lines, _ := formatColumns(rows)
+
+	p.accounts = accounts
+	p.accountList.Clear()
+	for _, line := range lines {
+		p.accountList.AddItem(line, "", 0, nil)
+	}
+
+	restored := false
+	if preserveSelection {
+		for i, acc := range p.accounts {
+			if acc.Key() == prevKey {
+				p.accountList.SetCurrentItem(i)
+				restored = true
+				break
+			}
+		}
+	}
+	if !restored && len(p.accounts) > 0 {
+		prevIdx = min(max(prevIdx, 0), len(p.accounts)-1)
+		p.accountList.SetCurrentItem(prevIdx)
+	}
 }
 
 // renderInfo populates the detail panel for the selected project.
 func (p *ProjectsPanel) renderInfo(proj *model.Project) {
 	if proj == nil {
-		p.infoView.SetText("  (no project selected)")
+		p.infoView.SetText("(no project selected)")
 		return
 	}
-	svc := p.app.Service()
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "  [::b]Name[-::-]         %s\n", tview.Escape(proj.Name()))
 
 	desc := proj.Description()
 	if desc == "" {
@@ -131,7 +231,6 @@ func (p *ProjectsPanel) renderInfo(proj *model.Project) {
 	} else {
 		desc = tview.Escape(desc)
 	}
-	fmt.Fprintf(&sb, "  [::b]Description[-::-]  %s\n", desc)
 
 	instr := proj.Instructions()
 	if instr == "" {
@@ -139,32 +238,27 @@ func (p *ProjectsPanel) renderInfo(proj *model.Project) {
 	} else {
 		instr = tview.Escape(instr)
 	}
-	fmt.Fprintf(&sb, "  [::b]Instructions[-::-] %s\n", instr)
 
-	accounts, err := svc.ProjectAccounts(proj.Name())
-	if err != nil {
-		accounts = nil
-	}
-	if len(accounts) == 0 {
-		fmt.Fprintf(&sb, "  [::b]Accounts[-::-]     %s", dimText("none (unattached)"))
-	} else {
-		labels := make([]string, len(accounts))
-		for i, acc := range accounts {
-			labels[i] = fmt.Sprintf("%s/%s", tview.Escape(acc.UserEmail()), tview.Escape(acc.ProviderName()))
-		}
-		fmt.Fprintf(&sb, "  [::b]Accounts[-::-]     %s", strings.Join(labels, ", "))
-	}
+	writeInfoRows(&sb, []infoRow{
+		{label: "Name", value: tview.Escape(proj.Name())},
+		{label: "Description", value: desc},
+		{label: "Instructions", value: instr},
+	})
 
-	p.infoView.SetText(sb.String())
+	p.infoView.SetText(strings.TrimSuffix(sb.String(), "\n"))
 }
 
-// handleKey processes keyboard input for this panel.
-func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
+// handleProjectKey processes keyboard input while the project list has focus.
+func (p *ProjectsPanel) handleProjectKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case KeyCancel:
-		// Esc and 'p' both return to the main screen.
 		p.app.SwitchToMain()
 		return nil
+	case KeyFocusNext, KeyFocusPrev:
+		p.app.SetFocus(p.accountList)
+		return nil
+	case KeyInsert:
+		return p.handleNew()
 	case KeyEdit:
 		return p.handleEdit()
 	case KeyDelete:
@@ -178,17 +272,32 @@ func (p *ProjectsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return result
 	}
 
-	switch event.Rune() {
-	case KeyProjects:
-		p.app.SwitchToMain()
+	return event
+}
+
+// handleAccountKey processes keyboard input while the granted-accounts list
+// has focus.
+func (p *ProjectsPanel) handleAccountKey(event *tcell.EventKey) *tcell.EventKey {
+	switch event.Key() {
+	case KeyCancel:
+		p.app.SetFocus(p.list)
 		return nil
-	case KeyNew:
-		return p.handleNew()
-	case KeyGrant:
-		return p.handleGrant()
-	case KeyRevoke:
-		return p.handleRevoke()
+	case KeyFocusNext, KeyFocusPrev:
+		p.app.SetFocus(p.list)
+		return nil
+	case KeyDelete:
+		return p.handleRevokeSelected()
+	case KeyInsert:
+		return p.handleGrant(HintsProjectAccountsSpecific, HintsProjectAccountsCommon)
+	default:
+		// Every other special key falls through to dispatchPanelKey and
+		// the rune switch below.
 	}
+
+	if result, ok := dispatchPanelKey(event, p.app, HintsProjectAccountsSpecific, HintsProjectAccountsCommon); ok {
+		return result
+	}
+
 	return event
 }
 
@@ -252,13 +361,13 @@ func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
 	return nil
 }
 
-func (p *ProjectsPanel) handleGrant() *tcell.EventKey {
+func (p *ProjectsPanel) handleGrant(specific, common string) *tcell.EventKey {
 	proj := p.selectedProject()
 	if proj == nil {
 		return nil
 	}
 	modal := NewGrantForm(p.app, proj, func() {
-		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
+		p.app.SetHints(specific, common)
 		p.app.HideModal()
 	})
 	if err := p.app.ShowModal(modal); err != nil {
@@ -269,32 +378,101 @@ func (p *ProjectsPanel) handleGrant() *tcell.EventKey {
 	return nil
 }
 
-func (p *ProjectsPanel) handleRevoke() *tcell.EventKey {
+// handleRevokeSelected asks for confirmation, then revokes the selected
+// account's grant from the selected project.
+func (p *ProjectsPanel) handleRevokeSelected() *tcell.EventKey {
 	proj := p.selectedProject()
-	if proj == nil {
+	acc := p.selectedAccount()
+	if proj == nil || acc == nil {
 		return nil
 	}
-	modal := NewRevokeForm(p.app, proj, func() {
-		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
-		p.app.HideModal()
-	})
+	email := acc.UserEmail()
+	provider := acc.ProviderName()
+	name := proj.Name()
+	label := fmt.Sprintf("%s / %s", tview.Escape(email), tview.Escape(provider))
+	modal := NewConfirmModal(
+		fmt.Sprintf("Remove account\n%s\nfrom project %q?", label, tview.Escape(name)),
+		func() {
+			if err := p.app.Mutate(func(s *service.Service) error {
+				return s.RevokeProject(email, provider, name)
+			}); err != nil {
+				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			}
+			p.app.SetHints(HintsProjectAccountsSpecific, HintsProjectAccountsCommon)
+			p.app.HideModal()
+		},
+		func() {
+			p.app.SetHints(HintsProjectAccountsSpecific, HintsProjectAccountsCommon)
+			p.app.HideModal()
+		},
+	)
 	if err := p.app.ShowModal(modal); err != nil {
 		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
 		return nil
 	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
-// projectItemText formats a project row for the list. accountCount is the
-// number of accounts currently granted this project; zero is flagged as
-// "unattached".
-func projectItemText(p *model.Project, accountCount int) string {
-	name := tview.Escape(p.Name())
-	if accountCount == 0 {
-		return fmt.Sprintf("%-28s  %s", name, dimText("unattached"))
+// projectAccountUserName returns the account's user display name, falling
+// back to the email when the user record is missing.
+func projectAccountUserName(svc *service.Service, acc *model.Account) string {
+	if u := svc.User(acc.UserEmail()); u != nil {
+		return u.Name()
 	}
-	return name
+	return acc.UserEmail()
+}
+
+// projectAccountText formats one granted account as Provider │ User for the
+// grant form. The provider and user name are truncated to providerWidth and
+// nameWidth; both widths are capped by the shared project-screen limits.
+func projectAccountText(svc *service.Service, acc *model.Account, providerWidth, nameWidth int) string {
+	provider := truncateWidth(acc.ProviderName(), providerWidth)
+	name := truncateWidth(projectAccountUserName(svc, acc), nameWidth)
+	return provider + columnSeparator + name
+}
+
+// projectAccountWidths returns the provider and user-name widths used by the
+// Projects screen's granted-accounts list and grant form. They use store-wide
+// values, including the email fallback for accounts without a user record,
+// and the shared project-screen caps.
+func projectAccountWidths(svc *service.Service) (int, int) {
+	var providerWidth, nameWidth int
+	for _, provider := range svc.Providers() {
+		providerWidth = max(providerWidth, plainWidth(provider.Name()))
+	}
+	providerWidth = min(providerWidth, providerColumnWidthCap)
+
+	for _, u := range svc.Users() {
+		nameWidth = max(nameWidth, plainWidth(u.Name()))
+	}
+	for _, acc := range svc.Accounts() {
+		if svc.User(acc.UserEmail()) == nil {
+			nameWidth = max(nameWidth, plainWidth(acc.UserEmail()))
+		}
+	}
+	nameWidth = min(nameWidth, nameColumnWidthCap)
+	return providerWidth, nameWidth
+}
+
+// sortProjectAccounts orders accounts alphabetically by provider, then by
+// user name, using a case-insensitive comparison. Equal pairs keep their
+// incoming order.
+func sortProjectAccounts(svc *service.Service, accounts []*model.Account) {
+	slices.SortStableFunc(accounts, func(a, b *model.Account) int {
+		if c := strings.Compare(strings.ToLower(a.ProviderName()), strings.ToLower(b.ProviderName())); c != 0 {
+			return c
+		}
+		return strings.Compare(
+			strings.ToLower(projectAccountUserName(svc, a)),
+			strings.ToLower(projectAccountUserName(svc, b)),
+		)
+	})
+}
+
+// projectItemText formats a project row for the list.
+func projectItemText(p *model.Project) string {
+	return insetListRow(tview.Escape(p.Name()))
 }

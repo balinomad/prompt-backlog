@@ -9,9 +9,8 @@ import (
 // otherwise black-box (package views_test) suite: formatPauseUntil takes
 // now as an explicit parameter specifically to keep the same-day /
 // different-day comparison deterministic — see its doc comment.
-// formatPauseUntil is called, via pauseStatusText, from both
-// accountItemText and DetailPanel.renderInfo, both of which use real
-// time.Now(), so testing this indirectly through either would reintroduce
+// formatPauseUntil is called via pauseStatusText from the Accounts list,
+// which uses real time.Now(), so testing this indirectly would reintroduce
 // exactly the midnight-boundary flakiness the parameter exists to prevent.
 func TestFormatPauseUntil(t *testing.T) {
 	t.Parallel()

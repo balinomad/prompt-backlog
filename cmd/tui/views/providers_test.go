@@ -29,8 +29,16 @@ func providersPanelParts(t *testing.T, p *views.ProvidersPanel) (*tview.List, *t
 
 func TestNewProvidersPanel(t *testing.T) {
 	t.Parallel()
-	if p := views.NewProvidersPanel(newMockApp(t)); p == nil {
+	p := views.NewProvidersPanel(newMockApp(t))
+	if p == nil {
 		t.Fatal("expected non-nil ProvidersPanel")
+	}
+	info, ok := p.GetItem(1).(interface{ GetTitle() string })
+	if !ok {
+		t.Fatal("detail panel does not expose a title")
+	}
+	if got := info.GetTitle(); got != " Provider Details " {
+		t.Errorf("GetTitle() = %q, want %q", got, " Provider Details ")
 	}
 }
 
@@ -101,12 +109,25 @@ func TestProvidersPanel_Refresh_PreservesSelection(t *testing.T) {
 
 func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
 	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewProvidersPanel(app)
+	p.Refresh()
+	list, _ := providersPanelParts(t, p)
+	list.GetInputCapture()(escKey())
+	if app.switchedTo != "main" {
+		t.Errorf("expected switchedTo=main, got %q", app.switchedTo)
+	}
+}
+
+func TestProvidersPanel_Keys_NoHiddenAliases(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		event *tcell.EventKey
 	}{
-		{"esc key", escKey()},
-		{"r key", runeKey(views.KeyProviders)},
+		{"r does not switch screens", runeKey(views.KeyProviders)},
+		{"tab is consumed", specialKey(views.KeyFocusNext)},
+		{"backtab is consumed", specialKey(views.KeyFocusPrev)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,9 +136,14 @@ func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
 			p := views.NewProvidersPanel(app)
 			p.Refresh()
 			list, _ := providersPanelParts(t, p)
-			list.GetInputCapture()(tc.event)
-			if app.switchedTo != "main" {
-				t.Errorf("expected switchedTo=main, got %q", app.switchedTo)
+			got := list.GetInputCapture()(tc.event)
+			if app.switchedTo != "" {
+				t.Errorf("expected no screen switch, got %q", app.switchedTo)
+			}
+			if tc.event.Key() == views.KeyFocusNext || tc.event.Key() == views.KeyFocusPrev {
+				if got != nil {
+					t.Error("Tab must be consumed")
+				}
 			}
 		})
 	}
@@ -131,7 +157,7 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 		wantSpecific string
 		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon},
 		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
@@ -196,7 +222,7 @@ func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
 	p.Refresh()
 	list, _ := providersPanelParts(t, p)
 
-	list.GetInputCapture()(runeKey(views.KeyNew))
+	list.GetInputCapture()(specialKey(views.KeyInsert))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Name", "gemini")
@@ -278,9 +304,8 @@ func TestProvidersPanel_Delete_Cancel(t *testing.T) {
 // TestProviderItemText replaces the old direct calls to the unexported
 // providerItemText: seeds a single provider through a real registry,
 // refreshes, and reads the rendered row back via the list's exported
-// GetItemText. Same wantEqualName shape as the original — a provider
-// with no capabilities renders as exactly its name; any capability
-// appends a tag, so the row no longer equals the bare name.
+// GetItemText. A provider with no capabilities renders as its name after
+// trimming the row inset; any capability adds a second column.
 func TestProviderItemText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -304,11 +329,15 @@ func TestProviderItemText(t *testing.T) {
 			p.Refresh()
 			list, _ := providersPanelParts(t, p)
 			got, _ := list.GetItemText(0)
+			if !strings.HasPrefix(got, " ") {
+				t.Errorf("got %q, want a leading one-cell inset", got)
+			}
+			trimmed := strings.TrimSpace(got)
 
-			if tc.wantEqualName && got != "test" {
+			if tc.wantEqualName && trimmed != "test" {
 				t.Errorf("got %q, want %q", got, "test")
 			}
-			if !tc.wantEqualName && got == "test" {
+			if !tc.wantEqualName && trimmed == "test" {
 				t.Error("expected capability tags to be appended")
 			}
 		})
@@ -377,5 +406,26 @@ func TestProvidersPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 				t.Errorf("Deep research line %q, want it to contain %q", lines[2], wantResearch)
 			}
 		})
+	}
+}
+
+func TestProvidersPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("test", true, true)))
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewProvidersPanel(app)
+	p.Refresh()
+	_, info := providersPanelParts(t, p)
+
+	lines := strings.Split(info.GetText(true), "\n")
+	wantValues := []string{"test", "yes", "yes"}
+	if len(lines) != len(wantValues) {
+		t.Fatalf("got %d detail lines, want %d: %q", len(lines), len(wantValues), lines)
+	}
+	for i, line := range lines {
+		if got := strings.Index(line, wantValues[i]); got != 14 {
+			t.Errorf("line %d value starts at %d, want 14: %q", i, got, line)
+		}
 	}
 }

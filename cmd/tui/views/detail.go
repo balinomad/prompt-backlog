@@ -3,7 +3,6 @@ package views
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
@@ -17,17 +16,14 @@ const projectColumnWidth = 14
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-// DetailPanel occupies the right side of the screen. The upper section lists
-// the selected account's sessions (topic, project, queue); the lower section
-// shows static account information (user, provider, pause state, granted
-// projects).
+// DetailPanel occupies the right side of the screen and lists the selected
+// account's sessions (topic, project, queue). Static account information is
+// shown by AccountInfoPanel below it.
 type DetailPanel struct {
-	*tview.Flex
-	sessionsList *tview.List
-	infoView     *tview.TextView
-	app          App
-	account      *model.Account   // currently displayed account; may be nil
-	sessions     []*model.Session // mirrors sessionsList items; rebuilt on Refresh
+	*tview.List
+	app      App
+	account  *model.Account   // currently displayed account; may be nil
+	sessions []*model.Session // mirrors list items; rebuilt on Refresh
 }
 
 // NewDetailPanel constructs the detail panel. Call Refresh after the
@@ -37,20 +33,9 @@ func NewDetailPanel(app App) *DetailPanel {
 	list.SetBorder(true)
 	list.SetTitle(" Sessions ")
 
-	info := tview.NewTextView().SetDynamicColors(true)
-	info.SetBorder(true)
-	info.SetTitle(" Account ")
-
-	flex := tview.NewFlex().
-		SetDirection(tview.FlexRow).
-		AddItem(list, 0, 1, true).
-		AddItem(info, 8, 0, false) // fixed 8-row info panel (4 content lines + border + spare)
-
 	p := &DetailPanel{
-		Flex:         flex,
-		sessionsList: list,
-		infoView:     info,
-		app:          app,
+		List: list,
+		app:  app,
 	}
 
 	wirePanelFocus(list, func() {
@@ -72,7 +57,7 @@ func (p *DetailPanel) SetAccount(acc *model.Account) {
 // Selected returns the currently highlighted session, or nil when the list
 // is empty or no account is selected.
 func (p *DetailPanel) Selected() *model.Session {
-	idx := p.sessionsList.GetCurrentItem()
+	idx := p.GetCurrentItem()
 	if idx < 0 || idx >= len(p.sessions) {
 		return nil
 	}
@@ -101,7 +86,7 @@ func (p *DetailPanel) Refresh() {
 		prevID, hadPrev = s.ID(), true
 	}
 
-	p.sessionsList.Clear()
+	p.Clear()
 	p.sessions = nil
 	if acc != nil {
 		sessions, err := svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
@@ -109,7 +94,7 @@ func (p *DetailPanel) Refresh() {
 			p.sessions = sessions
 		}
 		for _, s := range p.sessions {
-			p.sessionsList.AddItem(sessionItemText(s), "", 0, nil)
+			p.AddItem(sessionItemText(s), "", 0, nil)
 		}
 	}
 
@@ -118,77 +103,30 @@ func (p *DetailPanel) Refresh() {
 	if hadPrev {
 		for i, s := range p.sessions {
 			if s.ID() == prevID {
-				p.sessionsList.SetCurrentItem(i)
+				p.SetCurrentItem(i)
 				restored = true
 				break
 			}
 		}
 	}
 	if !restored && len(p.sessions) > 0 {
-		p.sessionsList.SetCurrentItem(0)
+		p.SetCurrentItem(0)
 	}
-
-	p.renderInfo(acc)
-}
-
-// ── Private: rendering ────────────────────────────────────────────────────────
-
-func (p *DetailPanel) renderInfo(acc *model.Account) {
-	if acc == nil {
-		p.infoView.SetText("  (no account selected)")
-		return
-	}
-	svc := p.app.Service()
-	email := acc.UserEmail()
-	provider := acc.ProviderName()
-
-	userName := email
-	if u := svc.User(email); u != nil {
-		userName = u.Name()
-	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "  [::b]User[-::-]     %s (%s)\n", tview.Escape(userName), tview.Escape(email))
-	fmt.Fprintf(&sb, "  [::b]Provider[-::-] %s\n", tview.Escape(provider))
-	fmt.Fprintf(&sb, "  [::b]Paused[-::-]   %s\n", pauseStatusText(acc.PauseUntil(), time.Now()))
-
-	projects, err := svc.AccountProjects(email, provider)
-	if err != nil {
-		// Account was already validated above; a resolution error here would
-		// indicate a concurrent deletion. Render with no projects rather
-		// than surfacing a status message from a passive read
-		projects = nil
-	}
-	if len(projects) == 0 {
-		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", dimText("none"))
-	} else {
-		// No sessions, or no project on the latest one, leaves order and
-		// colour untouched below.
-		latestProjectName := latestSessionProjectName(p.sessions)
-
-		names := make([]string, 0, len(projects))
-		var highlighted string
-		for _, proj := range projects {
-			if proj.Name() == latestProjectName {
-				highlighted = fmt.Sprintf("[green]%s[-]", tview.Escape(proj.Name()))
-				continue
-			}
-			names = append(names, tview.Escape(proj.Name()))
-		}
-		if highlighted != "" {
-			names = append([]string{highlighted}, names...)
-		}
-		fmt.Fprintf(&sb, "  [::b]Projects[-::-] %s", strings.Join(names, ", "))
-	}
-
-	p.infoView.SetText(sb.String())
 }
 
 // ── Private: key handling ─────────────────────────────────────────────────────
 
 func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() == KeyDelete {
+	switch event.Key() {
+	case KeyEdit:
+		return p.handleEdit()
+	case KeyInsert:
+		return p.handleNew()
+	case KeyDelete:
 		return p.handleDelete()
+	default:
+		// Every other special key falls through to dispatchPanelKey and
+		// the rune switch below.
 	}
 
 	if result, ok := dispatchPanelKey(event, p.app, HintsDetailPanelSpecific, HintsDetailPanelCommon); ok {
@@ -196,10 +134,6 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	switch event.Rune() {
-	case KeyNew:
-		return p.handleNew()
-	case KeySessionFields:
-		return p.handleEdit()
 	case KeyQueue:
 		return p.handleQueue()
 	case KeyToggle:
@@ -311,17 +245,164 @@ func (p *DetailPanel) handleToggle() *tcell.EventKey {
 	return nil
 }
 
-// ── Package-level helpers ─────────────────────────────────────────────────────
+// ── AccountInfoPanel ──────────────────────────────────────────────────────────
 
-// latestSessionProjectName returns the project name of the latest session in
-// sessions, or "" when there are no sessions. AccountSessions sorts by ID, so
-// the last entry is the most recently added session.
-func latestSessionProjectName(sessions []*model.Session) string {
-	if len(sessions) == 0 {
-		return ""
-	}
-	return sessions[len(sessions)-1].ProjectName()
+// AccountInfoPanel shows static information for the selected account. It
+// spans the full width below the Accounts and Sessions panels.
+type AccountInfoPanel struct {
+	*tview.TextView
+	app     App
+	account *model.Account
 }
+
+// NewAccountInfoPanel constructs the account information panel. Call
+// SetAccount after the accounts panel has provided a selection.
+func NewAccountInfoPanel(app App) *AccountInfoPanel {
+	info := newInfoView("Account Details")
+
+	return &AccountInfoPanel{
+		TextView: info,
+		app:      app,
+	}
+}
+
+// SetAccount sets the account to display and refreshes the panel.
+func (p *AccountInfoPanel) SetAccount(acc *model.Account) {
+	p.account = acc
+	p.renderInfo(acc)
+}
+
+// RequiredHeight returns the outer height needed to render the current text
+// at outerWidth, including the border and any wrapped lines.
+func (p *AccountInfoPanel) RequiredHeight(outerWidth int) int {
+	return infoTextHeight(p.GetText(false), outerWidth)
+}
+
+func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
+	if acc == nil {
+		p.SetText("(no account selected)")
+		return
+	}
+	svc := p.app.Service()
+	email := acc.UserEmail()
+	provider := acc.ProviderName()
+
+	userName := email
+	if u := svc.User(email); u != nil {
+		userName = u.Name()
+	}
+
+	var sb strings.Builder
+
+	projects, err := svc.AccountProjects(email, provider)
+	if err != nil {
+		// The account was resolved by the accounts panel; a resolution error
+		// here would indicate a concurrent deletion. Render with no projects
+		// rather than surfacing a status message from a passive read.
+		projects = nil
+	}
+	projectsText := dimText("none")
+	if len(projects) > 0 {
+		sessions, err := svc.AccountSessions(email, provider)
+		if err != nil {
+			sessions = nil
+		}
+		latestProjectName := latestSessionProjectName(sessions)
+
+		names := make([]string, 0, len(projects))
+		var highlighted string
+		for _, proj := range projects {
+			if proj.Name() == latestProjectName {
+				highlighted = fmt.Sprintf("[green]%s[-]", tview.Escape(proj.Name()))
+				continue
+			}
+			names = append(names, tview.Escape(proj.Name()))
+		}
+		if highlighted != "" {
+			names = append([]string{highlighted}, names...)
+		}
+		projectsText = strings.Join(names, ", ")
+	}
+	writeInfoRows(&sb, []infoRow{
+		{label: "User", value: fmt.Sprintf("%s (%s)", tview.Escape(userName), tview.Escape(email))},
+		{label: "Provider", value: tview.Escape(provider)},
+		{label: "Projects", value: projectsText},
+	})
+
+	p.SetText(strings.TrimSuffix(sb.String(), "\n"))
+}
+
+// ── Info view helpers ─────────────────────────────────────────────────────────
+
+const (
+	// infoPadding keeps every detail line, including wrapped lines, clear of
+	// the panel frame.
+	infoPadding = 1
+	// minListPanelHeight keeps the list usable above a detail panel.
+	minListPanelHeight = 3
+)
+
+// infoRow is one label and value pair in a detail panel.
+type infoRow struct {
+	label string
+	value string
+}
+
+// newInfoView returns a detail text view with the shared border, inset, and
+// title spacing.
+func newInfoView(title string) *tview.TextView {
+	info := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(true).
+		SetWordWrap(true)
+	info.SetBorder(true)
+	info.SetBorderPadding(0, 0, infoPadding, infoPadding)
+	info.SetTitle(" " + title + " ")
+	return info
+}
+
+// writeInfoRows appends aligned detail rows to sb. The label column is sized
+// from the longest label in rows.
+func writeInfoRows(sb *strings.Builder, rows []infoRow) {
+	width := 0
+	for _, row := range rows {
+		width = max(width, len(row.label))
+	}
+	for _, row := range rows {
+		sb.WriteString("[::b]")
+		sb.WriteString(row.label)
+		sb.WriteString("[-::-]")
+		sb.WriteString(strings.Repeat(" ", max(1, width-len(row.label)+1)))
+		sb.WriteString(row.value)
+		sb.WriteByte('\n')
+	}
+}
+
+// infoTextHeight returns the outer height needed to render text at outerWidth,
+// including the border. Left and right padding reduce the wrapping width.
+func infoTextHeight(text string, outerWidth int) int {
+	innerWidth := max(1, outerWidth-2-2*infoPadding)
+	text = strings.TrimRight(text, "\n")
+	lines := tview.WordWrap(text, innerWidth)
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return len(lines) + 2
+}
+
+// fitInfoHeight clamps required so the other panel keeps minOtherHeight rows.
+func fitInfoHeight(required, available, minOtherHeight int) int {
+	if available <= 0 {
+		return 0
+	}
+	maxHeight := available - minOtherHeight
+	if maxHeight < 1 {
+		return 0
+	}
+	return min(required, maxHeight)
+}
+
+// ── Package-level helpers ─────────────────────────────────────────────────────
 
 // sessionItemText formats a session row for the list: topic, project, and
 // queue length. A pending trailing "continue" prompt — the queue-based
@@ -340,7 +421,7 @@ func sessionItemText(s *model.Session) string {
 	if isContinuePending(queue) {
 		info = fmt.Sprintf("[yellow]%s ↻[-]", info)
 	}
-	return fmt.Sprintf("%-28s  %-16s  %s", topic, proj, info)
+	return insetListRow(fmt.Sprintf("%-28s  %-16s  %s", topic, proj, info))
 }
 
 // isContinuePending reports whether queue's final entry is the "continue"
@@ -375,4 +456,14 @@ func truncate(s string, maxRunes int) string {
 // dimText wraps s in tview's dim color tag.
 func dimText(s string) string {
 	return "[::d]" + s + "[-::-]"
+}
+
+// latestSessionProjectName returns the project name of the latest session in
+// sessions, or "" when there are no sessions. AccountSessions sorts by ID, so
+// the last entry is the most recently added session.
+func latestSessionProjectName(sessions []*model.Session) string {
+	if len(sessions) == 0 {
+		return ""
+	}
+	return sessions[len(sessions)-1].ProjectName()
 }

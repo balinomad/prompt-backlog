@@ -14,6 +14,96 @@ import (
 
 // ── Form helper ───────────────────────────────────────────────────────────────
 
+const (
+	formFieldWidth = 40
+	formNameWidth  = 30
+	formPauseWidth = 20
+	// formMaxWidth caps dynamic width at the former fixed modal width.
+	formMaxWidth = 64
+)
+
+// newForm returns a bordered form with a spaced title.
+func newForm(title string) *tview.Form {
+	form := tview.NewForm()
+	form.SetBorder(true)
+	form.SetTitle(" " + title + " ")
+	return form
+}
+
+// centeredFormLabel is a form item that draws one centered line of text.
+type centeredFormLabel struct {
+	*tview.TextView
+}
+
+// newCenteredFormLabel returns a centered, non-focusable form label.
+func newCenteredFormLabel(text string) *centeredFormLabel {
+	label := tview.NewTextView().
+		SetTextAlign(tview.AlignCenter).
+		SetWrap(false).
+		SetScrollable(false)
+	label.SetText(text)
+	label.SetSize(1, 0)
+	return &centeredFormLabel{TextView: label}
+}
+
+// SetFormAttributes ignores the form label column so the text can center
+// across the full row.
+func (l *centeredFormLabel) SetFormAttributes(_ int, labelColor, bgColor, fieldTextColor, fieldBgColor tcell.Color) tview.FormItem {
+	l.TextView.SetFormAttributes(0, labelColor, bgColor, fieldTextColor, fieldBgColor)
+	return l
+}
+
+// GetFieldWidth reports the label text width so the form can size around it.
+func (l *centeredFormLabel) GetFieldWidth() int {
+	return tview.TaggedStringWidth(l.GetText(false))
+}
+
+// formHeight returns the height that fits form's items, one button row, the
+// border, and the form's default vertical padding. Each item contributes its
+// field height plus the default one-row padding.
+func formHeight(form *tview.Form) int {
+	height := 4 // Border and default vertical padding.
+	for i := range form.GetFormItemCount() {
+		itemHeight := form.GetFormItem(i).GetFieldHeight()
+		if itemHeight <= 0 {
+			itemHeight = 1
+		}
+		height += itemHeight + 1
+	}
+	if form.GetButtonCount() > 0 {
+		height++
+	} else if form.GetFormItemCount() > 0 {
+		height--
+	}
+	return height
+}
+
+// formWidth returns the width needed to fit form's label and field columns,
+// its buttons, the border, and the form's horizontal padding.
+func formWidth(form *tview.Form) int {
+	maxLabel, maxField := 0, 0
+	for i := range form.GetFormItemCount() {
+		item := form.GetFormItem(i)
+		maxLabel = max(maxLabel, tview.TaggedStringWidth(item.GetLabel()))
+		maxField = max(maxField, item.GetFieldWidth())
+	}
+
+	buttonsWidth := 0
+	for i := range form.GetButtonCount() {
+		buttonsWidth += tview.TaggedStringWidth(form.GetButton(i).GetLabel()) + 4 + 1
+	}
+	if buttonsWidth > 0 {
+		buttonsWidth--
+	}
+
+	return max(maxLabel+1+maxField, buttonsWidth) + 4
+}
+
+// formModal centers form at its content width and height.
+func formModal(form *tview.Form) tview.Primitive {
+	return centeredModal(form, min(formWidth(form), formMaxWidth), formHeight(form))
+}
+
 // addCtrlS adds Ctrl+S as an additional save trigger to a form.
 // The form's own button handles the primary click path; this handles keyboard.
 func addCtrlS(form *tview.Form, save func()) {
@@ -61,16 +151,14 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 	isEdit := session != nil
 	initTopic, initProjectIdx := sessionFormInitial(session, projectNames)
 
-	form := tview.NewForm()
-	form.SetBorder(true)
+	title := "New Session"
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Session: %s / %s ", tview.Escape(email), tview.Escape(provider)))
-	} else {
-		form.SetTitle(" New Session ")
+		title = fmt.Sprintf("Edit Session: %s / %s", tview.Escape(email), tview.Escape(provider))
 	}
+	form := newForm(title)
 
 	form.AddDropDown("Project", escapeAll(projectNames), initProjectIdx, nil)
-	form.AddInputField("Topic", initTopic, 40, nil, nil)
+	form.AddInputField("Topic", initTopic, formFieldWidth, nil, nil)
 
 	save := func() {
 		projectDropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
@@ -129,7 +217,7 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 11)
+	return formModal(form)
 }
 
 // sessionFormProjectNames returns NewSessionForm's Project dropdown
@@ -189,35 +277,27 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 		initInstr = project.Instructions()
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
+	title := "New Project"
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Project: %s ", tview.Escape(initName)))
-	} else {
-		form.SetTitle(" New Project ")
+		title = "Edit Project: " + tview.Escape(initName)
 	}
+	form := newForm(title)
 
-	form.AddInputField("Name", initName, 40, nil, nil)
-	form.AddInputField("Description", initDesc, 40, nil, nil)
-	form.AddInputField("Instructions", initInstr, 40, nil, nil)
-
-	if isEdit {
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
-		if !ok {
-			return errorModal("Internal error: failed to initialize form fields.", onClose)
-		}
-		nameField.SetDisabled(true)
+	if !isEdit {
+		form.AddInputField("Name", initName, formFieldWidth, nil, nil)
 	}
+	form.AddTextArea("Description", initDesc, formFieldWidth, 2, 0, nil)
+	form.AddTextArea("Instructions", initInstr, formFieldWidth, 2, 0, nil)
 
 	save := func() {
-		descField, ok := form.GetFormItemByLabel("Description").(*tview.InputField)
+		descField, ok := form.GetFormItemByLabel("Description").(*tview.TextArea)
 		if !ok {
 			app.SetStatus("[red]internal error: Description field missing[-]")
 			return
 		}
 		descVal := strings.TrimSpace(descField.GetText())
 
-		instrField, ok := form.GetFormItemByLabel("Instructions").(*tview.InputField)
+		instrField, ok := form.GetFormItemByLabel("Instructions").(*tview.TextArea)
 		if !ok {
 			app.SetStatus("[red]internal error: Instructions field missing[-]")
 			return
@@ -260,7 +340,7 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 13)
+	return formModal(form)
 }
 
 // ── Provider form ─────────────────────────────────────────────────────────────
@@ -279,15 +359,13 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 		initHasDeepResearch = provider.HasDeepResearch()
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
+	title := "New Provider"
 	if isEdit {
-		form.SetTitle(fmt.Sprintf(" Edit Provider: %s ", tview.Escape(initName)))
-	} else {
-		form.SetTitle(" New Provider ")
+		title = "Edit Provider: " + tview.Escape(initName)
 	}
+	form := newForm(title)
 
-	form.AddInputField("Name", initName, 30, nil, nil)
+	form.AddInputField("Name", initName, formNameWidth, nil, nil)
 	form.AddCheckbox("Supports projects", initHasProjects, nil)
 	form.AddCheckbox("Supports deep research", initHasDeepResearch, nil)
 
@@ -350,7 +428,7 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 12)
+	return formModal(form)
 
 }
 
@@ -361,11 +439,11 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 // so create mode resolves or creates the user on demand via
 // Service.CreateAccount, the strict-account counterpart to StartSession's
 // on-demand path. Edit mode changes only the account's own mutable field
-// (pause state); it does not touch the underlying user's name, since that
-// belongs to a different aggregate and would be a different form's job.
-// Provider is a required precondition but is never created implicitly: if
-// none exist, an error modal is returned instead of an empty dropdown.
-// When account is nil a new account is created; otherwise it is edited.
+// (pause state); the Account… button opens the existing user form for the
+// underlying user's name. Provider is a required precondition but is never
+// created implicitly: if none exist, an error modal is returned instead of
+// an empty dropdown. When account is nil a new account is created;
+// otherwise it is edited.
 func NewAccountForm(app App, account *model.Account, onClose func()) tview.Primitive {
 	if account != nil {
 		return accountEditForm(app, account, onClose)
@@ -376,34 +454,31 @@ func NewAccountForm(app App, account *model.Account, onClose func()) tview.Primi
 	return accountCreateForm(app, onClose)
 }
 
-// accountEditForm builds the edit-mode account form: pause state only.
-// The underlying user's name is a different aggregate's field and is not
-// touched here — see NewAccountForm's doc comment.
+// accountEditForm builds the edit-mode pause form. Provider and User are
+// read-only context; the Account… button opens the existing user form for
+// the underlying user's name.
 func accountEditForm(app App, account *model.Account, onClose func()) tview.Primitive {
 	email := account.UserEmail()
 	provider := account.ProviderName()
+	userName := email
+	if u := app.Service().User(email); u != nil && u.Name() != "" {
+		userName = u.Name()
+	}
 	var initPause string
 	if !account.PauseUntil().IsZero() {
 		initPause = model.FormatTime(account.PauseUntil())
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Edit Account: %s / %s ", tview.Escape(email), tview.Escape(provider)))
+	form := newForm("Edit Account")
 
-	form.AddInputField("Email", email, 40, nil, nil)
-	form.AddInputField("Provider", provider, 40, nil, nil)
-	form.AddInputField("Pause until", initPause, 20, nil, nil)
+	form.AddFormItem(newCenteredFormLabel(provider + " · " + userName))
+	form.AddInputField("Pause until", initPause, formPauseWidth, nil, nil)
 
-	emailField, ok1 := form.GetFormItemByLabel("Email").(*tview.InputField)
-	providerField, ok2 := form.GetFormItemByLabel("Provider").(*tview.InputField)
-	pauseField, ok3 := form.GetFormItemByLabel("Pause until").(*tview.InputField)
-	if !ok1 || !ok2 || !ok3 {
-		// We just added these fields, so this should theoretically never happen.
+	pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+	if !ok {
+		// We just added the field, so this should theoretically never happen.
 		return errorModal("Internal error: failed to initialize form fields.", onClose)
 	}
-	emailField.SetDisabled(true)
-	providerField.SetDisabled(true)
 	pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
 	pauseField.SetPlaceholder(model.FormatTime(time.Now()) + "  (leave empty to clear)")
 	pauseField.SetPlaceholderStyle(tcell.StyleDefault.
@@ -440,11 +515,21 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
+	form.AddButton("Account…", func() {
+		app.HideModal()
+		modal := NewUserForm(app, account, onClose)
+		if err := app.ShowModal(modal); err != nil {
+			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
+			return
+		}
+		app.SetHints(HintsFormSpecific, HintsFormCommon)
+	})
 	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 13)
+	return formModal(form)
 }
 
 // accountCreateForm builds the create-mode account form. Provider
@@ -465,13 +550,11 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 		userLabels[i+1] = fmt.Sprintf("%s (%s)", tview.Escape(u.Name()), tview.Escape(u.Email()))
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
-	form.SetTitle(" New Account ")
+	form := newForm("New Account")
 
 	form.AddDropDown("User", userLabels, 0, nil)
-	form.AddInputField("Email", "", 40, nil, nil)
-	form.AddInputField("Name", "", 40, nil, nil)
+	form.AddInputField("Email", "", formFieldWidth, nil, nil)
+	form.AddInputField("Name", "", formFieldWidth, nil, nil)
 	// providerNames stays raw for save()'s idx-based lookup below; the
 	// dropdown only sees an escaped display copy.
 	form.AddDropDown("Provider", escapeAll(providerNames), 0, nil)
@@ -544,7 +627,7 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 16)
+	return formModal(form)
 }
 
 // ── User form ─────────────────────────────────────────────────────────────────
@@ -563,12 +646,10 @@ func NewUserForm(app App, account *model.Account, onClose func()) tview.Primitiv
 		return errorModal("User no longer exists.", onClose)
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Rename User: %s ", tview.Escape(email)))
+	form := newForm("Rename User: " + tview.Escape(email))
 
-	form.AddInputField("Email", email, 40, nil, nil)
-	form.AddInputField("Name", u.Name(), 40, nil, nil)
+	form.AddInputField("Email", email, formFieldWidth, nil, nil)
+	form.AddInputField("Name", u.Name(), formFieldWidth, nil, nil)
 
 	emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
 	if !ok {
@@ -599,37 +680,39 @@ func NewUserForm(app App, account *model.Account, onClose func()) tview.Primitiv
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 11)
+	return formModal(form)
 }
 
-// ── Grant / Revoke forms ──────────────────────────────────────────────────────
+// ── Grant form ───────────────────────────────────────────────────────────────
 
 // NewGrantForm returns a form for granting project's access to an account.
-// This is not an entity-creation form — both project and account already
-// exist; it manages the many-to-many link between them, which is why it
-// legitimately references both aggregates by name (AddProjectToAccount is
-// itself keyed on both sides of an existing pair, unlike a create-form
-// composing an on-demand prerequisite).
+// The picker lists only accounts whose provider supports projects and that do
+// not already have access. This is not an entity-creation form: both project
+// and account already exist; it manages the many-to-many link between them,
+// which is why it legitimately references both aggregates by name
+// (AddProjectToAccount is itself keyed on both sides of an existing pair,
+// unlike a create-form composing an on-demand prerequisite).
 func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primitive {
 	if project == nil {
 		return errorModal("No project selected.", onClose)
 	}
 
-	accounts := app.Service().Accounts() // already sorted by composite key
+	accounts, err := grantCandidates(app.Service(), project)
+	if err != nil {
+		return errorModal(fmt.Sprintf("Could not load project accounts: %v", err), onClose)
+	}
 	if len(accounts) == 0 {
-		return errorModal("No accounts exist yet.\nCreate an account before granting project access.", onClose)
+		return errorModal("No eligible accounts are available to grant.\nAccounts must support projects and not already have access.", onClose)
 	}
+
+	providerWidth, nameWidth := projectAccountWidths(app.Service())
 	labels := make([]string, len(accounts))
-	for i, a := range accounts {
-		labels[i] = fmt.Sprintf("%s/%s", a.UserEmail(), a.ProviderName())
+	for i, acc := range accounts {
+		labels[i] = projectAccountText(app.Service(), acc, providerWidth, nameWidth)
 	}
 
-	form := tview.NewForm()
-	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Grant %q to Account ", tview.Escape(project.Name())))
+	form := newForm(fmt.Sprintf("Grant %q to Account", tview.Escape(project.Name())))
 
-	// labels is only ever read back by index (below) — safe to escape
-	// for display without a raw copy.
 	form.AddDropDown("Account", escapeAll(labels), 0, nil)
 
 	save := func() {
@@ -662,61 +745,34 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
 
-	return centeredModal(form, 10)
+	return formModal(form)
 }
 
-// NewRevokeForm returns a form for revoking project's access from an
-// account currently granted it. See NewGrantForm for why this form
-// legitimately references both aggregates.
-func NewRevokeForm(app App, project *model.Project, onClose func()) tview.Primitive {
-	if project == nil {
-		return errorModal("No project selected.", onClose)
+// grantCandidates returns the accounts eligible for a new grant to project:
+// their provider must support projects, and they must not already have access.
+// The result is ordered alphabetically by provider and user name.
+func grantCandidates(svc *service.Service, project *model.Project) ([]*model.Account, error) {
+	granted, err := svc.ProjectAccounts(project.Name())
+	if err != nil {
+		return nil, fmt.Errorf("load project accounts: %w", err)
+	}
+	grantedKeys := make(map[model.AccountKey]struct{}, len(granted))
+	for _, acc := range granted {
+		grantedKeys[acc.Key()] = struct{}{}
 	}
 
-	accounts, err := app.Service().ProjectAccounts(project.Name())
-	if err != nil || len(accounts) == 0 {
-		return errorModal(fmt.Sprintf("Project %q is not granted to any account.", project.Name()), onClose)
-	}
-	labels := make([]string, len(accounts))
-	for i, a := range accounts {
-		labels[i] = fmt.Sprintf("%s/%s", a.UserEmail(), a.ProviderName())
-	}
-
-	form := tview.NewForm()
-	form.SetBorder(true)
-	form.SetTitle(fmt.Sprintf(" Revoke %q from Account ", tview.Escape(project.Name())))
-
-	form.AddDropDown("Account", escapeAll(labels), 0, nil)
-
-	save := func() {
-		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
-		if !ok {
-			app.SetStatus("[red]internal error: Account dropdown missing[-]")
-			return
+	all := svc.Accounts()
+	candidates := make([]*model.Account, 0, len(all))
+	for _, acc := range all {
+		provider := svc.Provider(acc.ProviderName())
+		if provider == nil || !provider.HasProjects() {
+			continue
 		}
-		idx, _ := dropDown.GetCurrentOption()
-		if idx < 0 || idx >= len(accounts) {
-			app.SetStatus("[red]internal error: invalid account selection[-]")
-			return
+		if _, ok := grantedKeys[acc.Key()]; ok {
+			continue
 		}
-		email := accounts[idx].UserEmail()
-		acctProvider := accounts[idx].ProviderName()
-		name := project.Name()
-
-		if err := app.Mutate(func(s *service.Service) error {
-			return s.RevokeProject(email, acctProvider, name)
-		}); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-			return
-		}
-		onClose()
+		candidates = append(candidates, acc)
 	}
-
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return centeredModal(form, 10)
+	sortProjectAccounts(svc, candidates)
+	return candidates, nil
 }

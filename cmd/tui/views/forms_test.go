@@ -1,6 +1,8 @@
 package views_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +93,18 @@ func setInputField(t *testing.T, form *tview.Form, label, text string) {
 		t.Fatalf("expected %q to be *tview.InputField, got %T", label, item)
 	}
 	field.SetText(text)
+}
+
+// setTextArea sets the text of the *tview.TextArea labelled label on form,
+// failing the test if the label does not resolve to a TextArea.
+func setTextArea(t *testing.T, form *tview.Form, label, text string) {
+	t.Helper()
+	item := form.GetFormItemByLabel(label)
+	field, ok := item.(*tview.TextArea)
+	if !ok {
+		t.Fatalf("expected %q to be *tview.TextArea, got %T", label, item)
+	}
+	field.SetText(text, true)
 }
 
 // setCheckbox sets the checked state of the *tview.Checkbox labelled
@@ -549,17 +563,17 @@ func TestNewProjectForm_ReturnsForm(t *testing.T) {
 	}
 }
 
-func TestNewProjectForm_NameFieldDisabledState(t *testing.T) {
+func TestNewProjectForm_NameField(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
 
 	cases := []struct {
 		name        string
 		projectName string // empty = nil project = create mode
-		wantAccepts bool
+		wantName    bool
 	}{
-		{"create mode: enabled", "", true},
-		{"edit mode: disabled", "Alpha", false},
+		{"create mode: editable name", "", true},
+		{"edit mode: no name field", "Alpha", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -569,12 +583,52 @@ func TestNewProjectForm_NameFieldDisabledState(t *testing.T) {
 				proj = app.svc.Project(tc.projectName)
 			}
 			form := formFromCenteredModal(t, views.NewProjectForm(app, proj, func() {}))
-			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+			item := form.GetFormItemByLabel("Name")
+			if !tc.wantName {
+				if item != nil {
+					t.Error("edit mode should not repeat the project name as a field")
+				}
+				return
+			}
+			nameField, ok := item.(*tview.InputField)
 			if !ok {
 				t.Fatal("expected Name *tview.InputField")
 			}
-			if got := inputFieldAcceptsText(nameField); got != tc.wantAccepts {
-				t.Errorf("accepts text: got %v, want %v", got, tc.wantAccepts)
+			if !inputFieldAcceptsText(nameField) {
+				t.Error("Name field should accept text in create mode")
+			}
+		})
+	}
+}
+
+func TestNewProjectForm_MultilineFields(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+
+	cases := []struct {
+		name        string
+		projectName string // empty = nil project = create mode
+	}{
+		{"create mode", ""},
+		{"edit mode", "Alpha"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var proj *model.Project
+			if tc.projectName != "" {
+				proj = app.svc.Project(tc.projectName)
+			}
+			form := formFromCenteredModal(t, views.NewProjectForm(app, proj, func() {}))
+			for _, label := range []string{"Description", "Instructions"} {
+				item := form.GetFormItemByLabel(label)
+				area, ok := item.(*tview.TextArea)
+				if !ok {
+					t.Fatalf("expected %q to be *tview.TextArea, got %T", label, item)
+				}
+				if got := area.GetFieldHeight(); got != 2 {
+					t.Errorf("%s field height = %d, want 2", label, got)
+				}
 			}
 		})
 	}
@@ -592,8 +646,8 @@ func TestNewProjectForm_Save_Edit(t *testing.T) {
 		app := &mockApp{svc: newTestService(t, reg)}
 		form := formFromCenteredModal(t, views.NewProjectForm(app, app.svc.Project("Alpha"), func() {}))
 
-		setInputField(t, form, "Description", "new desc")
-		setInputField(t, form, "Instructions", "new inst")
+		setTextArea(t, form, "Description", "new desc")
+		setTextArea(t, form, "Instructions", "new inst")
 		triggerSave(t, form)
 
 		got := app.svc.Project("Alpha")
@@ -633,8 +687,8 @@ func TestNewProjectForm_Save_Create(t *testing.T) {
 		form := formFromCenteredModal(t, views.NewProjectForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "Gamma")
-		setInputField(t, form, "Description", "desc")
-		setInputField(t, form, "Instructions", "inst")
+		setTextArea(t, form, "Description", "desc")
+		setTextArea(t, form, "Instructions", "inst")
 		triggerSave(t, form)
 
 		got := app.svc.Project("Gamma")
@@ -879,7 +933,7 @@ func TestNewAccountForm(t *testing.T) {
 	}
 }
 
-func TestAccountEditForm_EmailProviderDisabled(t *testing.T) {
+func TestAccountEditForm_Layout(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
 	acc, err := app.svc.Account("alice@example.com", "claude")
@@ -887,20 +941,78 @@ func TestAccountEditForm_EmailProviderDisabled(t *testing.T) {
 
 	form := formFromCenteredModal(t, views.NewAccountForm(app, acc, func() {}))
 
-	emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
-	if !ok {
-		t.Fatal("expected Email *tview.InputField")
-	}
-	if inputFieldAcceptsText(emailField) {
-		t.Error("Email field should not accept text in edit mode")
+	if got := strings.TrimSpace(form.GetTitle()); got != "Edit Account" {
+		t.Errorf("title = %q, want %q", got, "Edit Account")
 	}
 
-	providerField, ok := form.GetFormItemByLabel("Provider").(*tview.InputField)
-	if !ok {
-		t.Fatal("expected Provider *tview.InputField")
+	if got := form.GetFormItemCount(); got != 2 {
+		t.Fatalf("form item count = %d, want 2", got)
 	}
-	if inputFieldAcceptsText(providerField) {
-		t.Error("Provider field should not accept text in edit mode")
+	label, ok := form.GetFormItem(0).(interface{ GetText(bool) string })
+	if !ok {
+		t.Fatal("expected centered label form item")
+	}
+	if got := label.GetText(false); got != "claude · Alice" {
+		t.Errorf("centered label = %q, want %q", got, "claude · Alice")
+	}
+	if got := form.GetFormItem(1).GetLabel(); got != "Pause until" {
+		t.Errorf("form item 1 label = %q, want %q", got, "Pause until")
+	}
+	if item := form.GetFormItemByLabel("Provider"); item != nil {
+		t.Error("Provider should not be a separate form field")
+	}
+	if item := form.GetFormItemByLabel("User"); item != nil {
+		t.Error("User should not be a separate form field")
+	}
+
+	if idx := form.GetButtonIndex("Account…"); idx < 0 {
+		t.Error("expected Account… button")
+	}
+}
+
+func TestAccountEditForm_AccountButton(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	acc, err := app.svc.Account("alice@example.com", "claude")
+	must(t, err)
+
+	onClose := func() {
+		app.SetHints(views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
+		app.HideModal()
+	}
+	form := formFromCenteredModal(t, views.NewAccountForm(app, acc, onClose))
+
+	idx := form.GetButtonIndex("Account…")
+	if idx < 0 {
+		t.Fatal("expected Account… button")
+	}
+	form.GetButton(idx).InputHandler()(specialKey(tcell.KeyEnter), func(tview.Primitive) {})
+
+	if app.modal == nil {
+		t.Fatal("expected account details modal to be shown")
+	}
+	if app.hintsSpecific != views.HintsFormSpecific || app.hintsCommon != views.HintsFormCommon {
+		t.Errorf("hints after opening details: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsFormSpecific, views.HintsFormCommon)
+	}
+
+	details := formFromCenteredModal(t, app.modal)
+	if got := strings.TrimSpace(details.GetTitle()); got != "Rename User: alice@example.com" {
+		t.Errorf("details title = %q, want %q", got, "Rename User: alice@example.com")
+	}
+
+	setInputField(t, details, "Name", "Alice Smith")
+	triggerSave(t, details)
+
+	if app.modal != nil {
+		t.Error("expected modal to be hidden after a successful save")
+	}
+	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
+		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
+			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
+	}
+	if got := app.svc.User("alice@example.com").Name(); got != "Alice Smith" {
+		t.Errorf("Name() = %q, want %q", got, "Alice Smith")
 	}
 }
 
@@ -1166,7 +1278,7 @@ func TestNewUserForm_Save(t *testing.T) {
 	})
 }
 
-// ── NewGrantForm / NewRevokeForm ──────────────────────────────────────────────
+// ── NewGrantForm ──────────────────────────────────────────────────────────────
 
 func TestNewGrantForm(t *testing.T) {
 	t.Parallel()
@@ -1204,6 +1316,15 @@ func TestNewGrantForm(t *testing.T) {
 			},
 			wantModal: false,
 		},
+		{
+			name: "no eligible accounts",
+			setup: func(t *testing.T) (*mockApp, *model.Project) {
+				t.Helper()
+				app := newMockApp(t)
+				return app, app.svc.Project("Alpha")
+			},
+			wantModal: true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1215,8 +1336,33 @@ func TestNewGrantForm(t *testing.T) {
 	}
 }
 
+// TestNewGrantForm_FiltersCandidates verifies the picker excludes accounts
+// that already have access and accounts whose provider does not support
+// projects.
+func TestNewGrantForm_FiltersCandidates(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	proj := app.svc.Project("Orphan")
+	form := formFromCenteredModal(t, views.NewGrantForm(app, proj, func() {}))
+
+	dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
+	if !ok {
+		t.Fatal("expected *tview.DropDown for Account")
+	}
+	if got := dropDown.GetOptionCount(); got != 1 {
+		t.Fatalf("option count: got %d, want 1", got)
+	}
+	_, text := dropDown.GetCurrentOption()
+	if !strings.Contains(text, "claude") || !strings.Contains(text, "Alice") {
+		t.Errorf("option = %q, want claude and Alice", text)
+	}
+	if strings.Contains(text, "chatgpt") || strings.Contains(text, "Bob") {
+		t.Errorf("option = %q, must not include the project-ineligible account", text)
+	}
+}
+
 // TestNewGrantForm_Save covers save()'s GrantProject call: the success
-// path, and AddProjectToAccount's own failure path (already assigned).
+// path and the Mutate failure path.
 func TestNewGrantForm_Save(t *testing.T) {
 	t.Parallel()
 
@@ -1226,7 +1372,7 @@ func TestNewGrantForm_Save(t *testing.T) {
 		proj := app.svc.Project("Orphan")
 		form := formFromCenteredModal(t, views.NewGrantForm(app, proj, func() {}))
 
-		setDropDown(t, form, "Account", 0) // accounts sorted by key: alice@example.com|claude first
+		setDropDown(t, form, "Account", 0) // only eligible candidate: alice|claude
 		triggerSave(t, form)
 
 		projects, err := app.svc.AccountProjects("alice@example.com", "claude")
@@ -1242,103 +1388,12 @@ func TestNewGrantForm_Save(t *testing.T) {
 		}
 	})
 
-	t.Run("failure: already granted", func(t *testing.T) {
+	t.Run("failure: mutate error", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // Alpha is already granted to alice|claude
-		proj := app.svc.Project("Alpha")
+		app := newMockApp(t) // Orphan is granted to no one
+		app.mutateErr = errors.New("save failed")
+		proj := app.svc.Project("Orphan")
 		form := formFromCenteredModal(t, views.NewGrantForm(app, proj, func() {}))
-
-		setDropDown(t, form, "Account", 0) // alice|claude
-		triggerSave(t, form)
-
-		if app.status == "" {
-			t.Error("expected a status message reporting the save failure")
-		}
-	})
-}
-
-func TestNewRevokeForm(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name      string
-		setup     func(t *testing.T) (*mockApp, *model.Project)
-		wantModal bool
-	}{
-		{
-			name: "nil project",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
-				t.Helper()
-				return newMockApp(t), nil
-			},
-			wantModal: true,
-		},
-		{
-			name: "project not granted to any account",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
-				t.Helper()
-				app := newMockApp(t)
-				return app, app.svc.Project("Orphan")
-			},
-			wantModal: true,
-		},
-		{
-			name: "project granted",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
-				t.Helper()
-				app := newMockApp(t)
-				return app, app.svc.Project("Alpha")
-			},
-			wantModal: false,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app, proj := tc.setup(t)
-			result := views.NewRevokeForm(app, proj, func() {})
-			assertFormOrModal(t, result, tc.wantModal)
-		})
-	}
-}
-
-// TestNewRevokeForm_Save covers save()'s RevokeProject call: the success
-// path, and RemoveProjectFromAccount's own failure path (the project is
-// in active use by a session).
-func TestNewRevokeForm_Save(t *testing.T) {
-	t.Parallel()
-
-	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-		app := newMockApp(t) // Beta is granted to alice|claude with no sessions using it
-		proj := app.svc.Project("Beta")
-		form := formFromCenteredModal(t, views.NewRevokeForm(app, proj, func() {}))
-
-		setDropDown(t, form, "Account", 0) // only alice|claude has Beta
-		triggerSave(t, form)
-
-		projects, err := app.svc.AccountProjects("alice@example.com", "claude")
-		must(t, err)
-		for _, p := range projects {
-			if p.Name() == "Beta" {
-				t.Error("Beta should have been revoked")
-			}
-		}
-	})
-
-	t.Run("failure: project in active use", func(t *testing.T) {
-		t.Parallel()
-		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
-		must(t, err)
-		must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
-		must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
-		_, err = reg.AddSession(acc, reg.Project("Alpha"), "", nil)
-		must(t, err)
-		app := &mockApp{svc: newTestService(t, reg)}
-		proj := app.svc.Project("Alpha")
-		form := formFromCenteredModal(t, views.NewRevokeForm(app, proj, func() {}))
 
 		setDropDown(t, form, "Account", 0)
 		triggerSave(t, form)

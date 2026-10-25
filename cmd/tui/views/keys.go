@@ -10,22 +10,12 @@ import (
 // ── Rune keys (single character, checked via event.Rune()) ───────────────────
 
 const (
-	// KeyNew creates a new item (account, session, project, or provider
-	// depending on focus).
-	KeyNew rune = 'n'
-
-	// KeySessionFields opens the edit form for a session's topic and
-	// project (DetailPanel only). Every other "edit" action uses KeyEdit
-	// (Enter); this one stays on its own key pending the session/queue
-	// key redesign — see TODO.md.
-	KeySessionFields rune = 'e'
-
 	// KeyToggle toggles a "continue" prompt entry on the selected session's
 	// queue. Space is the standard TUI convention for toggling item state.
 	KeyToggle rune = ' '
 
 	// KeyHelp opens the help overlay.
-	KeyHelp rune = 'h'
+	KeyHelp rune = '?'
 
 	// KeyQuit initiates the quit flow (confirmation modal).
 	KeyQuit rune = 'q'
@@ -38,18 +28,6 @@ const (
 
 	// KeyQueue opens the queue editor for the selected session.
 	KeyQueue rune = 'u'
-
-	// KeyGrant grants the selected project to an account (ProjectsPanel).
-	KeyGrant rune = '+'
-
-	// KeyRevoke revokes the selected project from an account (ProjectsPanel).
-	KeyRevoke rune = '-'
-
-	// KeyMoveUp moves the selected queue entry one position earlier.
-	KeyMoveUp rune = 'K'
-
-	// KeyMoveDown moves the selected queue entry one position later.
-	KeyMoveDown rune = 'J'
 )
 
 // ── Special keys (checked via event.Key()) ───────────────────────────────────
@@ -58,30 +36,32 @@ const (
 	// KeyEdit opens the edit form for the selected item.
 	KeyEdit = tcell.KeyEnter
 
-	// KeyDelete opens the delete confirmation modal for the selected item.
+	// KeyDelete deletes the selected item; in the ProjectsPanel account list
+	// it deletes the selected account from the project.
 	KeyDelete = tcell.KeyDelete
 
-	// KeyRenameUser opens the rename form for the user backing the
-	// selected account (AccountsPanel).
-	KeyRenameUser = tcell.KeyF2
+	// KeyInsert adds a new item; in the ProjectsPanel account list it opens
+	// the account picker to add an account to the selected project.
+	KeyInsert = tcell.KeyInsert
 
-	// KeySave submits the active form.
-	// Ctrl+S is borrowed from editor convention; it is unambiguous in forms.
+	// KeySave submits the active form. It is a keyboard convenience only:
+	// the Save button is the primary submit path, and the shortcut is not
+	// shown in the status bar or help overlay.
 	KeySave = tcell.KeyCtrlS
 
 	// KeyCancel closes the active form or modal without saving.
 	KeyCancel = tcell.KeyEscape
 
-	// KeyFocusNext rotates focus forward through the visible panels.
+	// KeyFocusNext moves focus to the next panel on multi-pane screens.
 	KeyFocusNext = tcell.KeyTab
 
-	// KeyFocusPrev rotates focus backward through the visible panels.
+	// KeyFocusPrev moves focus to the previous panel on multi-pane screens.
 	KeyFocusPrev = tcell.KeyBacktab
 )
 
 // ── Hint blocks ───────────────────────────────────────────────────────────────
 
-// hint is one "[key] description" fragment, e.g. "[::b]h[-::-] help".
+// hint is one "[key] description" fragment, e.g. "[::b]?[-::-] help".
 // label is string(KeyX) for a rune-bound key, or a fixed name ("Tab",
 // "Esc") for a tcell.Key-matched one.
 type hint struct {
@@ -152,9 +132,8 @@ func dispatchPanelKey(event *tcell.EventKey, app App, specific, common string) (
 // wirePanelFocus registers list's focus and blur callbacks: onFocus runs
 // first (e.g. status-bar hints), then the border turns yellow while list
 // has focus, reverting to the current default border color on blur.
-// Shared by every top-level panel, whose sole focus target is always a
-// *tview.List (see tview's Flex.Focus / Application.SetFocus). Modals
-// opened via App.ShowModal are out of scope here.
+// Shared by every focusable list, including both lists in ProjectsPanel.
+// Modals opened via App.ShowModal are out of scope here.
 func wirePanelFocus(list *tview.List, onFocus func()) {
 	list.SetFocusFunc(func() {
 		onFocus()

@@ -8,6 +8,7 @@ import (
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/apperr"
+	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
@@ -25,6 +26,14 @@ const AppName = "llm-desk"
 // last rebuilt.
 const pauseStatusRefreshInterval = time.Minute
 
+const (
+	// statusBarHeight is the fixed outer height reserved below the content.
+	statusBarHeight = 2
+	// minMainTopHeight keeps the Accounts and Sessions panels visible when
+	// the terminal is short and the Account panel needs more rows.
+	minMainTopHeight = 3
+)
+
 // Compile-time check that App implements views.App.
 var _ views.App = (*App)(nil)
 
@@ -36,13 +45,15 @@ type App struct {
 	svc       *service.Service
 	pages     *tview.Pages
 	mainFlex  *tview.Flex
+	mainTop   *tview.Flex
 	prevFocus tview.Primitive // saved by ShowModal, restored by HideModal
 
-	statusBar *views.StatusBar
-	accounts  *views.AccountsPanel
-	detail    *views.DetailPanel
-	providers *views.ProvidersPanel
-	projects  *views.ProjectsPanel
+	statusBar   *views.StatusBar
+	accounts    *views.AccountsPanel
+	detail      *views.DetailPanel
+	accountInfo *views.AccountInfoPanel
+	providers   *views.ProvidersPanel
+	projects    *views.ProjectsPanel
 }
 
 // New constructs the fully wired application around svc. The caller is
@@ -188,6 +199,11 @@ func (a *App) HideModal() {
 	}
 }
 
+// SetFocus moves keyboard focus to p.
+func (a *App) SetFocus(p tview.Primitive) {
+	a.tv.SetFocus(p)
+}
+
 // SwitchToProviders refreshes and shows the providers management screen.
 func (a *App) SwitchToProviders() {
 	a.providers.Refresh()
@@ -195,8 +211,8 @@ func (a *App) SwitchToProviders() {
 	a.tv.SetFocus(a.providers)
 }
 
-// SwitchToMain shows the main accounts + detail screen and returns focus to
-// the accounts list.
+// SwitchToMain shows the main accounts, sessions, and account-info screen
+// and returns focus to the accounts list.
 func (a *App) SwitchToMain() {
 	a.pages.SwitchToPage("main")
 	a.tv.SetFocus(a.accounts)
@@ -234,16 +250,26 @@ func (a *App) build() {
 	a.statusBar = views.NewStatusBar()
 	a.accounts = views.NewAccountsPanel(a)
 	a.detail = views.NewDetailPanel(a)
+	a.accountInfo = views.NewAccountInfoPanel(a)
 	a.providers = views.NewProvidersPanel(a)
 	a.projects = views.NewProjectsPanel(a)
 
-	// Wire account-list selection changes to the detail panel.
-	a.accounts.SetOnSelect(a.detail.SetAccount)
+	// Wire account-list selection changes to both account views.
+	a.accounts.SetOnSelect(func(acc *model.Account) {
+		a.detail.SetAccount(acc)
+		a.accountInfo.SetAccount(acc)
+	})
 
-	// Main split: accounts panel (sized to its widest row) beside detail panel.
-	a.mainFlex = tview.NewFlex().
+	// Top row: accounts panel (sized to its widest row) beside sessions.
+	a.mainTop = tview.NewFlex().
 		AddItem(a.accounts, 0, 1, true).
 		AddItem(a.detail, 0, 2, false)
+
+	// Main page: top row above a full-width account panel.
+	a.mainFlex = tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(a.mainTop, 0, 1, true).
+		AddItem(a.accountInfo, 5, 0, false)
 
 	// Pages for full-screen switching.
 	// The "modal" page is added/removed dynamically by ShowModal/HideModal.
@@ -256,10 +282,15 @@ func (a *App) build() {
 	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(a.pages, 0, 1, true).
-		AddItem(a.statusBar, 2, 0, false)
+		AddItem(a.statusBar, statusBarHeight, 0, false)
 
 	a.tv.SetRoot(root, true).EnableMouse(true)
 	a.tv.SetInputCapture(a.handleGlobalKeys)
+	a.tv.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		width, height := screen.Size()
+		a.resizeDetailPanels(width, height)
+		return false
+	})
 
 	// Initial data load.
 	a.refreshAll()
@@ -270,17 +301,17 @@ func (a *App) build() {
 	if len(a.svc.Providers()) == 0 {
 		a.SwitchToProviders()
 		a.statusBar.SetMessage(
-			"No providers configured — press [::b]n[-::-] to add one.")
+			"No providers configured — press [::b]Ins[-::-] to add one.")
 	}
 }
 
 // refreshAll repopulates every panel from the current in-memory registry.
 // Called after every successful mutation and when a modal is hidden.
 func (a *App) refreshAll() {
-	// a.detail is refreshed indirectly: accounts.Refresh() always invokes
-	// the onSelect callback wired to a.detail.SetAccount in build(), which
-	// calls a.detail.Refresh() itself. An explicit call here would run it
-	// a second time for no benefit.
+	// The detail and account-info panels are refreshed indirectly:
+	// accounts.Refresh() always invokes the onSelect callback wired in
+	// build(), which calls both SetAccount methods. Explicit calls here
+	// would run them a second time for no benefit.
 	a.refreshAccounts()
 	a.providers.Refresh()
 	a.projects.Refresh()
@@ -290,7 +321,45 @@ func (a *App) refreshAll() {
 // widest rendered row.
 func (a *App) refreshAccounts() {
 	a.accounts.Refresh()
-	a.mainFlex.ResizeItem(a.accounts, a.accounts.RequiredWidth(), 0)
+	a.mainTop.ResizeItem(a.accounts, a.accounts.RequiredWidth(), 0)
+}
+
+// resizeDetailPanels sizes every bottom detail panel to the height its
+// current text needs.
+func (a *App) resizeDetailPanels(screenWidth, screenHeight int) {
+	a.resizeAccountInfo(screenWidth, screenHeight)
+
+	available := screenHeight - statusBarHeight
+	if available <= 0 {
+		return
+	}
+	if a.providers != nil {
+		a.providers.ResizeInfo(screenWidth, available)
+	}
+	if a.projects != nil {
+		a.projects.ResizeInfo(screenWidth, available)
+	}
+}
+
+// resizeAccountInfo sizes the full-width account panel to the height its
+// current text needs at screenWidth. The top row keeps at least
+// minMainTopHeight rows so Accounts and Sessions remain usable on short
+// terminals.
+func (a *App) resizeAccountInfo(screenWidth, screenHeight int) {
+	if a.mainFlex == nil || a.accountInfo == nil {
+		return
+	}
+	available := screenHeight - statusBarHeight
+	if available <= 0 {
+		return
+	}
+	maxInfoHeight := available - minMainTopHeight
+	if maxInfoHeight < 1 {
+		a.mainFlex.ResizeItem(a.accountInfo, 0, 0)
+		return
+	}
+	infoHeight := min(a.accountInfo.RequiredHeight(screenWidth), maxInfoHeight)
+	a.mainFlex.ResizeItem(a.accountInfo, infoHeight, 0)
 }
 
 // handleGlobalKeys toggles focus between the accounts and detail panels on

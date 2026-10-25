@@ -116,13 +116,10 @@ func TestAccountsPanel_Refresh_CallsOnSelect(t *testing.T) {
 	}
 }
 
-// TestAccountsPanel_Refresh_ClearsDetailPanelOnLastAccountDeleted reaches
-// DetailPanel's unexported sessionsList/infoView fields via the exported
-// Flex.GetItem: DetailPanel puts its list at index 0, its info view at
-// index 1 (see detail.go). The info-text check is a stronger signal than
-// the old p.account != nil field check — it distinguishes "no account"
-// from "account with zero sessions" by what's actually rendered.
-func TestAccountsPanel_Refresh_ClearsDetailPanelOnLastAccountDeleted(t *testing.T) {
+// TestAccountsPanel_Refresh_ClearsDetailPanelsOnLastAccountDeleted wires
+// the accounts selection to both account views, then deletes the only
+// account. The sessions list and the account info panel must both clear.
+func TestAccountsPanel_Refresh_ClearsDetailPanelsOnLastAccountDeleted(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
@@ -133,28 +130,24 @@ func TestAccountsPanel_Refresh_ClearsDetailPanelOnLastAccountDeleted(t *testing.
 	app := &mockApp{svc: newTestService(t, reg)}
 	accounts := views.NewAccountsPanel(app)
 	detail := views.NewDetailPanel(app)
-	accounts.SetOnSelect(detail.SetAccount)
+	accountInfo := views.NewAccountInfoPanel(app)
+	accounts.SetOnSelect(func(acc *model.Account) {
+		detail.SetAccount(acc)
+		accountInfo.SetAccount(acc)
+	})
 	accounts.Refresh()
 
-	detailInfo, ok := detail.GetItem(1).(*tview.TextView)
-	if !ok {
-		t.Fatalf("expected *tview.TextView at index 1, got %T", detail.GetItem(1))
-	}
-	if strings.Contains(detailInfo.GetText(false), "no account selected") {
-		t.Fatal("detail panel should show the sole account before deletion")
+	if strings.Contains(accountInfo.GetText(false), "no account selected") {
+		t.Fatal("account info should show the sole account before deletion")
 	}
 
 	must(t, reg.DeleteAccount(acc))
 	accounts.Refresh()
 
-	if !strings.Contains(detailInfo.GetText(false), "no account selected") {
-		t.Error("detail panel should be cleared after the last account is deleted")
+	if !strings.Contains(accountInfo.GetText(false), "no account selected") {
+		t.Error("account info should be cleared after the last account is deleted")
 	}
-	detailList, ok := detail.GetItem(0).(*tview.List)
-	if !ok {
-		t.Fatalf("expected *tview.List at index 0, got %T", detail.GetItem(0))
-	}
-	if detailList.GetItemCount() != 0 {
+	if detail.GetItemCount() != 0 {
 		t.Error("detail panel's session list should be empty after the last account is deleted")
 	}
 }
@@ -197,10 +190,9 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 		wantSpecific string
 		wantCommon   string
 	}{
-		{"new", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon},
+		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon},
 		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
-		{"rename user", specialKey(views.KeyRenameUser), views.HintsFormSpecific, views.HintsFormCommon},
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
@@ -226,6 +218,23 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 	}
 }
 
+func TestAccountsPanel_F2NoModal(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+
+	capture := p.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
+	}
+	capture(specialKey(tcell.KeyF2))
+
+	if app.modal != nil {
+		t.Error("F2 should not open a modal")
+	}
+}
+
 func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -234,7 +243,6 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 	}{
 		{"delete", specialKey(views.KeyDelete)},
 		{"edit", specialKey(views.KeyEdit)},
-		{"rename user", specialKey(views.KeyRenameUser)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -286,9 +294,8 @@ func TestAccountItemText_EscapesProviderAndUserName(t *testing.T) {
 }
 
 // TestAccountItemText_DynamicColumnWidths verifies column widths are
-// computed per batch from the longest actual value present, not a fixed
-// size: two accounts with short provider/name values produce tightly
-// padded columns (a 2-space gap only), not a fixed, oversized one.
+// computed per batch from the longest rendered value, with the shared
+// separator and padding on every cell.
 func TestAccountItemText_DynamicColumnWidths(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
@@ -307,11 +314,11 @@ func TestAccountItemText_DynamicColumnWidths(t *testing.T) {
 
 	// Accounts() sorts by composite key ("email|provider"); user1 < user2.
 	got0, _ := p.GetItemText(0)
-	if want := "ab    c      "; got0 != want {
+	if want := " ab   │ c     "; got0 != want {
 		t.Errorf("row 0 = %q, want %q", got0, want)
 	}
 	got1, _ := p.GetItemText(1)
-	if want := "wxyz  defgh  "; got1 != want {
+	if want := " wxyz │ defgh "; got1 != want {
 		t.Errorf("row 1 = %q, want %q", got1, want)
 	}
 }
@@ -338,11 +345,11 @@ func TestAccountItemText_ColumnWidthCap(t *testing.T) {
 	p.Refresh()
 
 	got0, _ := p.GetItemText(0)
-	if want := "abcdefghijk…  X  "; got0 != want {
+	if want := " abcdefghijk… │ X "; got0 != want {
 		t.Errorf("row 0 (long provider, truncated) = %q, want %q", got0, want)
 	}
 	got1, _ := p.GetItemText(1)
-	if want := "cd            Y  "; got1 != want {
+	if want := " cd           │ Y "; got1 != want {
 		t.Errorf("row 1 (short provider, width capped, not blown out) = %q, want %q", got1, want)
 	}
 }
@@ -442,7 +449,7 @@ func TestAccountsPanel_LatestProject(t *testing.T) {
 			p.Refresh()
 
 			got, _ := p.GetItemText(0)
-			if tc.wantSuffix != "" && !strings.HasSuffix(got, tc.wantSuffix) {
+			if tc.wantSuffix != "" && !strings.HasSuffix(strings.TrimRight(got, " "), tc.wantSuffix) {
 				t.Errorf("row = %q, want suffix %q", got, tc.wantSuffix)
 			}
 			if tc.wantAbsent != "" && strings.Contains(got, tc.wantAbsent) {
@@ -472,10 +479,9 @@ func TestAccountsPanel_RequiredWidth(t *testing.T) {
 	}
 }
 
-// TestAccountsPanel_RequiredWidth_GlobalColumns verifies that the Accounts
-// width follows the longest provider, user, and project in the store, not just
-// the values currently rendered in a row.
-func TestAccountsPanel_RequiredWidth_GlobalColumns(t *testing.T) {
+// TestAccountsPanel_RequiredWidth_UsesRenderedRowsOnly verifies that unused
+// providers, users, and projects do not reserve space in the Accounts panel.
+func TestAccountsPanel_RequiredWidth_UsesRenderedRowsOnly(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("p", false, false)))
@@ -491,13 +497,12 @@ func TestAccountsPanel_RequiredWidth_GlobalColumns(t *testing.T) {
 	p.Refresh()
 
 	row, _ := p.GetItemText(0)
-	rowWidth := tview.TaggedStringWidth(row)
-	want := 12 + 2 + 20 + 2 + 0 + 2 + 14 + 2
+	if want := " p │ U "; row != want {
+		t.Errorf("row = %q, want %q", row, want)
+	}
+	want := max(tview.TaggedStringWidth(row)+2, len(" Accounts ")+2)
 	if got := p.RequiredWidth(); got != want {
 		t.Errorf("RequiredWidth() = %d, want %d", got, want)
-	}
-	if rowWidth >= want-2 {
-		t.Errorf("row width = %d, want less than reserved content width %d", rowWidth, want-2)
 	}
 }
 
@@ -516,7 +521,7 @@ func TestAccountsPanel_RequiredWidth_FullPauseStatus(t *testing.T) {
 	if !strings.Contains(row, " -") {
 		t.Fatalf("row = %q, want full pause status with day offset", row)
 	}
-	minRowWidth := len("claude") + 2 + len("Alice") + 2 + len("12:34 -5")
+	minRowWidth := len("claude") + 3 + len("Alice") + 3 + len("12:34 -5")
 	if got := tview.TaggedStringWidth(row); got < minRowWidth {
 		t.Errorf("row width = %d, want at least %d to fit the full pause status", got, minRowWidth)
 	}
@@ -530,18 +535,25 @@ func TestAccountsPanel_RequiredWidth_FullPauseStatus(t *testing.T) {
 // both grows and shrinks the reported width as store content changes.
 func TestAccountsPanel_RequiredWidth_UpdatesWithContent(t *testing.T) {
 	t.Parallel()
-	app, reg, _ := newProjectAccountsTestApp(t)
+	app, reg, acc := newProjectAccountsTestApp(t)
 	p := views.NewAccountsPanel(app)
 	p.Refresh()
 	initial := p.RequiredWidth()
 
 	longProject := model.NewProject("abcdefghijklmnopqrst", "", "")
 	must(t, reg.AddProject(longProject))
+	must(t, reg.AddProjectToAccount(acc, longProject))
+	addProjectSession(t, reg, acc, longProject.Name())
 	p.Refresh()
 	if got := p.RequiredWidth(); got <= initial {
 		t.Fatalf("RequiredWidth() did not grow: initial %d, after project %d", initial, got)
 	}
 
+	acc = reg.Account(reg.User(acc.UserEmail()), reg.Provider(acc.ProviderName()))
+	sessions, err := reg.AccountSessions(acc)
+	must(t, err)
+	must(t, reg.DeleteSession(sessions[len(sessions)-1]))
+	must(t, reg.RemoveProjectFromAccount(acc, longProject))
 	must(t, reg.DeleteProject(longProject))
 	p.Refresh()
 	if got := p.RequiredWidth(); got != initial {
@@ -655,7 +667,7 @@ func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	p.Refresh()
 
 	capture := p.GetInputCapture()
-	capture(runeKey(views.KeyNew))
+	capture(specialKey(views.KeyInsert))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Email", "carol@example.com")
@@ -730,33 +742,5 @@ func TestAccountsPanel_Delete_Cancel(t *testing.T) {
 	}
 	if got := len(app.svc.Accounts()); got != before {
 		t.Errorf("account count changed after cancel: got %d, want %d (unchanged)", got, before)
-	}
-}
-
-// TestAccountsPanel_RenameUser_SaveReturnsToPanel is the same round trip
-// as TestAccountsPanel_New_SaveReturnsToPanel for handleRenameUser's own
-// onClose closure.
-func TestAccountsPanel_RenameUser_SaveReturnsToPanel(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	p := views.NewAccountsPanel(app)
-	p.Refresh() // selects alice|claude first
-
-	capture := p.GetInputCapture()
-	capture(specialKey(views.KeyRenameUser))
-
-	form := formFromCenteredModal(t, app.modal)
-	setInputField(t, form, "Name", "Alice Smith")
-	triggerSave(t, form)
-
-	if app.modal != nil {
-		t.Error("expected modal to be hidden after a successful save")
-	}
-	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	}
-	if got := app.svc.User("alice@example.com").Name(); got != "Alice Smith" {
-		t.Errorf("Name() = %q, want %q", got, "Alice Smith")
 	}
 }

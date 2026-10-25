@@ -52,6 +52,9 @@ type App interface {
 	// component that was active before ShowModal was called.
 	HideModal()
 
+	// SetFocus moves keyboard focus to p.
+	SetFocus(p tview.Primitive)
+
 	// SwitchToProviders switches the display to the providers management screen.
 	SwitchToProviders()
 

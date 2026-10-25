@@ -16,13 +16,20 @@ import (
 // minAccountsPanelWidth is wide enough to show the list title and border.
 const minAccountsPanelWidth = len(" Accounts ") + 2
 
-// providerColumnWidthCap and nameColumnWidthCap bound the padded columns so a
-// single unusually long value cannot push the pause and project columns off
-// screen.
+// providerColumnWidthCap and nameColumnWidthCap bound the account columns so
+// a single unusually long value cannot push later columns off screen.
 const (
 	providerColumnWidthCap = 12
 	nameColumnWidthCap     = 20
 )
+
+// accountRow holds the display cells for one account row.
+type accountRow struct {
+	provider string
+	name     string
+	pause    string
+	project  string
+}
 
 // AccountsPanel is the left panel that lists all accounts with their
 // rate-limit status. Selecting an account notifies the detail panel via
@@ -33,7 +40,7 @@ type AccountsPanel struct {
 	accounts    []*model.Account // mirrors list order; rebuilt on every Refresh
 	onSelect    func(*model.Account)
 	refreshing  bool // suppresses onSelect during Refresh
-	maxRowWidth int  // widest rendered or reserved row, excluding the border
+	maxRowWidth int  // widest rendered row, excluding the border
 }
 
 // NewAccountsPanel constructs the accounts list. Call SetOnSelect to wire
@@ -104,63 +111,52 @@ func (p *AccountsPanel) Refresh() {
 		prevKey = a.Key()
 	}
 
-	// Resolve each account's user name, latest project, and the display
-	// widths. Provider, user, and project widths come from the longest
-	// store-wide values, so a long value that is configured but not currently
-	// in a row is still accounted for. They are capped so one unusually long
-	// value cannot push the pause column off screen. The pause width is
-	// measured from the full rendered status, including day offsets such as
-	// "12:34 -5".
+	// Resolve only the values rendered in the list. Provider, user, and
+	// project values are capped with an ellipsis, while pause status keeps its
+	// full rendered text, including day offsets such as "12:34 -5". Optional
+	// columns are included only when at least one rendered row has a value.
 	now := time.Now()
-	providerWidth := 0
-	for _, provider := range svc.Providers() {
-		providerWidth = max(providerWidth, len([]rune(provider.Name())))
-	}
-	providerWidth = min(providerWidth, providerColumnWidthCap)
-
-	nameWidth := 0
-	for _, u := range svc.Users() {
-		nameWidth = max(nameWidth, len([]rune(u.Name())))
-	}
-
-	names := make([]string, len(all))
-	latestProjects := make([]string, len(all))
-	var pauseWidth int
+	rawRows := make([]accountRow, len(all))
+	hasPause := false
+	hasProject := false
 	for i, a := range all {
-		names[i] = a.UserEmail()
+		userName := a.UserEmail()
 		if u := svc.User(a.UserEmail()); u != nil {
-			names[i] = u.Name()
-		} else {
-			nameWidth = max(nameWidth, len([]rune(names[i])))
+			userName = u.Name()
 		}
-		latestProjects[i] = latestGrantedProject(svc, a)
-		pauseWidth = max(pauseWidth, tview.TaggedStringWidth(pauseStatusText(a.PauseUntil(), now)))
-	}
-	nameWidth = min(nameWidth, nameColumnWidthCap)
+		pause := pauseStatusText(a.PauseUntil(), now)
+		project := latestGrantedProject(svc, a)
+		hasPause = hasPause || pause != ""
+		hasProject = hasProject || project != ""
 
-	projectWidth := 0
-	for _, project := range svc.Projects() {
-		projectWidth = max(projectWidth, len([]rune(project.Name())))
+		rawRows[i] = accountRow{
+			provider: tview.Escape(truncateWidth(a.ProviderName(), providerColumnWidthCap)),
+			name:     tview.Escape(truncateWidth(userName, nameColumnWidthCap)),
+			pause:    pause,
+			project:  tview.Escape(truncateWidth(project, projectColumnWidth)),
+		}
 	}
-	projectWidth = min(projectWidth, projectColumnWidth)
+
+	rows := make([][]string, len(rawRows))
+	for i, row := range rawRows {
+		rows[i] = []string{row.provider, row.name}
+		if hasPause {
+			rows[i] = append(rows[i], row.pause)
+		}
+		if hasProject {
+			rows[i] = append(rows[i], row.project)
+		}
+	}
+	lines, width := formatColumns(rows)
 
 	p.refreshing = true
 	p.accounts = all
 	p.Clear()
-	p.maxRowWidth = 0
-	for i, a := range p.accounts {
-		row := accountItemText(a, names[i], latestProjects[i], providerWidth, nameWidth, projectWidth, now)
-		p.maxRowWidth = max(p.maxRowWidth, tview.TaggedStringWidth(row))
-		p.AddItem(row, "", 0, nil)
+	p.maxRowWidth = width
+	for _, line := range lines {
+		p.AddItem(line, "", 0, nil)
 	}
 	p.refreshing = false
-
-	// Reserve the project column even when no current row has a project, so a
-	// later project assignment does not force a resize to avoid clipping.
-	if len(all) > 0 && projectWidth > 0 {
-		reserved := providerWidth + 2 + nameWidth + 2 + pauseWidth + 2 + projectWidth
-		p.maxRowWidth = max(p.maxRowWidth, reserved)
-	}
 
 	// Restore selection by identity.
 	restored := false
@@ -188,12 +184,12 @@ func (p *AccountsPanel) Refresh() {
 // handleKey processes keyboard input for this panel.
 func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
+	case KeyInsert:
+		return p.handleNew()
 	case KeyEdit:
 		return p.handleEdit()
 	case KeyDelete:
 		return p.handleDelete()
-	case KeyRenameUser:
-		return p.handleRenameUser()
 	default:
 		// Every other special key falls through to dispatchPanelKey and
 		// the rune switch below.
@@ -204,8 +200,6 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	switch event.Rune() {
-	case KeyNew:
-		return p.handleNew()
 	case KeyProviders:
 		p.app.SwitchToProviders()
 		return nil
@@ -278,23 +272,6 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 	return nil
 }
 
-func (p *AccountsPanel) handleRenameUser() *tcell.EventKey {
-	a := p.Selected()
-	if a == nil {
-		return nil
-	}
-	modal := NewUserForm(p.app, a, func() {
-		p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
-		p.app.HideModal()
-	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
-	return nil
-}
-
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
 // latestGrantedProject returns the project name of the account's latest
@@ -321,26 +298,6 @@ func latestGrantedProject(svc *service.Service, a *model.Account) string {
 	return ""
 }
 
-// accountItemText formats one account as a row: provider, user name,
-// pause status, then the latest project when there is one. Provider and
-// user name are padded to providerWidth/nameWidth, and the project is
-// truncated to projectWidth; the caller computes those once per batch from
-// the longest store-wide values, capped so one unusually long value cannot
-// push the pause column off screen. now is shared with the caller's width
-// measurement so the row and its measured width use the same pause status.
-// userName is resolved by the caller; a missing user record is the caller's
-// own fallback to handle, not this function's.
-func accountItemText(a *model.Account, userName, latestProject string, providerWidth, nameWidth, projectWidth int, now time.Time) string {
-	provider := tview.Escape(truncate(a.ProviderName(), providerWidth))
-	name := tview.Escape(truncate(userName, nameWidth))
-	pause := pauseStatusText(a.PauseUntil(), now)
-	row := fmt.Sprintf("%-*s  %-*s  %s", providerWidth, provider, nameWidth, name, pause)
-	if latestProject != "" && projectWidth > 0 {
-		row += "  " + tview.Escape(truncate(latestProject, projectWidth))
-	}
-	return row
-}
-
 // pauseStatusText is the single, shared rendering of an account's pause
 // status: "" if until is the zero value (never paused); otherwise
 // formatPauseUntil's text, coloured red while still in the future (not
@@ -350,8 +307,7 @@ func accountItemText(a *model.Account, userName, latestProject string, providerW
 // correctly, but the same-day / different-day split and the day count
 // must follow the operator's own calendar, that's what they're actually
 // looking at, not UTC's. Every place pause status is shown calls this,
-// so they cannot drift from each other, or from this rule, the way
-// accountItemText and DetailPanel.renderInfo once already did.
+// so they cannot drift from each other, or from this rule.
 func pauseStatusText(until, now time.Time) string {
 	if until.IsZero() {
 		return ""

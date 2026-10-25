@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
@@ -30,7 +29,7 @@ func TestDetailPanel_FocusFunc_SetsHints(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
 	p := views.NewDetailPanel(app)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 
 	list.Focus(func(tview.Primitive) {})
 
@@ -70,29 +69,21 @@ func newDetailTestApp(t *testing.T) (*mockApp, *model.Account) {
 	return app, acc
 }
 
-// detailPanelParts returns p's sessions list and info view, reached via
-// the exported Flex.GetItem — DetailPanel puts the list at index 0, the
-// info view at index 1 (see detail.go).
-func detailPanelParts(t *testing.T, p *views.DetailPanel) (*tview.List, *tview.TextView) {
+// detailPanelList returns p's embedded sessions list.
+func detailPanelList(t *testing.T, p *views.DetailPanel) *tview.List {
 	t.Helper()
-	list, ok := p.GetItem(0).(*tview.List)
-	if !ok {
-		t.Fatalf("expected *tview.List at index 0, got %T", p.GetItem(0))
+	if p.List == nil {
+		t.Fatal("expected non-nil sessions list")
 	}
-	info, ok := p.GetItem(1).(*tview.TextView)
-	if !ok {
-		t.Fatalf("expected *tview.TextView at index 1, got %T", p.GetItem(1))
-	}
-	return list, info
+	return p.List
 }
 
 func TestDetailPanel_SetAccount_Nil(t *testing.T) {
 	t.Parallel()
 	p := views.NewDetailPanel(newMockApp(t))
 	p.SetAccount(nil)
-	_, info := detailPanelParts(t, p)
-	if !strings.Contains(info.GetText(false), "no account selected") {
-		t.Errorf("expected info panel to show \"no account selected\", got %q", info.GetText(false))
+	if got := detailPanelList(t, p).GetItemCount(); got != 0 {
+		t.Errorf("expected no list items, got %d", got)
 	}
 }
 
@@ -101,7 +92,7 @@ func TestDetailPanel_SetAccount_ItemCount(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	if got := list.GetItemCount(); got != 2 {
 		t.Errorf("expected 2 list items, got %d", got)
 	}
@@ -122,10 +113,7 @@ func TestDetailPanel_Refresh_ClearsOnDeletedAccount(t *testing.T) {
 	must(t, reg.DeleteAccount(acc))
 	p.Refresh()
 
-	list, info := detailPanelParts(t, p)
-	if !strings.Contains(info.GetText(false), "no account selected") {
-		t.Error("expected info panel to show \"no account selected\" after deletion from registry")
-	}
+	list := detailPanelList(t, p)
 	if list.GetItemCount() != 0 {
 		t.Error("list should be empty after account deleted")
 	}
@@ -140,7 +128,7 @@ func TestDetailPanel_Refresh_PreservesSelectionByID(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.SetCurrentItem(1) // the untitled session, per newDetailTestApp's doc comment
 
 	want := p.Selected()
@@ -157,64 +145,6 @@ func TestDetailPanel_Refresh_PreservesSelectionByID(t *testing.T) {
 	}
 	if got.ID() != wantID {
 		t.Errorf("selection changed: got session #%d, want #%d", got.ID(), wantID)
-	}
-}
-
-// TestDetailPanel_RenderInfo_PausedAccount covers renderInfo's paused
-// branch, unreached by every other DetailPanel test.
-func TestDetailPanel_RenderInfo_PausedAccount(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name         string
-		pauseAt      time.Time
-		wantContains string
-	}{
-		{"future pause shown red, still unavailable", time.Now().Add(time.Hour), "[red]"},
-		{"past pause shown green, available again", time.Now().Add(-time.Hour), "[green]"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
-			must(t, err)
-			must(t, reg.PauseAccount(acc, tc.pauseAt))
-			acc = reg.Account(reg.User("alice@example.com"), reg.Provider("claude")) // re-read: PauseAccount replaces via Copy-on-Write
-
-			app := &mockApp{svc: newTestService(t, reg)}
-			p := views.NewDetailPanel(app)
-			p.SetAccount(acc)
-			_, info := detailPanelParts(t, p)
-
-			if got := info.GetText(false); !strings.Contains(got, tc.wantContains) {
-				t.Errorf("got %q, want it to contain %q", got, tc.wantContains)
-			}
-		})
-	}
-}
-
-// TestDetailPanel_RenderInfo_NeverPaused covers renderInfo's remaining
-// pause-status branch: an account with no PauseUntil at all shows the
-// "Paused:" label with nothing after it, matching pauseStatusText's ""
-// return for a zero value, the same way the accounts list omits a pause
-// column entirely for such an account, now that both share one function.
-func TestDetailPanel_RenderInfo_NeverPaused(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t) // alice|claude, never paused
-	acc, err := app.svc.Account("alice@example.com", "claude")
-	must(t, err)
-	p := views.NewDetailPanel(app)
-	p.SetAccount(acc)
-	_, info := detailPanelParts(t, p)
-
-	got := info.GetText(false)
-	if strings.Contains(got, "[red]") || strings.Contains(got, "[green]") {
-		t.Errorf("got %q, want no pause colour tag for a never-paused account", got)
-	}
-	if !strings.Contains(got, "Paused") {
-		t.Errorf("got %q, want it to still contain the Paused label", got)
 	}
 }
 
@@ -237,8 +167,8 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 	}{
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon, "flex"},
 		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon, "modal"},
-		{"new session", runeKey(views.KeyNew), views.HintsFormSpecific, views.HintsFormCommon, "flex"},
-		{"edit session", runeKey(views.KeySessionFields), views.HintsFormSpecific, views.HintsFormCommon, "flex"},
+		{"new session", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon, "flex"},
+		{"edit session", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon, "flex"},
 		{"delete session", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon, "modal"},
 		{"queue editor", runeKey(views.KeyQueue), views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon, "list"},
 	}
@@ -248,7 +178,7 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 			app, acc := newDetailTestApp(t)
 			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			list, _ := detailPanelParts(t, p)
+			list := detailPanelList(t, p)
 			list.SetCurrentItem(0)
 			capture := list.GetInputCapture()
 			if capture == nil {
@@ -288,8 +218,8 @@ func TestDetailPanel_ShowModalError(t *testing.T) {
 		name string
 		key  *tcell.EventKey
 	}{
-		{"new session", runeKey(views.KeyNew)},
-		{"edit session", runeKey(views.KeySessionFields)},
+		{"new session", specialKey(views.KeyInsert)},
+		{"edit session", specialKey(views.KeyEdit)},
 		{"delete session", specialKey(views.KeyDelete)},
 		{"queue editor", runeKey(views.KeyQueue)},
 	}
@@ -300,7 +230,7 @@ func TestDetailPanel_ShowModalError(t *testing.T) {
 			app.showModalErr = errors.New("boom")
 			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			list, _ := detailPanelParts(t, p)
+			list := detailPanelList(t, p)
 			list.SetCurrentItem(0)
 
 			list.GetInputCapture()(tc.key)
@@ -321,7 +251,7 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 		name string
 		key  *tcell.EventKey
 	}{
-		{"edit", runeKey(views.KeySessionFields)},
+		{"edit", specialKey(views.KeyEdit)},
 		{"delete", specialKey(views.KeyDelete)},
 		{"queue", runeKey(views.KeyQueue)},
 	}
@@ -337,7 +267,7 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 
 			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			list, _ := detailPanelParts(t, p)
+			list := detailPanelList(t, p)
 			capture := list.GetInputCapture()
 			capture(tc.key)
 			if app.modal != nil {
@@ -356,23 +286,38 @@ func TestDetailPanel_NewSession_NilAccount_NoModal(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
 	p := views.NewDetailPanel(app) // account is nil; SetAccount is never called
-	list, _ := detailPanelParts(t, p)
-	list.GetInputCapture()(runeKey(views.KeyNew))
+	list := detailPanelList(t, p)
+	list.GetInputCapture()(specialKey(views.KeyInsert))
 	if app.modal != nil {
-		t.Error("KeyNew with no account selected should not open a modal")
+		t.Error("KeyInsert with no account selected should not open a modal")
 	}
 }
 
 func TestDetailPanel_HandleKey_PassesThroughUnrecognizedKey(t *testing.T) {
 	t.Parallel()
-	app, acc := newDetailTestApp(t)
-	p := views.NewDetailPanel(app)
-	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	cases := []struct {
+		name  string
+		event *tcell.EventKey
+	}{
+		{"unrecognized rune", runeKey('z')},
+		{"removed edit alias", runeKey('e')},
+		{"removed help alias", runeKey('h')},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app, acc := newDetailTestApp(t)
+			p := views.NewDetailPanel(app)
+			p.SetAccount(acc)
+			list := detailPanelList(t, p)
 
-	event := runeKey('z') // not bound to anything in DetailPanel
-	if got := list.GetInputCapture()(event); got != event {
-		t.Error("unrecognized key should pass through unchanged")
+			if got := list.GetInputCapture()(tc.event); got != tc.event {
+				t.Error("key should pass through unchanged")
+			}
+			if app.modal != nil {
+				t.Error("key must not open a modal")
+			}
+		})
 	}
 }
 
@@ -385,10 +330,10 @@ func TestDetailPanel_EditSession_OpensPrepopulatedForm(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.SetCurrentItem(0) // "Architecture review", per newDetailTestApp's doc comment
 
-	list.GetInputCapture()(runeKey(views.KeySessionFields))
+	list.GetInputCapture()(specialKey(views.KeyEdit))
 
 	form := formFromCenteredModal(t, app.modal)
 	topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
@@ -409,7 +354,7 @@ func TestDetailPanel_Queue_OpensForSelectedSession(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.SetCurrentItem(0) // "Architecture review", queue=[continue]
 
 	list.GetInputCapture()(runeKey(views.KeyQueue))
@@ -452,7 +397,7 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 			app, acc := newDetailTestApp(t)
 			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			list, _ := detailPanelParts(t, p)
+			list := detailPanelList(t, p)
 			list.SetCurrentItem(tc.idx)
 
 			sessionsBefore, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
@@ -517,7 +462,7 @@ func TestDetailPanel_Toggle_Continue(t *testing.T) {
 
 			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			list, _ := detailPanelParts(t, p)
+			list := detailPanelList(t, p)
 			list.SetCurrentItem(0)
 			list.GetInputCapture()(runeKey(views.KeyToggle))
 
@@ -553,7 +498,7 @@ func TestDetailPanel_Toggle_NoSession_NoOp(t *testing.T) {
 
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc) // no sessions
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.GetInputCapture()(runeKey(views.KeyToggle))
 
 	if app.status != "" {
@@ -576,7 +521,7 @@ func TestDetailPanel_Toggle_MutateError(t *testing.T) {
 
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.SetCurrentItem(0)
 	list.GetInputCapture()(runeKey(views.KeyToggle))
 
@@ -594,9 +539,9 @@ func TestDetailPanel_NewSession_SaveReturnsToPanel(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 
-	list.GetInputCapture()(runeKey(views.KeyNew))
+	list.GetInputCapture()(specialKey(views.KeyInsert))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Topic", "Fresh session")
@@ -630,10 +575,10 @@ func TestDetailPanel_EditSession_SaveReturnsToPanel(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.SetCurrentItem(0) // "Architecture review"
 
-	list.GetInputCapture()(runeKey(views.KeySessionFields))
+	list.GetInputCapture()(specialKey(views.KeyEdit))
 
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Topic", "Renamed topic")
@@ -663,7 +608,7 @@ func TestDetailPanel_Queue_CloseReturnsToPanel(t *testing.T) {
 	app, acc := newDetailTestApp(t)
 	p := views.NewDetailPanel(app)
 	p.SetAccount(acc)
-	list, _ := detailPanelParts(t, p)
+	list := detailPanelList(t, p)
 	list.SetCurrentItem(0)
 
 	list.GetInputCapture()(runeKey(views.KeyQueue))
@@ -772,8 +717,11 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 			app := &mockApp{svc: newTestService(t, reg)}
 			p := views.NewDetailPanel(app)
 			p.SetAccount(acc)
-			list, _ := detailPanelParts(t, p)
+			list := detailPanelList(t, p)
 			got, _ := list.GetItemText(0)
+			if !strings.HasPrefix(got, " ") {
+				t.Errorf("got %q, want a leading one-cell inset", got)
+			}
 
 			for _, want := range tc.wantContains {
 				if !strings.Contains(got, want) {
@@ -784,5 +732,156 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 				t.Errorf("marker present: got %v, want %v (row: %q)", hasMarker, tc.wantMarker, got)
 			}
 		})
+	}
+}
+
+// ── AccountInfoPanel ──────────────────────────────────────────────────────────
+
+func TestNewAccountInfoPanel(t *testing.T) {
+	t.Parallel()
+	p := views.NewAccountInfoPanel(newMockApp(t))
+	if p == nil {
+		t.Fatal("expected non-nil AccountInfoPanel")
+	}
+	if got := p.GetTitle(); got != " Account Details " {
+		t.Errorf("GetTitle() = %q, want %q", got, " Account Details ")
+	}
+}
+
+func TestAccountInfoPanel_SetAccount_Nil(t *testing.T) {
+	t.Parallel()
+	p := views.NewAccountInfoPanel(newMockApp(t))
+	p.SetAccount(nil)
+
+	if got := p.GetText(false); !strings.Contains(got, "no account selected") {
+		t.Errorf("got %q, want it to contain %q", got, "no account selected")
+	}
+	if got := p.RequiredHeight(40); got != 3 {
+		t.Errorf("RequiredHeight(40) = %d, want 3", got)
+	}
+}
+
+func TestAccountInfoPanel_RendersDetailsWithoutPaused(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	acc, err := app.svc.Account("alice@example.com", "claude")
+	must(t, err)
+
+	p := views.NewAccountInfoPanel(app)
+	p.SetAccount(acc)
+
+	got := p.GetText(false)
+	for _, want := range []string{"User", "Alice", "alice@example.com", "Provider", "claude", "Projects", "Alpha", "Beta"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("got %q, want it to contain %q", got, want)
+		}
+	}
+	if strings.Contains(got, "Paused") {
+		t.Errorf("got %q, want no Paused line", got)
+	}
+	if gotHeight := p.RequiredHeight(80); gotHeight != 5 {
+		t.Errorf("RequiredHeight(80) = %d, want 5 for three content lines", gotHeight)
+	}
+}
+
+func TestAccountInfoPanel_AlignedDetailRows(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	acc, err := app.svc.Account("alice@example.com", "claude")
+	must(t, err)
+
+	p := views.NewAccountInfoPanel(app)
+	p.SetAccount(acc)
+
+	lines := strings.Split(p.GetText(true), "\n")
+	wantValues := []string{"Alice", "claude", "Alpha"}
+	if len(lines) != len(wantValues) {
+		t.Fatalf("got %d detail lines, want %d: %q", len(lines), len(wantValues), lines)
+	}
+	for i, line := range lines {
+		if got := strings.Index(line, wantValues[i]); got != 9 {
+			t.Errorf("line %d value starts at %d, want 9: %q", i, got, line)
+		}
+	}
+}
+
+func TestAccountInfoPanel_WrappedLinesKeepInsets(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	project := model.NewProject(strings.Repeat("long-project-name-", 8), "", "")
+	must(t, reg.AddProject(project))
+	must(t, reg.AddProjectToAccount(acc, project))
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewAccountInfoPanel(app)
+	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Provider("claude")))
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	must(t, screen.Init())
+	t.Cleanup(screen.Fini)
+	screen.SetSize(40, 10)
+	p.SetRect(0, 0, 40, 10)
+	p.Draw(screen)
+
+	x, y, width, height := p.GetInnerRect()
+	nonBlank := 0
+	for i := range height {
+		mainc, _, _ := screen.Get(x, y+i)
+		if strings.TrimSpace(mainc) == "" {
+			continue
+		}
+		nonBlank++
+		if pad, _, _ := screen.Get(x-1, y+i); pad != " " {
+			t.Errorf("line %d starts with %q at column %d, want left padding", i, pad, x-1)
+		}
+		if pad, _, _ := screen.Get(x+width, y+i); pad != " " {
+			t.Errorf("line %d reaches %q at column %d, want right padding", i, pad, x+width)
+		}
+	}
+	if nonBlank < 4 {
+		t.Fatalf("got %d non-blank lines, want at least 4 to exercise wrapping", nonBlank)
+	}
+}
+
+func TestAccountInfoPanel_NoProjects(t *testing.T) {
+	t.Parallel()
+	app := newMockApp(t)
+	acc, err := app.svc.Account("bob@example.com", "chatgpt")
+	must(t, err)
+
+	p := views.NewAccountInfoPanel(app)
+	p.SetAccount(acc)
+
+	if got := p.GetText(false); !strings.Contains(got, "none") {
+		t.Errorf("got %q, want it to contain %q", got, "none")
+	}
+}
+
+func TestAccountInfoPanel_RequiredHeight_Wraps(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	project := model.NewProject(strings.Repeat("long-project-name-", 8), "", "")
+	must(t, reg.AddProject(project))
+	must(t, reg.AddProjectToAccount(acc, project))
+
+	app := &mockApp{svc: newTestService(t, reg)}
+	p := views.NewAccountInfoPanel(app)
+	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Provider("claude")))
+
+	narrow := p.RequiredHeight(20)
+	wide := p.RequiredHeight(200)
+	if narrow <= wide {
+		t.Errorf("RequiredHeight(20) = %d, want more than RequiredHeight(200) = %d", narrow, wide)
+	}
+	if wide != 5 {
+		t.Errorf("RequiredHeight(200) = %d, want 5", wide)
 	}
 }

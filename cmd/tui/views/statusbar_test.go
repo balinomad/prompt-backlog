@@ -75,6 +75,7 @@ func TestStatusBar_SetHints(t *testing.T) {
 		{"accounts panel", views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon},
 		{"detail panel", views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon},
 		{"projects panel", views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon},
+		{"project accounts panel", views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon},
 		{"providers panel", views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon},
 		{"queue editor", views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon},
 		{"form", views.HintsFormSpecific, views.HintsFormCommon},
@@ -100,8 +101,8 @@ func TestStatusBar_SetHints(t *testing.T) {
 // TestStatusBar_CommonHintsConstantsNonEmpty replaces
 // TestStatusBar_AllHintsConstantsNonEmpty: every context has at least one
 // common hint (help/quit at minimum, confirm/cancel, or close), but a
-// context-specific line can legitimately be empty (confirm modal and help
-// overlay have none), so only the common half is checked.
+// context-specific line can legitimately be empty (forms, confirm modal,
+// and help overlay have none), so only the common half is checked.
 func TestStatusBar_CommonHintsConstantsNonEmpty(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -111,6 +112,7 @@ func TestStatusBar_CommonHintsConstantsNonEmpty(t *testing.T) {
 		{"HintsAccountsPanelCommon", views.HintsAccountsPanelCommon},
 		{"HintsDetailPanelCommon", views.HintsDetailPanelCommon},
 		{"HintsProjectsPanelCommon", views.HintsProjectsPanelCommon},
+		{"HintsProjectAccountsCommon", views.HintsProjectAccountsCommon},
 		{"HintsProvidersPanelCommon", views.HintsProvidersPanelCommon},
 		{"HintsQueueEditorCommon", views.HintsQueueEditorCommon},
 		{"HintsFormCommon", views.HintsFormCommon},
