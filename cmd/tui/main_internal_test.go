@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,53 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("setup: %v", err)
+	}
+}
+
+func TestRun(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		args       []string
+		wantCode   int
+		wantStderr string
+	}{
+		{
+			name:       "missing data flag",
+			args:       nil,
+			wantCode:   exitUsage,
+			wantStderr: "-data flag is required",
+		},
+		{
+			name:       "unsupported format",
+			args:       []string{"-data", "registry.txt"},
+			wantCode:   exitFailure,
+			wantStderr: "unsupported data file format",
+		},
+		{
+			name:       "unknown flag",
+			args:       []string{"-unknown"},
+			wantCode:   exitUsage,
+			wantStderr: "flag provided but not defined",
+		},
+		{
+			name:       "help",
+			args:       []string{"-h"},
+			wantCode:   exitSuccess,
+			wantStderr: "Usage of llm-desk",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var stderr bytes.Buffer
+			if got := run(tc.args, &stderr); got != tc.wantCode {
+				t.Fatalf("run() = %d, want %d; stderr: %s", got, tc.wantCode, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.wantStderr) {
+				t.Errorf("stderr = %q, want substring %q", stderr.String(), tc.wantStderr)
+			}
+		})
 	}
 }
 

@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/balinomad/llm-desk/internal/service"
 	"github.com/balinomad/llm-desk/internal/store"
@@ -14,42 +19,76 @@ import (
 
 const jsonExt = ".json"
 
-func main() {
-	var dataPath string
-	flag.StringVar(&dataPath, "data", "", "path to the data `file` (.json)")
-	flag.StringVar(&dataPath, "d", "", "shorthand for -data")
-	flag.Parse()
+const (
+	exitSuccess = 0
+	exitFailure = 1
+	exitUsage   = 2
+)
 
+var errUsage = errors.New("usage")
+
+func main() {
+	if code := run(os.Args[1:], os.Stderr); code != exitSuccess {
+		os.Exit(code)
+	}
+}
+
+// run executes the application and returns a process exit code.
+func run(args []string, stderr io.Writer) int {
+	err := runApp(args, stderr)
+	if err == nil {
+		return exitSuccess
+	}
+	if errors.Is(err, errUsage) {
+		return exitUsage
+	}
+	//nolint:errcheck // A stderr write failure cannot change the exit code.
+	fmt.Fprintf(stderr, "%s: %v\n", AppName, err)
+	return exitFailure
+}
+
+// runApp parses args and runs the application until shutdown.
+func runApp(args []string, stderr io.Writer) error {
+	fs := flag.NewFlagSet(AppName, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var dataPath string
+	fs.StringVar(&dataPath, "data", "", "path to the data `file` (.json)")
+	fs.StringVar(&dataPath, "d", "", "shorthand for -data")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return fmt.Errorf("%w: %w", errUsage, err)
+	}
 	if dataPath == "" {
-		fmt.Fprintf(os.Stderr, "%s: -data flag is required\n", AppName)
-		flag.Usage()
-		os.Exit(1)
+		//nolint:errcheck // A stderr write failure cannot change the exit code.
+		fmt.Fprintf(stderr, "%s: -data flag is required\n", AppName)
+		fs.Usage()
+		return errUsage
 	}
 
 	s, err := openStore(dataPath)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 
 	svc, err := service.New(s)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 
 	app, err := New(svc)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 
-	if err := app.Run(); err != nil {
-		fatal(err)
-	}
-}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-// fatal reports err and terminates the process.
-func fatal(err error) {
-	fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
-	os.Exit(1)
+	if err := app.Run(ctx); err != nil {
+		return fmt.Errorf("run app: %w", err)
+	}
+	return nil
 }
 
 // openStore returns a Store implementation for the given data file path.

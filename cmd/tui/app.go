@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -73,9 +74,9 @@ func New(svc *service.Service) (*App, error) {
 	return a, nil
 }
 
-// Run starts the tview event loop and blocks until the application stops. A
-// background ticker refreshes pause-time status.
-func (a *App) Run() error {
+// Run starts the tview event loop and blocks until the application stops or
+// ctx is cancelled. A background ticker refreshes pause-time status.
+func (a *App) Run(ctx context.Context) error {
 	ticker := time.NewTicker(pauseStatusRefreshInterval)
 	done := make(chan struct{})
 	defer func() {
@@ -100,7 +101,20 @@ func (a *App) Run() error {
 				a.statusBar.SetMessage(fmt.Sprintf("[red]numeric keypad: %v[-]", err))
 			}
 		})
+		// Stop here as well in case ctx was cancelled before Run created the
+		// screen; Stop is a no-op until a screen exists.
+		if ctx.Err() != nil {
+			go a.tv.Stop()
+		}
 	})
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			a.tv.Stop()
+		case <-done:
+		}
+	}()
 
 	go func() {
 		for {
