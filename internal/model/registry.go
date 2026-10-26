@@ -18,6 +18,26 @@ func compareFold(a, b string) int {
 	return cmp.Compare(strings.ToLower(a), strings.ToLower(b))
 }
 
+func addIndex[K, V comparable](idx map[K]map[V]struct{}, key K, value V) {
+	set, ok := idx[key]
+	if !ok {
+		set = make(map[V]struct{})
+		idx[key] = set
+	}
+	set[value] = struct{}{}
+}
+
+func removeIndex[K, V comparable](idx map[K]map[V]struct{}, key K, value V) {
+	set, ok := idx[key]
+	if !ok {
+		return
+	}
+	delete(set, value)
+	if len(set) == 0 {
+		delete(idx, key)
+	}
+}
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // Registry is the root in-memory index structure.
@@ -97,9 +117,9 @@ func (r *Registry) Provider(name string) *Provider {
 // Providers returns all providers sorted by name.
 func (r *Registry) Providers() []*Provider {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	providers := slices.Collect(maps.Values(r.providers))
+	r.mu.RUnlock()
+
 	slices.SortFunc(providers, func(a, b *Provider) int { return compareFold(a.name, b.name) })
 	return providers
 }
@@ -200,9 +220,9 @@ func (r *Registry) User(email string) *User {
 // Users returns all users sorted by email.
 func (r *Registry) Users() []*User {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	users := slices.Collect(maps.Values(r.users))
+	r.mu.RUnlock()
+
 	slices.SortFunc(users, func(a, b *User) int { return cmp.Compare(a.email, b.email) })
 	return users
 }
@@ -275,7 +295,7 @@ func (r *Registry) verifyUser(u *User) error {
 // Returns an error when the project is nil, has an empty name, or already exists.
 func (r *Registry) AddProject(p *Project) error {
 	if err := ValidateProject(p); err != nil {
-		return fmt.Errorf("add project: invalid: %w", err)
+		return fmt.Errorf("add project: %w", err)
 	}
 
 	r.mu.Lock()
@@ -301,9 +321,9 @@ func (r *Registry) Project(name string) *Project {
 // Projects returns all projects sorted by name.
 func (r *Registry) Projects() []*Project {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	projects := slices.Collect(maps.Values(r.projects))
+	r.mu.RUnlock()
+
 	slices.SortFunc(projects, func(a, b *Project) int { return compareFold(a.name, b.name) })
 	return projects
 }
@@ -364,9 +384,8 @@ func (r *Registry) UpdateProject(current, next *Project) error {
 // nil error means p resolved but has no assigned accounts.
 func (r *Registry) ProjectAccounts(p *Project) ([]*Account, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if err := r.verifyProject(p); err != nil {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("project accounts: %w", err)
 	}
 
@@ -377,6 +396,8 @@ func (r *Registry) ProjectAccounts(p *Project) ([]*Account, error) {
 			result = append(result, acc)
 		}
 	}
+	r.mu.RUnlock()
+
 	slices.SortFunc(result, func(a, b *Account) int { return compareFold(a.key.String(), b.key.String()) })
 	return result, nil
 }
@@ -387,9 +408,8 @@ func (r *Registry) ProjectAccounts(p *Project) ([]*Account, error) {
 // resolved but has no sessions.
 func (r *Registry) ProjectSessions(p *Project) ([]*Session, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if err := r.verifyProject(p); err != nil {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("project sessions: %w", err)
 	}
 
@@ -400,6 +420,8 @@ func (r *Registry) ProjectSessions(p *Project) ([]*Session, error) {
 			result = append(result, sess)
 		}
 	}
+	r.mu.RUnlock()
+
 	slices.SortFunc(result, func(a, b *Session) int { return cmp.Compare(a.id, b.id) })
 	return result, nil
 }
@@ -466,9 +488,9 @@ func (r *Registry) Account(u *User, p *Provider) *Account {
 // Accounts returns all accounts sorted by their composite key string.
 func (r *Registry) Accounts() []*Account {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	accounts := slices.Collect(maps.Values(r.accounts))
+	r.mu.RUnlock()
+
 	slices.SortFunc(accounts, func(a, b *Account) int { return compareFold(a.key.String(), b.key.String()) })
 	return accounts
 }
@@ -541,14 +563,8 @@ func (r *Registry) AddProjectToAccount(acc *Account, p *Project) error {
 		return fmt.Errorf("add project to account: %q is already assigned to this account", p.name)
 	}
 
-	if _, exists := r.accountProjects[acc.key]; !exists {
-		r.accountProjects[acc.key] = make(map[string]struct{})
-	}
-	r.accountProjects[acc.key][p.name] = struct{}{}
-	if _, exists := r.projectAccounts[p.name]; !exists {
-		r.projectAccounts[p.name] = make(map[AccountKey]struct{})
-	}
-	r.projectAccounts[p.name][acc.key] = struct{}{}
+	addIndex(r.accountProjects, acc.key, p.name)
+	addIndex(r.projectAccounts, p.name, acc.key)
 	return nil
 }
 
@@ -568,7 +584,6 @@ func (r *Registry) RemoveProjectFromAccount(acc *Account, p *Project) error {
 		return fmt.Errorf("remove project from account: %q is not assigned to this account", p.name)
 	}
 
-	// Check for active sessions using this project in this account
 	if sessions, exists := r.accountSessions[acc.key]; exists {
 		for id := range sessions {
 			if r.sessions[id].projectName == p.name {
@@ -577,14 +592,8 @@ func (r *Registry) RemoveProjectFromAccount(acc *Account, p *Project) error {
 		}
 	}
 
-	delete(r.accountProjects[acc.key], p.name)
-	if len(r.accountProjects[acc.key]) == 0 {
-		delete(r.accountProjects, acc.key)
-	}
-	delete(r.projectAccounts[p.name], acc.key)
-	if len(r.projectAccounts[p.name]) == 0 {
-		delete(r.projectAccounts, p.name)
-	}
+	removeIndex(r.accountProjects, acc.key, p.name)
+	removeIndex(r.projectAccounts, p.name, acc.key)
 	return nil
 }
 
@@ -594,9 +603,8 @@ func (r *Registry) RemoveProjectFromAccount(acc *Account, p *Project) error {
 // resolved but has no assigned projects.
 func (r *Registry) AccountProjects(acc *Account) ([]*Project, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if err := r.verifyAccount(acc); err != nil {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("account projects: %w", err)
 	}
 
@@ -607,6 +615,8 @@ func (r *Registry) AccountProjects(acc *Account) ([]*Project, error) {
 			result = append(result, p)
 		}
 	}
+	r.mu.RUnlock()
+
 	slices.SortFunc(result, func(a, b *Project) int { return compareFold(a.name, b.name) })
 	return result, nil
 }
@@ -617,9 +627,8 @@ func (r *Registry) AccountProjects(acc *Account) ([]*Project, error) {
 // resolved but has no sessions.
 func (r *Registry) AccountSessions(acc *Account) ([]*Session, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if err := r.verifyAccount(acc); err != nil {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("account sessions: %w", err)
 	}
 
@@ -630,6 +639,8 @@ func (r *Registry) AccountSessions(acc *Account) ([]*Session, error) {
 			result = append(result, sess)
 		}
 	}
+	r.mu.RUnlock()
+
 	slices.SortFunc(result, func(a, b *Session) int { return cmp.Compare(a.id, b.id) })
 	return result, nil
 }
@@ -673,7 +684,6 @@ func (r *Registry) AddSession(acc *Account, project *Project, topic string, queu
 		return nil, fmt.Errorf("add session: %w", err)
 	}
 
-	// Validate all pending prompts before accepting them
 	for i, p := range queue {
 		if err := ValidatePrompt(p); err != nil {
 			return nil, fmt.Errorf("add session: invalid prompt at index %d: %w", i, err)
@@ -691,22 +701,14 @@ func (r *Registry) AddSession(acc *Account, project *Project, topic string, queu
 		projName = project.name
 	}
 
-	// Assign ephemeral surrogate key
-	id := r.lastSessionID + 1
+	r.lastSessionID++
+	id := r.lastSessionID
 	sess := NewSession(acc.key, id, projName, topic, queue)
 
-	r.lastSessionID++
 	r.sessions[id] = sess
-	if r.accountSessions[acc.key] == nil {
-		r.accountSessions[acc.key] = make(map[uint64]struct{})
-	}
-	r.accountSessions[acc.key][id] = struct{}{}
-
+	addIndex(r.accountSessions, acc.key, id)
 	if projName != "" {
-		if r.projectSessions[projName] == nil {
-			r.projectSessions[projName] = make(map[uint64]struct{})
-		}
-		r.projectSessions[projName][id] = struct{}{}
+		addIndex(r.projectSessions, projName, id)
 	}
 
 	return sess, nil
@@ -724,9 +726,9 @@ func (r *Registry) Session(id uint64) *Session {
 // Sessions returns all sessions sorted by ID.
 func (r *Registry) Sessions() []*Session {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	sessions := slices.Collect(maps.Values(r.sessions))
+	r.mu.RUnlock()
+
 	slices.SortFunc(sessions, func(a, b *Session) int { return cmp.Compare(a.id, b.id) })
 	return sessions
 }
@@ -742,16 +744,9 @@ func (r *Registry) DeleteSession(sess *Session) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 
-	delete(r.accountSessions[sess.accountKey], sess.id)
-	if len(r.accountSessions[sess.accountKey]) == 0 {
-		delete(r.accountSessions, sess.accountKey)
-	}
-
+	removeIndex(r.accountSessions, sess.accountKey, sess.id)
 	if sess.projectName != "" {
-		delete(r.projectSessions[sess.projectName], sess.id)
-		if len(r.projectSessions[sess.projectName]) == 0 {
-			delete(r.projectSessions, sess.projectName)
-		}
+		removeIndex(r.projectSessions, sess.projectName, sess.id)
 	}
 	delete(r.sessions, sess.id)
 
@@ -806,7 +801,6 @@ func (r *Registry) UpdateSessionProject(sess *Session, project *Project) error {
 		}
 		nextProjName = project.name
 
-		// Verify the target project is actually assigned to this account
 		if _, assigned := r.accountProjects[sess.accountKey][nextProjName]; !assigned {
 			return fmt.Errorf("update session project: project %q is not assigned to this account", nextProjName)
 		}
@@ -818,10 +812,7 @@ func (r *Registry) UpdateSessionProject(sess *Session, project *Project) error {
 	}
 
 	if sess.projectName != "" {
-		delete(r.projectSessions[sess.projectName], sess.id)
-		if len(r.projectSessions[sess.projectName]) == 0 {
-			delete(r.projectSessions, sess.projectName)
-		}
+		removeIndex(r.projectSessions, sess.projectName, sess.id)
 	}
 
 	sessCopy := *sess
@@ -829,10 +820,7 @@ func (r *Registry) UpdateSessionProject(sess *Session, project *Project) error {
 	r.sessions[sess.id] = &sessCopy
 
 	if nextProjName != "" {
-		if r.projectSessions[nextProjName] == nil {
-			r.projectSessions[nextProjName] = make(map[uint64]struct{})
-		}
-		r.projectSessions[nextProjName][sess.id] = struct{}{}
+		addIndex(r.projectSessions, nextProjName, sess.id)
 	}
 	return nil
 }
@@ -852,7 +840,6 @@ func (r *Registry) UpdateSessionPrompts(sess *Session, queue []Prompt) error {
 		return fmt.Errorf("update session prompts: %w", err)
 	}
 
-	// Validate incoming state
 	for i, p := range queue {
 		if err := ValidatePrompt(p); err != nil {
 			return fmt.Errorf("update session prompts: invalid prompt at index %d: %w", i, err)

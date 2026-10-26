@@ -1,33 +1,11 @@
-// Package service is the application layer between callers and model: it
-// resolves primitive inputs — strings, bools, times — into model entities
-// and delegates to model.Registry for storage, validation, and concurrency
-// control where an operation maps onto exactly one Registry call. Errors
-// from Registry are returned unchanged in that case, so callers can match
-// on model's sentinel errors with errors.Is; the one category-only check
-// in this file (resolveSession's cross-account guard) matches on
-// internal/apperr directly instead, since model.ErrNotFound carries no
-// information a bare category check needs.
+// Package service is the application layer between callers and model. It
+// resolves primitive inputs into model entities, delegates storage and
+// validation to model.Registry, and composes multi-step workflows.
 //
-// Validation is not duplicated here: model.Validate* remains the single
-// enforcement point — every Registry.Add*/Update* call already runs it,
-// regardless of caller. The ValidateX methods below are read-only
-// passthroughs to those same functions, for UI forms that want pre-flight
-// feedback before attempting a write; they check exactly what model.ValidateX
-// checks, no more (uniqueness is still Add*'s job, composable separately
-// via the read methods below).
-//
-// Two methods, in "Workflows" at the end of this file, are not 1:1
-// wrappers: StartSession and CreateAccount both compose more than one
-// Registry call, each creating the user on demand via the shared
-// resolveOrCreateUser helper — because the caller has no reason to know
-// whether the user already exists. They diverge on the account itself:
-// StartSession resolves-or-creates it, since the caller only wants a
-// session and doesn't care whether the account backing it is new;
-// CreateAccount requires it be newly created, since that is the explicit
-// action the caller invoked. That composition is this package's actual
-// reason to exist as a layer distinct from Registry; everywhere else,
-// Service is deliberately thin, and that thinness is correct, not a
-// shortcut.
+// Validation is not duplicated: Registry.Add*/Update* already enforce
+// model.Validate*. The ValidateX methods are read-only passthroughs for
+// pre-flight UI feedback. StartSession and CreateAccount are the only
+// multi-call workflows; both resolve or create the user on demand.
 package service
 
 import (
@@ -42,11 +20,9 @@ import (
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
-// Service acts as the application layer, resolving primitive UI inputs
-// into domain entities before delegating to the Registry. It owns the
-// full persistence lifecycle: New loads, Save persists. Mutating methods
-// never call Save themselves — the caller decides when a batch of calls
-// is committed, exactly as before; only the storage dependency moved.
+// Service resolves primitive inputs into domain entities and delegates to
+// Registry. It owns the persistence lifecycle: New loads, Save persists.
+// Mutating methods do not call Save; the caller commits a batch.
 type Service struct {
 	reg *model.Registry
 	st  store.Store
@@ -71,10 +47,8 @@ func New(st store.Store) (*Service, error) {
 	}, nil
 }
 
-// Save persists the current registry state. Call this once after a batch
-// of mutating calls succeeds — not after each individual call — so a
-// single UI action that touches more than one aggregate still produces
-// exactly one write.
+// Save persists the current registry state. Call it once after a batch of
+// mutating calls succeeds, not after each individual call.
 func (s *Service) Save() error {
 	if err := s.st.Save(s.reg); err != nil {
 		return fmt.Errorf("save: %w", err)
@@ -318,18 +292,14 @@ func (s *Service) AccountSessions(userEmail, providerName string) ([]*model.Sess
 }
 
 // ValidateAccount reports whether (email, provider) would form a valid
-// account, without inserting anything. Checks presence only — email
-// format is validated separately when the underlying user is created
-// (see model.ValidateUser via CreateAccount/StartSession).
+// account. It checks presence only; email format is validated when the
+// underlying user is created.
 func (s *Service) ValidateAccount(email, provider string) error {
 	return model.ValidateAccount(model.NewAccount(email, provider))
 }
 
-// AddAccount inserts an account into the registry.
-// Returns an error if the user or provider is not registered. This is the
-// strict counterpart to StartSession's on-demand creation — use this when
-// the user is expected to already exist, so a typo'd email fails loudly
-// instead of silently registering a new person.
+// AddAccount inserts an account for an existing user and provider. It is the
+// strict counterpart to StartSession's on-demand creation.
 func (s *Service) AddAccount(userEmail, providerName string) error {
 	u, err := s.resolveUser("add account", userEmail)
 	if err != nil {
@@ -447,9 +417,7 @@ func (s *Service) EndSession(userEmail, providerName string, id uint64) error {
 // ── Workflows (cross-aggregate) ────────────────────────────────────────────────
 
 // resolveOrCreateUser returns the user for email, creating one with name if
-// none exists yet. An existing user's name is left untouched. Shared by
-// every Workflows entry point that treats the user as an on-demand
-// prerequisite rather than a strict precondition.
+// none exists. An existing user's name is left untouched.
 func (s *Service) resolveOrCreateUser(email, name string) (*model.User, error) {
 	if u := s.reg.User(email); u != nil {
 		return u, nil
@@ -461,19 +429,9 @@ func (s *Service) resolveOrCreateUser(email, name string) (*model.User, error) {
 	return u, nil
 }
 
-// ensureAccount returns the account for (userEmail, providerName), creating
-// the user and/or the account first if either does not yet exist. userName
-// is used only when a new user must be created; an existing user's name is
-// left untouched. providerName must already exist — providers are managed
-// explicitly and are never created implicitly. Private: StartSession is the
-// only sanctioned caller of this lenient path; AddAccount is the public,
-// strict alternative.
-func (s *Service) ensureAccount(userEmail, userName, providerName string) (*model.Account, error) {
-	p, err := s.resolveProvider("resolve", providerName)
-	if err != nil {
-		return nil, err
-	}
-
+// ensureAccount returns the account for userEmail and p, creating the user and
+// account on demand.
+func (s *Service) ensureAccount(userEmail, userName string, p *model.Provider) (*model.Account, error) {
 	u, err := s.resolveOrCreateUser(userEmail, userName)
 	if err != nil {
 		return nil, err
@@ -485,47 +443,43 @@ func (s *Service) ensureAccount(userEmail, userName, providerName string) (*mode
 	return s.reg.AddAccount(u, p)
 }
 
-// StartSession is the entry point for the "new session" UI action — the
-// counterpart to EndSession. The operator supplies only user-facing
-// fields; the user and account underneath are resolved or created on
-// demand via ensureAccount, so the caller never needs to know whether
-// either already exists. projectName is optional ("" for none); when set,
-// it must already be granted to the account — StartSession does not grant
-// projects implicitly.
+// StartSession is the entry point for the "new session" action. The user and
+// account are resolved or created on demand; projectName is optional and must
+// already be granted to the account.
 func (s *Service) StartSession(userEmail, userName, providerName, projectName, topic string, queue []model.Prompt) (*model.Session, error) {
-	acc, err := s.ensureAccount(userEmail, userName, providerName)
+	p, err := s.resolveProvider("resolve", providerName)
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
 	}
 
-	var p *model.Project
+	var proj *model.Project
 	if projectName != "" {
-		p, err = s.resolveProject("resolve", projectName)
+		proj, err = s.resolveProject("resolve", projectName)
 		if err != nil {
 			return nil, fmt.Errorf("start session: %w", err)
 		}
 	}
 
-	return s.reg.AddSession(acc, p, topic, queue)
-}
-
-// CreateAccount is the entry point for the "new account" UI action. The
-// user is resolved or created on demand via resolveOrCreateUser, the same
-// helper StartSession uses, so the caller never needs to know whether it
-// already exists. Unlike ensureAccount, the account itself is never
-// resolved leniently: this is an explicit creation, so an account that
-// already exists for (userEmail, providerName) is reported as
-// model.ErrAccountExists rather than returned silently. It does not
-// create a session — StartSession is the only entry point for that.
-func (s *Service) CreateAccount(userEmail, userName, providerName string) (*model.Account, error) {
-	u, err := s.resolveOrCreateUser(userEmail, userName)
+	acc, err := s.ensureAccount(userEmail, userName, p)
 	if err != nil {
-		return nil, fmt.Errorf("create account: %w", err)
+		return nil, fmt.Errorf("start session: %w", err)
 	}
 
+	return s.reg.AddSession(acc, proj, topic, queue)
+}
+
+// CreateAccount is the entry point for the "new account" action. The user is
+// resolved or created on demand; an existing account is reported as
+// model.ErrAccountExists.
+func (s *Service) CreateAccount(userEmail, userName, providerName string) (*model.Account, error) {
 	p, err := s.resolveProvider("create account", providerName)
 	if err != nil {
 		return nil, err
+	}
+
+	u, err := s.resolveOrCreateUser(userEmail, userName)
+	if err != nil {
+		return nil, fmt.Errorf("create account: %w", err)
 	}
 
 	return s.reg.AddAccount(u, p)

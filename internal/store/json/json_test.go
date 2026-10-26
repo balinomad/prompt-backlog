@@ -54,11 +54,6 @@ func writeTempFile(t *testing.T, content string) string {
 //	           bob/chatgpt  — paused, no projects
 //	Sessions:  alice/claude — project Alpha, topic, two queued prompts
 //	           bob/chatgpt  — no project, no topic, no queue
-//
-// Pause and project-assignment are deliberately kept on separate accounts:
-// combining both on one account currently fails to reload due to a bug in
-// buildRegistry (see TestLoad_PausedAccountWithProjects_KnownBug). Each
-// condition is still independently covered.
 func seedRegistry(t *testing.T) *model.Registry {
 	t.Helper()
 	reg := model.NewRegistry()
@@ -151,7 +146,6 @@ func TestLoad_ParseErrors(t *testing.T) {
 			content: "not json {{{",
 			check: func(t *testing.T, err error) {
 				t.Helper()
-				//nolint:errcheck // value intentionally unused; only type membership is asserted
 				if _, ok := errors.AsType[*json.SyntaxError](err); !ok {
 					t.Errorf("error %v is not a *json.SyntaxError", err)
 				}
@@ -162,7 +156,6 @@ func TestLoad_ParseErrors(t *testing.T) {
 			content: `{"providers": "not-an-array"}`,
 			check: func(t *testing.T, err error) {
 				t.Helper()
-				//nolint:errcheck // value intentionally unused; only type membership is asserted
 				if _, ok := errors.AsType[*json.UnmarshalTypeError](err); !ok {
 					t.Errorf("error %v is not a *json.UnmarshalTypeError", err)
 				}
@@ -480,11 +473,8 @@ func TestSave_Deterministic(t *testing.T) {
 
 // ── Save: filesystem fault injection ──────────────────────────────────────────
 //
-// These tests exercise Save's three guarded filesystem error paths by
-// arranging for the underlying os call to fail, without modifying json.go.
-// A fourth path — Rename failing AND the subsequent Remove also failing —
-// is not reachable through the public Store API; see the accompanying
-// summary for why.
+// These tests exercise Save's filesystem error paths by arranging for the
+// underlying os call to fail.
 
 func TestSave_MkdirAllFails(t *testing.T) {
 	t.Parallel()
@@ -656,6 +646,37 @@ func TestRoundTrip_Accounts(t *testing.T) {
 	must(t, err)
 	if len(bobProjects) != 0 {
 		t.Error("bob/chatgpt should have no assigned projects")
+	}
+}
+
+func TestRoundTrip_PausedAccountWithProjects(t *testing.T) {
+	t.Parallel()
+	reg := model.NewRegistry()
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	must(t, err)
+	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
+	until := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	must(t, reg.PauseAccount(acc, until))
+
+	st, _ := newStore(t)
+	must(t, st.Save(reg))
+	loaded, err := st.Load()
+	must(t, err)
+
+	loadedAcc := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
+	if loadedAcc == nil {
+		t.Fatal("account not found")
+	}
+	if !loadedAcc.PauseUntil().Equal(until) {
+		t.Errorf("PauseUntil() = %v, want %v", loadedAcc.PauseUntil(), until)
+	}
+	projects, err := loaded.AccountProjects(loadedAcc)
+	must(t, err)
+	if len(projects) != 1 || projects[0].Name() != "Alpha" {
+		t.Errorf("projects = %v, want [Alpha]", projects)
 	}
 }
 

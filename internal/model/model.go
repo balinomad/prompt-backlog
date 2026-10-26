@@ -1,15 +1,9 @@
-// Package model defines the domain entities for llm-desk — Provider,
-// User, Account, Project, and Session — plus Registry, the
-// concurrency-safe in-memory store that owns their lifecycle.
+// Package model defines the domain entities for llm-desk and the
+// concurrency-safe Registry that owns their lifecycle.
 //
-// Provider, User, Project, and Account are identified by an immutable
-// natural key fixed at construction. Mutable fields are updated only
-// through Registry's Copy-on-Write methods.
-//
-// All entities, including Sessions and their queued Prompts, are fully
-// persistent domain data. The only ephemeral state is the Session ID,
-// which acts as a temporary surrogate key for UI convenience and is
-// regenerated sequentially whenever the process restarts.
+// Provider, User, Project, and Account are identified by an immutable natural
+// key. Mutable fields are updated only through Registry's Copy-on-Write
+// methods. Session IDs are ephemeral surrogate keys regenerated on restart.
 package model
 
 import (
@@ -19,8 +13,7 @@ import (
 	"time"
 )
 
-// TimeFormat is the canonical display and parse format for all timestamps.
-// Using Go's reference time: Mon Jan 2 15:04:05 MST 2006.
+// TimeFormat is the canonical display and parse layout for all timestamps.
 const TimeFormat = "2006-01-02 15:04"
 
 // ParseTime parses s using TimeFormat, interpreted in the operator's
@@ -198,9 +191,9 @@ func (a *Account) PauseUntil() time.Time { return a.pauseUntil }
 type Session struct {
 	accountKey  AccountKey
 	id          uint64
-	projectName string   // Optional; empty if no project is assigned
-	topic       string   // High-level subject
-	queue       []Prompt // Actions to execute upon resumption
+	projectName string
+	topic       string
+	queue       []Prompt
 }
 
 // NewSession constructs a Session for the given account. id is the
@@ -237,8 +230,8 @@ func (s *Session) Queue() []Prompt {
 
 // Prompt represents a queued action for a session.
 type Prompt struct {
-	text          string // e.g., "continue", "Proceed to step 2"
-	spawnsSession bool   // If true, close current session and spawn a new one
+	text          string // Example: "continue", "Proceed to step 2"
+	spawnsSession bool   // If true, close the current session and spawn a new one
 }
 
 // NewPrompt constructs a Prompt.

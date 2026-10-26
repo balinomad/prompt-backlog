@@ -70,11 +70,8 @@ func newService(t *testing.T) *service.Service {
 //	  ID 1: alice@example.com|claude, project=Alpha, topic="Architecture review"
 //	  ID 2: bob@example.com|chatgpt, no project
 //
-// The fixture is deliberately shaped so every resolveAccount/resolveSession
-// edge case can be reached by picking an existing or non-existing
-// email/provider pair against this single fixture, with no per-case setup:
-// alice+chatgpt and bob+claude each name two entities that individually
-// exist but were never paired into an account.
+// The fixture supports every resolveAccount/resolveSession edge case without
+// per-case setup.
 func seedService(t *testing.T) *service.Service {
 	t.Helper()
 	svc := newService(t)
@@ -909,13 +906,8 @@ func TestService_AddAccount(t *testing.T) {
 	}
 }
 
-// TestService_CreateAccount keeps the success/behavioural cases as
-// individual subtests for the same reason TestService_StartSession does:
-// each verifies a different aspect of the on-demand user creation
-// (idempotency, name preservation) or the account itself (duplicate
-// rejection), which a single table would obscure behind a per-row
-// verification function. The pure error-sentinel cases share one action
-// and one assertion shape, so those are tabled.
+// TestService_CreateAccount covers on-demand user creation, name
+// preservation, duplicate rejection, and provider/email errors.
 func TestService_CreateAccount(t *testing.T) {
 	t.Parallel()
 
@@ -975,12 +967,8 @@ func TestService_CreateAccount(t *testing.T) {
 	}
 }
 
-// TestService_DeleteAccount tables the four resolveAccount-shaped cases
-// (success plus its three not-found branches) and keeps the two
-// dependent-check cases as separate subtests, since those two errors carry
-// no sentinel and so don't fit the same errors.Is-shaped assertion as the
-// other four. "success" needs a dependency-free account that the seeded
-// fixture's two accounts don't have (both have a session), hence `seeded`.
+// TestService_DeleteAccount covers the resolveAccount branches plus the
+// dependency checks for sessions and projects.
 func TestService_DeleteAccount(t *testing.T) {
 	t.Parallel()
 
@@ -1046,8 +1034,8 @@ func TestService_DeleteAccount(t *testing.T) {
 	})
 }
 
-// TestService_PauseAccount tables the full resolveAccount branch set;
-// "success" verifies the input pause time round-trips through Account().
+// TestService_PauseAccount covers the resolveAccount branches and verifies
+// the pause time round-trips through Account.
 func TestService_PauseAccount(t *testing.T) {
 	t.Parallel()
 
@@ -1084,10 +1072,8 @@ func TestService_PauseAccount(t *testing.T) {
 	}
 }
 
-// TestService_GrantProject tables resolveAccount's full branch set plus
-// this method's own branches (project-not-found, provider-unsupported,
-// already-assigned). "already assigned" carries no sentinel, so it uses
-// errGeneric instead of a specific error value.
+// TestService_GrantProject covers resolveAccount branches plus project
+// not found, unsupported provider, and already-assigned errors.
 func TestService_GrantProject(t *testing.T) {
 	t.Parallel()
 
@@ -1126,9 +1112,8 @@ func TestService_GrantProject(t *testing.T) {
 	}
 }
 
-// TestService_RevokeProject mirrors TestService_GrantProject's shape;
-// "not assigned" and "has active sessions" also use errGeneric. "success"
-// additionally verifies the project no longer appears in AccountProjects.
+// TestService_RevokeProject mirrors TestService_GrantProject and verifies
+// that a successful revoke removes the project from AccountProjects.
 func TestService_RevokeProject(t *testing.T) {
 	t.Parallel()
 
@@ -1263,11 +1248,8 @@ func TestService_Sessions(t *testing.T) {
 	}
 }
 
-// TestService_UpdateSessionTopic tables every resolveSession-shaped case:
-// success, the three resolveAccount not-found branches, session-not-found,
-// and the cross-account guard. The guard must match apperr.ErrNotFound but
-// must NOT match the specific model.ErrSessionNotFound; wantErrIsNot
-// asserts that negative for the one row that needs it.
+// TestService_UpdateSessionTopic covers resolveSession branches and the
+// cross-account guard.
 func TestService_UpdateSessionTopic(t *testing.T) {
 	t.Parallel()
 
@@ -1309,12 +1291,8 @@ func TestService_UpdateSessionTopic(t *testing.T) {
 	}
 }
 
-// TestService_UpdateSessionProject extends the same resolveSession-shaped
-// set with this method's own branches: project-not-found (sentinel) and
-// project-not-assigned-to-account (errGeneric, no sentinel available). On
-// success the expected ProjectName() always equals the input projectName
-// itself (assign or unassign-via-empty-string), so no separate
-// want-field is needed for it.
+// TestService_UpdateSessionProject covers resolveSession branches plus
+// project-not-found and project-not-assigned errors.
 func TestService_UpdateSessionProject(t *testing.T) {
 	t.Parallel()
 
@@ -1364,8 +1342,8 @@ func TestService_UpdateSessionProject(t *testing.T) {
 	}
 }
 
-// TestService_UpdateSessionPrompts tables the same resolveSession-shaped
-// set plus this method's own validation branch (invalid prompt text).
+// TestService_UpdateSessionPrompts covers resolveSession branches and
+// invalid prompt text.
 func TestService_UpdateSessionPrompts(t *testing.T) {
 	t.Parallel()
 
@@ -1414,8 +1392,7 @@ func TestService_UpdateSessionPrompts(t *testing.T) {
 	}
 }
 
-// TestService_EndSession tables the full resolveSession-shaped set; this
-// method has no branches of its own beyond that.
+// TestService_EndSession covers the full resolveSession branch set.
 func TestService_EndSession(t *testing.T) {
 	t.Parallel()
 
@@ -1458,14 +1435,8 @@ func TestService_EndSession(t *testing.T) {
 
 // ── Workflows ─────────────────────────────────────────────────────────────────
 
-// TestService_StartSession keeps the success/behavioural cases as
-// individual subtests, since each verifies a different aspect of the
-// on-demand user/account creation (idempotency, name preservation,
-// no-duplicate-account guarantee, project+queue passthrough, the
-// project-not-granted check) — folding these into one table would need a
-// per-row verification function, replacing readable assertions with
-// indirection rather than removing duplication. The pure error-sentinel
-// cases below share one action and one assertion shape, so those are tabled.
+// TestService_StartSession covers on-demand user and account creation,
+// project and queue passthrough, and the error branches.
 func TestService_StartSession(t *testing.T) {
 	t.Parallel()
 

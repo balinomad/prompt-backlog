@@ -13,6 +13,13 @@ import (
 	"github.com/balinomad/llm-desk/internal/store"
 )
 
+const (
+	jsonIndent = "  "
+	dirPerm    = 0o700
+	filePerm   = 0o600
+	tempSuffix = ".tmp"
+)
+
 // Compile-time check that Store implements store.Store interface.
 var _ store.Store = (*Store)(nil)
 
@@ -198,6 +205,9 @@ func loadSessions(dto *registryDTO, reg *model.Registry) error {
 		}
 
 		var queue []model.Prompt
+		if len(sdto.Queue) > 0 {
+			queue = make([]model.Prompt, 0, len(sdto.Queue))
+		}
 		for _, prompt := range sdto.Queue {
 			queue = append(queue, model.NewPrompt(prompt.Text, prompt.SpawnsSession))
 		}
@@ -212,44 +222,84 @@ func loadSessions(dto *registryDTO, reg *model.Registry) error {
 
 // ── Save ──────────────────────────────────────────────────────────────────────
 
-// Save writes the registry to the JSON file atomically.
-// The data is written to a temporary file in the same directory and renamed
-// into place. An interrupted write therefore never corrupts the existing file.
-// The parent directory is created if it does not yet exist.
+// Save writes the registry to the JSON file atomically and durably.
+// The data is written to a temporary file in the same directory, synced, and
+// renamed into place. An interrupted write therefore never corrupts the
+// existing file. The parent directory is created if it does not yet exist.
 func (s *Store) Save(reg *model.Registry) error {
 	dto, err := buildDTO(reg)
 	if err != nil {
 		return err
 	}
-	data, err := stdjson.MarshalIndent(dto, "", "  ")
+	data, err := stdjson.MarshalIndent(dto, "", jsonIndent)
 	if err != nil {
 		return fmt.Errorf("store: marshal: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	dir := filepath.Dir(s.path)
+	if err = os.MkdirAll(dir, dirPerm); err != nil {
 		return fmt.Errorf("store: create directory for %q: %w", s.path, err)
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp := s.path + tempSuffix
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm) //nolint:gosec // tmp is derived from the configured store path
+	if err != nil {
 		return fmt.Errorf("store: write %q: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		err = fmt.Errorf("store: rename %q to %q: %w", tmp, s.path, err)
+	if _, writeErr := f.Write(data); writeErr != nil {
+		err = fmt.Errorf("store: write %q: %w", tmp, writeErr)
+		if closeErr := f.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+		return err
+	}
+	if syncErr := f.Sync(); syncErr != nil {
+		err = fmt.Errorf("store: sync %q: %w", tmp, syncErr)
+		if closeErr := f.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+		return err
+	}
+	if closeErr := f.Close(); closeErr != nil {
+		return fmt.Errorf("store: close %q: %w", tmp, closeErr)
+	}
+	if renameErr := os.Rename(tmp, s.path); renameErr != nil {
+		err = fmt.Errorf("store: rename %q to %q: %w", tmp, s.path, renameErr)
 		if rmErr := os.Remove(tmp); rmErr != nil {
 			err = errors.Join(err, rmErr)
 		}
 		return err
 	}
+	if syncErr := syncDir(dir); syncErr != nil {
+		return fmt.Errorf("store: sync directory: %w", syncErr)
+	}
 	return nil
 }
 
-// buildDTO constructs the flat JSON DTOs using the Registry's deterministic getters.
+// syncDir flushes the directory entry for dir to stable storage.
+func syncDir(dir string) (err error) {
+	d, err := os.Open(dir) //nolint:gosec // dir is derived from the configured store path
+	if err != nil {
+		return fmt.Errorf("open %q: %w", dir, err)
+	}
+	defer func() {
+		if closeErr := d.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close %q: %w", dir, closeErr))
+		}
+	}()
+	if syncErr := d.Sync(); syncErr != nil {
+		return fmt.Errorf("sync %q: %w", dir, syncErr)
+	}
+	return nil
+}
+
 // buildDTO constructs the flat JSON DTOs using the Registry's getters,
 // explicitly sorting all slices to guarantee deterministic output and
 // stable session ID reconstruction.
 func buildDTO(reg *model.Registry) (registryDTO, error) {
-	var dto registryDTO
-
-	for _, p := range reg.Providers() {
+	providers := reg.Providers()
+	dto := registryDTO{
+		Providers: make([]providerDTO, 0, len(providers)),
+	}
+	for _, p := range providers {
 		dto.Providers = append(dto.Providers, providerDTO{
 			Name:            p.Name(),
 			HasProjects:     p.HasProjects(),
@@ -257,14 +307,18 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 		})
 	}
 
-	for _, u := range reg.Users() {
+	users := reg.Users()
+	dto.Users = make([]userDTO, 0, len(users))
+	for _, u := range users {
 		dto.Users = append(dto.Users, userDTO{
 			Email: u.Email(),
 			Name:  u.Name(),
 		})
 	}
 
-	for _, p := range reg.Projects() {
+	projects := reg.Projects()
+	dto.Projects = make([]projectDTO, 0, len(projects))
+	for _, p := range projects {
 		dto.Projects = append(dto.Projects, projectDTO{
 			Name:         p.Name(),
 			Description:  p.Description(),
@@ -272,7 +326,9 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 		})
 	}
 
-	for _, acc := range reg.Accounts() {
+	accounts := reg.Accounts()
+	dto.Accounts = make([]accountDTO, 0, len(accounts))
+	for _, acc := range accounts {
 		adto := accountDTO{
 			UserEmail:    acc.UserEmail(),
 			ProviderName: acc.ProviderName(),
@@ -283,11 +339,12 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 			adto.PauseUntil = &t
 		}
 
-		projects, err := reg.AccountProjects(acc)
+		accProjects, err := reg.AccountProjects(acc)
 		if err != nil {
 			return registryDTO{}, fmt.Errorf("store: read projects for account %q|%q: %w", acc.UserEmail(), acc.ProviderName(), err)
 		}
-		for _, p := range projects {
+		adto.Projects = make([]string, 0, len(accProjects))
+		for _, p := range accProjects {
 			adto.Projects = append(adto.Projects, p.Name())
 		}
 
@@ -296,7 +353,9 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 
 	// reg.Sessions() guarantees deterministic slice ordering by ID.
 	// Saving in this order ensures strict chronological re-creation on Load.
-	for _, s := range reg.Sessions() {
+	sessions := reg.Sessions()
+	dto.Sessions = make([]sessionDTO, 0, len(sessions))
+	for _, s := range sessions {
 		sdto := sessionDTO{
 			UserEmail:    s.AccountKey().Email,
 			ProviderName: s.AccountKey().Provider,
@@ -304,7 +363,9 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 			Topic:        s.Topic(),
 		}
 
-		for _, prompt := range s.Queue() {
+		queue := s.Queue()
+		sdto.Queue = make([]promptDTO, 0, len(queue))
+		for _, prompt := range queue {
 			sdto.Queue = append(sdto.Queue, promptDTO{
 				Text:          prompt.Text(),
 				SpawnsSession: prompt.SpawnsSession(),
