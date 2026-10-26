@@ -48,7 +48,7 @@ func TestAccountsPanel_Refresh(t *testing.T) {
 			setup: func(t *testing.T, app *mockApp) {
 				t.Helper()
 				reg := model.NewRegistry()
-				must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+				must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 				app.svc = newTestService(t, reg)
 			},
 			wantCount: 0,
@@ -90,7 +90,7 @@ func TestAccountsPanel_Refresh_PreservesSelection(t *testing.T) {
 		t.Fatal("second item should not be nil")
 	}
 	email := want.UserEmail()
-	provider := want.ProviderName()
+	vendor := want.VendorName()
 
 	p.Refresh()
 
@@ -98,9 +98,9 @@ func TestAccountsPanel_Refresh_PreservesSelection(t *testing.T) {
 	if got == nil {
 		t.Fatal("selection should survive Refresh")
 	}
-	if got.UserEmail() != email || got.ProviderName() != provider {
+	if got.UserEmail() != email || got.VendorName() != vendor {
 		t.Errorf("selection changed: got %s/%s, want %s/%s",
-			got.UserEmail(), got.ProviderName(), email, provider)
+			got.UserEmail(), got.VendorName(), email, vendor)
 	}
 }
 
@@ -122,9 +122,9 @@ func TestAccountsPanel_Refresh_CallsOnSelect(t *testing.T) {
 func TestAccountsPanel_Refresh_ClearsDetailPanelsOnLastAccountDeleted(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 
 	app := &mockApp{svc: newTestService(t, reg)}
@@ -161,8 +161,9 @@ func TestAccountsPanel_Keys_SwitchScreens(t *testing.T) {
 		key        rune
 		wantSwitch string
 	}{
-		{"providers", views.KeyProviders, "providers"},
+		{"vendors", views.KeyVendors, "vendors"},
 		{"projects", views.KeyProjects, "projects"},
+		{"users", views.KeyUsers, "users"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,7 +247,7 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			app.svc = newTestService(t, reg)
 			p := views.NewAccountsPanel(app)
 			p.Refresh()
@@ -264,14 +265,14 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 
 // ── sortAccountsByAvailability ────────────────────────────────────────────────
 
-// TestAccountsPanel_RowText_EscapesProviderAndUserName verifies provider and user
+// TestAccountsPanel_RowText_EscapesVendorAndUserName verifies vendor and user
 // names are escaped in the rendered row.
-func TestAccountsPanel_RowText_EscapesProviderAndUserName(t *testing.T) {
+func TestAccountsPanel_RowText_EscapesVendorAndUserName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude]blue", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude]blue", false, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice[red]")))
-	_, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude]blue"))
+	_, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude]blue"))
 	must(t, err)
 
 	app := &mockApp{svc: newTestService(t, reg)}
@@ -280,7 +281,7 @@ func TestAccountsPanel_RowText_EscapesProviderAndUserName(t *testing.T) {
 
 	got, _ := p.GetItemText(0)
 	if !strings.Contains(got, tview.Escape("claude]blue")) {
-		t.Errorf("got %q, want it to contain the escaped provider", got)
+		t.Errorf("got %q, want it to contain the escaped vendor", got)
 	}
 	if !strings.Contains(got, tview.Escape("Alice[red]")) {
 		t.Errorf("got %q, want it to contain the escaped user name", got)
@@ -293,20 +294,20 @@ func TestAccountsPanel_RowText_EscapesProviderAndUserName(t *testing.T) {
 func TestAccountsPanel_RowText_DynamicColumnWidths(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("ab", false, false)))
-	must(t, reg.AddProvider(model.NewProvider("wxyz", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("ab", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("wxyz", false, false)))
 	must(t, reg.AddUser(model.NewUser("user1@x.com", "c")))
 	must(t, reg.AddUser(model.NewUser("user2@x.com", "defgh")))
-	_, err := reg.AddAccount(reg.User("user1@x.com"), reg.Provider("ab"))
+	_, err := reg.AddAccount(reg.User("user1@x.com"), reg.Vendor("ab"))
 	must(t, err)
-	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Provider("wxyz"))
+	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Vendor("wxyz"))
 	must(t, err)
 
 	app := &mockApp{svc: newTestService(t, reg)}
 	p := views.NewAccountsPanel(app)
 	p.Refresh()
 
-	// Accounts() sorts by composite key ("email|provider"); user1 < user2.
+	// Accounts() sorts by composite key ("email|vendor"); user1 < user2.
 	got0, _ := p.GetItemText(0)
 	if want := " ab   │ c     "; got0 != want {
 		t.Errorf("row 0 = %q, want %q", got0, want)
@@ -318,20 +319,20 @@ func TestAccountsPanel_RowText_DynamicColumnWidths(t *testing.T) {
 }
 
 // TestAccountsPanel_RowText_ColumnWidthCap verifies a single unusually long
-// provider name is truncated and does not widen the shared column beyond
-// the cap, so a short provider elsewhere in the same batch stays tightly
+// vendor name is truncated and does not widen the shared column beyond
+// the cap, so a short vendor elsewhere in the same batch stays tightly
 // padded instead of inheriting a huge gap.
 func TestAccountsPanel_RowText_ColumnWidthCap(t *testing.T) {
 	t.Parallel()
-	const longProvider = "abcdefghijklmnopqrst" // 20 runes, over the 12 cap
+	const longVendor = "abcdefghijklmnopqrst" // 20 runes, over the 12 cap
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider(longProvider, false, false)))
-	must(t, reg.AddProvider(model.NewProvider("cd", false, false)))
+	must(t, reg.AddVendor(model.NewVendor(longVendor, false, false)))
+	must(t, reg.AddVendor(model.NewVendor("cd", false, false)))
 	must(t, reg.AddUser(model.NewUser("user1@x.com", "X")))
 	must(t, reg.AddUser(model.NewUser("user2@x.com", "Y")))
-	_, err := reg.AddAccount(reg.User("user1@x.com"), reg.Provider(longProvider))
+	_, err := reg.AddAccount(reg.User("user1@x.com"), reg.Vendor(longVendor))
 	must(t, err)
-	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Provider("cd"))
+	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Vendor("cd"))
 	must(t, err)
 
 	app := &mockApp{svc: newTestService(t, reg)}
@@ -340,11 +341,11 @@ func TestAccountsPanel_RowText_ColumnWidthCap(t *testing.T) {
 
 	got0, _ := p.GetItemText(0)
 	if want := " abcdefghijk… │ X "; got0 != want {
-		t.Errorf("row 0 (long provider, truncated) = %q, want %q", got0, want)
+		t.Errorf("row 0 (long vendor, truncated) = %q, want %q", got0, want)
 	}
 	got1, _ := p.GetItemText(1)
 	if want := " cd           │ Y "; got1 != want {
-		t.Errorf("row 1 (short provider, width capped, not blown out) = %q, want %q", got1, want)
+		t.Errorf("row 1 (short vendor, width capped, not blown out) = %q, want %q", got1, want)
 	}
 }
 
@@ -353,9 +354,9 @@ func TestAccountsPanel_RowText_ColumnWidthCap(t *testing.T) {
 func newProjectAccountsTestApp(t *testing.T) (*mockApp, *model.Registry, *model.Account) {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	return &mockApp{svc: newTestService(t, reg)}, reg, acc
 }
@@ -474,15 +475,15 @@ func TestAccountsPanel_RequiredWidth(t *testing.T) {
 }
 
 // TestAccountsPanel_RequiredWidth_UsesRenderedRowsOnly verifies that unused
-// providers, users, and projects do not reserve space in the Accounts panel.
+// vendors, users, and projects do not reserve space in the Accounts panel.
 func TestAccountsPanel_RequiredWidth_UsesRenderedRowsOnly(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("p", false, false)))
-	must(t, reg.AddProvider(model.NewProvider("provider-long", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("p", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("vendor-long", false, false)))
 	must(t, reg.AddUser(model.NewUser("used@example.com", "U")))
 	must(t, reg.AddUser(model.NewUser("unused@example.com", "LongUserNameExceedingCap")))
-	_, err := reg.AddAccount(reg.User("used@example.com"), reg.Provider("p"))
+	_, err := reg.AddAccount(reg.User("used@example.com"), reg.Vendor("p"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("project-long-name", "", "")))
 
@@ -543,7 +544,7 @@ func TestAccountsPanel_RequiredWidth_UpdatesWithContent(t *testing.T) {
 		t.Fatalf("RequiredWidth() did not grow: initial %d, after project %d", initial, got)
 	}
 
-	acc = reg.Account(reg.User(acc.UserEmail()), reg.Provider(acc.ProviderName()))
+	acc = reg.Account(reg.User(acc.UserEmail()), reg.Vendor(acc.VendorName()))
 	sessions, err := reg.AccountSessions(acc)
 	must(t, err)
 	must(t, reg.DeleteSession(sessions[len(sessions)-1]))
@@ -575,16 +576,16 @@ func TestSortAccountsByAvailability(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("p", false, false)))
+			must(t, reg.AddVendor(model.NewVendor("p", false, false)))
 			must(t, reg.AddUser(model.NewUser("first@x.com", "First")))
 			must(t, reg.AddUser(model.NewUser("second@x.com", "Second")))
-			firstAcc, err := reg.AddAccount(reg.User("first@x.com"), reg.Provider("p"))
+			firstAcc, err := reg.AddAccount(reg.User("first@x.com"), reg.Vendor("p"))
 			must(t, err)
-			_, err = reg.AddAccount(reg.User("second@x.com"), reg.Provider("p"))
+			_, err = reg.AddAccount(reg.User("second@x.com"), reg.Vendor("p"))
 			must(t, err)
 			must(t, reg.PauseAccount(firstAcc, farFuture))
 			if !tc.secondPauseAt.IsZero() {
-				secondAcc := reg.Account(reg.User("second@x.com"), reg.Provider("p"))
+				secondAcc := reg.Account(reg.User("second@x.com"), reg.Vendor("p"))
 				must(t, reg.PauseAccount(secondAcc, tc.secondPauseAt))
 			}
 
@@ -658,15 +659,15 @@ func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	capture(specialKey(views.KeyInsert))
 
 	form := formFromCenteredModal(t, app.modal)
-	setInputField(t, form, "Email", "carol@example.com")
-	setInputField(t, form, "Name", "Carol")
+	setDropDown(t, form, "User", 1)   // alice
+	setDropDown(t, form, "Vendor", 0) // chatgpt
 	triggerSave(t, form)
 
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
 	assertHints(t, app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	if _, err := app.svc.Account("carol@example.com", "chatgpt"); err != nil {
+	if _, err := app.svc.Account("alice@example.com", "chatgpt"); err != nil {
 		t.Errorf("account not created: %v", err)
 	}
 }

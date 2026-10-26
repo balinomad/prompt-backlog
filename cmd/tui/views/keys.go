@@ -20,14 +20,17 @@ const (
 	// KeyQuit initiates the quit flow (confirmation modal).
 	KeyQuit rune = 'q'
 
-	// KeyProviders switches to the providers management screen.
-	KeyProviders rune = 'r'
+	// KeyVendors switches to the vendors management screen.
+	KeyVendors rune = 'v'
 
 	// KeyProjects switches to the projects management screen.
 	KeyProjects rune = 'p'
 
+	// KeyUsers switches to the users management screen.
+	KeyUsers rune = 'u'
+
 	// KeyQueue opens the queue editor for the selected session.
-	KeyQueue rune = 'u'
+	KeyQueue rune = 'm'
 )
 
 // ── Special keys (checked via event.Key()) ───────────────────────────────────

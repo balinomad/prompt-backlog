@@ -63,7 +63,7 @@ type mockApp struct {
 	showModalErr  error
 	modal         tview.Primitive
 	focused       tview.Primitive
-	switchedTo    string // "main" | "providers" | "projects"
+	switchedTo    string // "main" | "vendors" | "projects" | "users"
 	status        string
 	hintsSpecific string
 	hintsCommon   string
@@ -92,8 +92,9 @@ func (m *mockApp) ShowModal(p tview.Primitive) error {
 func (m *mockApp) HideModal()                 { m.modal = nil }
 func (m *mockApp) SetFocus(p tview.Primitive) { m.focused = p }
 func (m *mockApp) SwitchToMain()              { m.switchedTo = "main" }
-func (m *mockApp) SwitchToProviders()         { m.switchedTo = "providers" }
+func (m *mockApp) SwitchToVendors()           { m.switchedTo = "vendors" }
 func (m *mockApp) SwitchToProjects()          { m.switchedTo = "projects" }
+func (m *mockApp) SwitchToUsers()             { m.switchedTo = "users" }
 func (m *mockApp) SetStatus(msg string)       { m.status = msg }
 func (m *mockApp) SetHints(specific, common string) {
 	m.hintsSpecific = specific
@@ -123,21 +124,21 @@ func confirmModalFrom(t *testing.T, p tview.Primitive) *tview.Modal {
 // newMockApp returns a mock wired with a fully populated registry.
 // The fixture excludes sessions; tests that need them build their own.
 //
-//	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
+//	Vendors: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
 //	Accounts:  alice|claude, bob|chatgpt
 //	Projects:  "Alpha" and "Beta" (granted to alice|claude), "Orphan" (no accounts)
 func newMockApp(t *testing.T) *mockApp {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-	must(t, reg.AddProvider(model.NewProvider("chatgpt", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("chatgpt", false, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
 
-	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	_, err = reg.AddAccount(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+	_, err = reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 	must(t, err)
 
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))

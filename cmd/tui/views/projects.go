@@ -17,15 +17,15 @@ import (
 // navigates to it with 'p' and returns to the main view with Esc.
 type ProjectsPanel struct {
 	*tview.Flex
-	list          *tview.List
-	accountList   *tview.List
-	infoView      *tview.TextView
-	app           App
-	projects      []*model.Project // mirrors list order; rebuilt on Refresh
-	accounts      []*model.Account // mirrors accountList order; granted accounts for selected project
-	providerWidth int
-	nameWidth     int
-	refreshing    bool
+	list        *tview.List
+	accountList *tview.List
+	infoView    *tview.TextView
+	app         App
+	projects    []*model.Project // mirrors list order; rebuilt on Refresh
+	accounts    []*model.Account // mirrors accountList order; granted accounts for selected project
+	vendorWidth int
+	nameWidth   int
+	refreshing  bool
 }
 
 // NewProjectsPanel constructs the projects management screen.
@@ -85,7 +85,7 @@ func NewProjectsPanel(app App) *ProjectsPanel {
 func (p *ProjectsPanel) Refresh() {
 	svc := p.app.Service()
 	all := svc.Projects() // already sorted by name
-	p.providerWidth, p.nameWidth = projectAccountWidths(svc)
+	p.vendorWidth, p.nameWidth = projectAccountWidths(svc)
 
 	var prevName string
 	if proj := p.selectedProject(); proj != nil {
@@ -181,12 +181,12 @@ func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelectio
 		}
 	}
 	sortProjectAccounts(p.app.Service(), accounts)
-	providerWidth, nameWidth := p.providerWidth, p.nameWidth
+	vendorWidth, nameWidth := p.vendorWidth, p.nameWidth
 
 	rows := make([][]string, len(accounts))
 	for i, acc := range accounts {
 		rows[i] = []string{
-			tview.Escape(truncateWidth(acc.ProviderName(), providerWidth)),
+			tview.Escape(truncateWidth(acc.VendorName(), vendorWidth)),
 			tview.Escape(truncateWidth(projectAccountUserName(p.app.Service(), acc), nameWidth)),
 		}
 	}
@@ -365,14 +365,14 @@ func (p *ProjectsPanel) handleRevokeSelected() *tcell.EventKey {
 		return nil
 	}
 	email := acc.UserEmail()
-	provider := acc.ProviderName()
+	vendor := acc.VendorName()
 	name := proj.Name()
-	label := fmt.Sprintf("%s / %s", tview.Escape(email), tview.Escape(provider))
+	label := fmt.Sprintf("%s / %s", tview.Escape(email), tview.Escape(vendor))
 	modal := NewConfirmModal(
 		fmt.Sprintf("Remove account\n%s\nfrom project %q?", label, tview.Escape(name)),
 		func() {
 			if err := p.app.Mutate(func(s *service.Service) error {
-				return s.RevokeProject(email, provider, name)
+				return s.RevokeProject(email, vendor, name)
 			}); err != nil {
 				setErrorStatus(p.app, err)
 			}
@@ -399,25 +399,25 @@ func projectAccountUserName(svc *service.Service, acc *model.Account) string {
 	return acc.UserEmail()
 }
 
-// projectAccountText formats one granted account as Provider │ User for the
-// grant form. The provider and user name are truncated to providerWidth and
+// projectAccountText formats one granted account as Vendor │ User for the
+// grant form. The vendor and user name are truncated to vendorWidth and
 // nameWidth; both widths are capped by the shared project-screen limits.
-func projectAccountText(svc *service.Service, acc *model.Account, providerWidth, nameWidth int) string {
-	provider := truncateWidth(acc.ProviderName(), providerWidth)
+func projectAccountText(svc *service.Service, acc *model.Account, vendorWidth, nameWidth int) string {
+	vendor := truncateWidth(acc.VendorName(), vendorWidth)
 	name := truncateWidth(projectAccountUserName(svc, acc), nameWidth)
-	return provider + columnSeparator + name
+	return vendor + columnSeparator + name
 }
 
-// projectAccountWidths returns the provider and user-name widths used by the
+// projectAccountWidths returns the vendor and user-name widths used by the
 // Projects screen's granted-accounts list and grant form. They use store-wide
 // values, including the email fallback for accounts without a user record,
 // and the shared project-screen caps.
 func projectAccountWidths(svc *service.Service) (int, int) {
-	var providerWidth, nameWidth int
-	for _, provider := range svc.Providers() {
-		providerWidth = max(providerWidth, plainWidth(provider.Name()))
+	var vendorWidth, nameWidth int
+	for _, vendor := range svc.Vendors() {
+		vendorWidth = max(vendorWidth, plainWidth(vendor.Name()))
 	}
-	providerWidth = min(providerWidth, providerColumnWidthCap)
+	vendorWidth = min(vendorWidth, vendorColumnWidthCap)
 
 	for _, u := range svc.Users() {
 		nameWidth = max(nameWidth, plainWidth(u.Name()))
@@ -428,27 +428,27 @@ func projectAccountWidths(svc *service.Service) (int, int) {
 		}
 	}
 	nameWidth = min(nameWidth, nameColumnWidthCap)
-	return providerWidth, nameWidth
+	return vendorWidth, nameWidth
 }
 
-// sortProjectAccounts orders accounts alphabetically by provider, then by
+// sortProjectAccounts orders accounts alphabetically by vendor, then by
 // user name, using a case-insensitive comparison. Equal pairs keep their
 // incoming order.
 func sortProjectAccounts(svc *service.Service, accounts []*model.Account) {
 	type key struct {
-		provider string
-		user     string
+		vendor string
+		user   string
 	}
 	keys := make(map[model.AccountKey]key, len(accounts))
 	for _, acc := range accounts {
 		keys[acc.Key()] = key{
-			provider: strings.ToLower(acc.ProviderName()),
-			user:     strings.ToLower(projectAccountUserName(svc, acc)),
+			vendor: strings.ToLower(acc.VendorName()),
+			user:   strings.ToLower(projectAccountUserName(svc, acc)),
 		}
 	}
 	slices.SortStableFunc(accounts, func(a, b *model.Account) int {
 		ka, kb := keys[a.Key()], keys[b.Key()]
-		if c := strings.Compare(ka.provider, kb.provider); c != 0 {
+		if c := strings.Compare(ka.vendor, kb.vendor); c != 0 {
 			return c
 		}
 		return strings.Compare(ka.user, kb.user)

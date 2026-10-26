@@ -1,7 +1,7 @@
 // Package model defines the domain entities for llm-desk and the
 // concurrency-safe Registry that owns their lifecycle.
 //
-// Provider, User, Project, and Account are identified by an immutable natural
+// Vendor, User, Project, and Account are identified by an immutable natural
 // key. Mutable fields are updated only through Registry's Copy-on-Write
 // methods. Session IDs are ephemeral surrogate keys regenerated on restart.
 package model
@@ -46,37 +46,37 @@ func NormalizeText(text string) string {
 	return strings.TrimSpace(text)
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Vendor ──────────────────────────────────────────────────────────────────
 
-// Provider describes an AI service and its capabilities.
+// Vendor describes an AI service and its capabilities.
 //
 // name is the natural key; it is immutable after construction.
-// A name change means a new provider, not an update.
+// A name change means a new vendor, not an update.
 //
-// Capabilities are updated via Registry.UpdateProvider using Copy-on-Write.
-type Provider struct {
+// Capabilities are updated via Registry.UpdateVendor using Copy-on-Write.
+type Vendor struct {
 	name            string
 	hasProjects     bool
 	hasDeepResearch bool
 }
 
-// NewProvider constructs a Provider. The name is permanent.
-func NewProvider(name string, hasProjects, hasDeepResearch bool) *Provider {
-	return &Provider{
+// NewVendor constructs a Vendor. The name is permanent.
+func NewVendor(name string, hasProjects, hasDeepResearch bool) *Vendor {
+	return &Vendor{
 		name:            NormalizeText(name),
 		hasProjects:     hasProjects,
 		hasDeepResearch: hasDeepResearch,
 	}
 }
 
-// Name returns the provider's immutable name.
-func (p *Provider) Name() string { return p.name }
+// Name returns the vendor's immutable name.
+func (p *Vendor) Name() string { return p.name }
 
-// HasProjects returns whether the provider supports projects.
-func (p *Provider) HasProjects() bool { return p.hasProjects }
+// HasProjects returns whether the vendor supports projects.
+func (p *Vendor) HasProjects() bool { return p.hasProjects }
 
-// HasDeepResearch returns whether the provider supports deep research.
-func (p *Provider) HasDeepResearch() bool { return p.hasDeepResearch }
+// HasDeepResearch returns whether the vendor supports deep research.
+func (p *Vendor) HasDeepResearch() bool { return p.hasDeepResearch }
 
 // ── User ──────────────────────────────────────────────────────────────────────
 
@@ -112,8 +112,8 @@ func (u *User) Name() string { return u.name }
 //
 // name is immutable after construction. A name change means a new project.
 // Account associations are managed exclusively through Registry methods
-// (AddProjectToAccount, RemoveProjectFromAccount), which enforce provider
-// capability validation (Provider.HasProjects).
+// (AddProjectToAccount, RemoveProjectFromAccount), which enforce vendor
+// capability validation (Vendor.HasProjects).
 //
 // Description and Instructions are updated via Registry.UpdateProject using Copy-on-Write.
 type Project struct {
@@ -143,19 +143,19 @@ func (p *Project) Instructions() string { return p.instructions }
 
 // ── Account ───────────────────────────────────────────────────────────────────
 
-// AccountKey is the Account's composite natural key (based on user and provider).
+// AccountKey is the Account's composite natural key (based on user and vendor).
 type AccountKey struct {
-	Email    string
-	Provider string
+	Email  string
+	Vendor string
 }
 
 // String returns a string representation of the AccountKey, used as a
 // stable sort key when ordering accounts.
 func (k AccountKey) String() string {
-	return k.Email + "|" + k.Provider
+	return k.Email + "|" + k.Vendor
 }
 
-// Account represents a unique User + Provider combination.
+// Account represents a unique User + Vendor combination.
 // It is the primary owner of sessions and holds its pause state.
 type Account struct {
 	key        AccountKey
@@ -163,11 +163,11 @@ type Account struct {
 }
 
 // NewAccount constructs an Account using natural keys.
-func NewAccount(userEmail, providerName string) *Account {
+func NewAccount(userEmail, vendorName string) *Account {
 	return &Account{
 		key: AccountKey{
-			Email:    NormalizeEmail(userEmail),
-			Provider: NormalizeText(providerName),
+			Email:  NormalizeEmail(userEmail),
+			Vendor: NormalizeText(vendorName),
 		},
 	}
 }
@@ -178,8 +178,8 @@ func (a *Account) Key() AccountKey { return a.key }
 // UserEmail returns the email of the associated user.
 func (a *Account) UserEmail() string { return a.key.Email }
 
-// ProviderName returns the name of the associated provider.
-func (a *Account) ProviderName() string { return a.key.Provider }
+// VendorName returns the name of the associated vendor.
+func (a *Account) VendorName() string { return a.key.Vendor }
 
 // PauseUntil returns the time until which the account is paused. No
 // session under this account should be used before this time.

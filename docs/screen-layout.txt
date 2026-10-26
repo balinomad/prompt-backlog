@@ -1,37 +1,38 @@
-llm-desk has four distinct views. The main screen (accounts, sessions, and
-account info) is always one of the three full-screen pages; providers and
-projects are the other two, reached from the accounts list via `r` / `p`
-and returned from via `Esc`. The queue editor is a modal opened from
-session detail via `u`, not a fourth page. All list rows use a single
-leading space so text does not touch the panel frame. Detail rows use a
-one-cell inset on both sides that also applies to wrapped lines.
+llm-desk has four full-screen pages (main, vendors, users, and projects) and
+one modal (the messages editor). The main screen (accounts, sessions, and
+account info) is always one of the pages; vendors, users, and projects are
+the others, reached from the accounts list via `v` / `u` / `p` and returned
+from via `Esc`. The messages editor is opened from session detail via `m`,
+not a page. All list rows use a single leading space so text does not touch
+the panel frame. Detail rows use a one-cell inset on both sides that also
+applies to wrapped lines.
 
 ── Main screen (accounts, sessions, and account info) ────────────────────────
 
 ┌ llm-desk ───────────────────────────────────────────────────────────────┐
 │                                                                         │
 │  ┌ Accounts ──────────────────┐  ┌ Sessions ─────────────────────────┐  │
-│  │▶ claude   │ Alice │        │  │▶ Architecture review   Alpha   q:1│  │
-│  │  chatgpt  │ Bob   │ 18:00  │  │  (untitled)            —       q:0│  │
+│  │▶ claude   │ Alice │        │  │▶ Architecture   Alpha   pending: 1│  │
+│  │  chatgpt  │ Bob   │ 18:00  │  │  (untitled)     —       pending: 0│  │
 │  │  claude   │ Carol │ 09:15  │  └───────────────────────────────────┘  │
 │  │           │       │        │                                        │
-│  └────────────────────────────┘                                        │
+│  └────────────────────────────┘                                         │
 │  ┌ Account Details ──────────────────────────────────────────────────┐  │
 │  │ User     Alice (alice@example.com)                                │  │
-│  │ Provider claude                                                   │  │
+│  │ Vendor   claude                                                   │  │
 │  │ Projects Alpha, Beta                                              │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
-│  Enter edit  Ins add  Del delete                                        │
-│  Tab sessions  r providers  p projects  ? help  q quit           saved ✓│
+│  Enter pause  Ins add  Del delete                                       │
+│  Tab sessions  v vendors  p projects  u users  ? help  q quit    saved ✓│
 └─────────────────────────────────────────────────────────────────────────┘
 
-Accounts (left) lists every (user, provider) pair as aligned columns:
-provider, user name, pause time, and latest project, soonest-available
+Accounts (left) lists every (user, vendor) pair as aligned columns:
+vendor, user name, pause time, and latest project, soonest-available
 first. Columns are padded and separated by " │ "; blank cells keep their
 separator and padding so later columns stay aligned. Multi-column rows
 also pad a trailing cell. The pause and project columns are omitted
-only when no rendered row has a value. Provider, user, and project values
+only when no rendered row has a value. Vendor, user, and project values
 are capped and truncated with an ellipsis when needed; widths come from the
 values actually rendered. Same-day pause times show as "HH:MM"; other
 days as "HH:MM ±N", the number of days from today (for example,
@@ -39,21 +40,22 @@ days as "HH:MM ±N", the number of days from today (for example,
 unavailable, green once it is available again, and omitted for an account
 that has never been paused. Pause status appears only in the accounts
 list. Session detail (top right) lists the selected account's sessions
-("q:N" = queue length). The full-width Account Details panel below both
-panels shows the user, provider, and granted projects, and grows with
-wrapped project text. The Account Details, Provider Details, and Project
+("pending: N" = pending message count; "pending messages: N" when width
+allows). The full-width Account Details panel below both
+panels shows the user, vendor, and granted projects, and grows with
+wrapped project text. The Account Details, Vendor Details, and Project
 Details panels size their label columns from their own longest labels and
 grow with their wrapped content.
 
-── Providers screen ────────────────────────────────────────────────────────
+── Vendors screen ─────────────────────────────────────────────────────────
 
-┌ Providers screen ──────────────────────────────────────────────────┐
+┌ Vendors screen ────────────────────────────────────────────────────┐
 │                                                                    │
-│  ┌ Providers ───────────────────────────────────────────────────┐  │
+│  ┌ Vendors ─────────────────────────────────────────────────────┐  │
 │  │▶ claude   │ projects, deep-research                          │  │
 │  │  chatgpt  │                                                  │  │
 │  └──────────────────────────────────────────────────────────────┘  │
-│  ┌ Provider Details ────────────────────────────────────────────┐  │
+│  ┌ Vendor Details ──────────────────────────────────────────────┐  │
 │  │ Name          claude                                         │  │
 │  │ Projects      yes                                            │  │
 │  │ Deep research yes                                            │  │
@@ -62,10 +64,30 @@ grow with their wrapped content.
 │  Esc back  ? help  q quit                                          │
 └────────────────────────────────────────────────────────────────────┘
 
-Provider names and capabilities are padded columns separated by " │ ",
+Vendor names and capabilities are padded columns separated by " │ ",
 with the same single leading space as the other lists. The capability
-column is shown only when at least one provider has a capability. The
-Provider Details panel below grows with wrapped text.
+column is shown only when at least one vendor has a capability. The
+Vendor Details panel below grows with wrapped text.
+
+── Users screen ────────────────────────────────────────────────────────────
+
+┌ Users screen ──────────────────────────────────────────────────────┐
+│                                                                    │
+│  ┌ Users ───────────────────────────────────────────────────────┐  │
+│  │▶ Alice │ alice@example.com                                   │  │
+│  │  Bob   │ bob@example.com                                     │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  ┌ User Details ────────────────────────────────────────────────┐  │
+│  │ Name  Alice                                                  │  │
+│  │ Email alice@example.com                                      │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│  Enter edit  Ins add  Del delete                                   │
+│  Esc back  ? help  q quit                                          │
+└────────────────────────────────────────────────────────────────────┘
+
+User rows show the display name and email as padded columns separated by
+" │ ", with the same single leading space as the other lists. The User
+Details panel below grows with wrapped text.
 
 ── Projects screen ─────────────────────────────────────────────────────────
 
@@ -88,7 +110,7 @@ Provider Details panel below grows with wrapped text.
 └────────────────────────────────────────────────────────────────────┘
 
 The right pane lists only the accounts granted the selected project,
-ordered by provider and then user name. Provider and user cells use the
+ordered by vendor and then user name. Vendor and user cells use the
 same " │ " separator and padding as the main accounts list, with the same
 single leading space. Insert adds another account to the project; Del
 deletes the selected account from it after confirmation. Tab switches
@@ -96,9 +118,9 @@ panes. Esc from the account list returns to the project list; Esc from
 the project list returns to the main screen. The Project Details panel
 below grows with wrapped description or instructions.
 
-── Queue editor (modal, opened from session detail) ──────────────────────────
+── Messages editor (modal, opened from session detail) ──────────────────────
 
-┌ Queue: session #1 ────────────────────────────────────┐
+┌ Messages: session #1 ─────────────────────────────────┐
 │▶ first                                                │
 │  second   → new session                               │
 │  third                                                │
@@ -106,6 +128,6 @@ below grows with wrapped description or instructions.
 │Esc close  ? help  q quit                              │
 └───────────────────────────────────────────────────────┘
 
-Queue rows use the same single leading space as the other lists. Every
+Message rows use the same single leading space as the other lists. Every
 action here (add, edit, delete, reorder) commits immediately; there is no
 separate save step for the editor as a whole.

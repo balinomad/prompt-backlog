@@ -31,14 +31,14 @@ var _ store.Store = (*Store)(nil)
 // source of truth, independent of the Registry's runtime map indexes.
 // time.Time fields serialise as RFC 3339 automatically via encoding/json.
 type registryDTO struct {
-	Providers []providerDTO `json:"providers,omitempty"`
-	Users     []userDTO     `json:"users,omitempty"`
-	Projects  []projectDTO  `json:"projects,omitempty"`
-	Accounts  []accountDTO  `json:"accounts,omitempty"`
-	Sessions  []sessionDTO  `json:"sessions,omitempty"`
+	Vendors  []vendorDTO  `json:"vendors,omitempty"`
+	Users    []userDTO    `json:"users,omitempty"`
+	Projects []projectDTO `json:"projects,omitempty"`
+	Accounts []accountDTO `json:"accounts,omitempty"`
+	Sessions []sessionDTO `json:"sessions,omitempty"`
 }
 
-type providerDTO struct {
+type vendorDTO struct {
 	Name            string `json:"name"`
 	HasProjects     bool   `json:"has_projects"`
 	HasDeepResearch bool   `json:"has_deep_research"`
@@ -56,18 +56,18 @@ type projectDTO struct {
 }
 
 type accountDTO struct {
-	UserEmail    string     `json:"user_email"`
-	ProviderName string     `json:"provider_name"`
-	PauseUntil   *time.Time `json:"pause_until,omitempty"`
-	Projects     []string   `json:"projects,omitempty"`
+	UserEmail  string     `json:"user_email"`
+	VendorName string     `json:"vendor_name"`
+	PauseUntil *time.Time `json:"pause_until,omitempty"`
+	Projects   []string   `json:"projects,omitempty"`
 }
 
 type sessionDTO struct {
-	UserEmail    string      `json:"user_email"`
-	ProviderName string      `json:"provider_name"`
-	ProjectName  string      `json:"project_name,omitempty"`
-	Topic        string      `json:"topic,omitempty"`
-	Queue        []promptDTO `json:"queue,omitempty"`
+	UserEmail   string      `json:"user_email"`
+	VendorName  string      `json:"vendor_name"`
+	ProjectName string      `json:"project_name,omitempty"`
+	Topic       string      `json:"topic,omitempty"`
+	Queue       []promptDTO `json:"queue,omitempty"`
 }
 
 type promptDTO struct {
@@ -124,9 +124,9 @@ func (s *Store) Load() (*model.Registry, error) {
 func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 	reg := model.NewRegistry()
 
-	for _, pdto := range dto.Providers {
-		if err := reg.AddProvider(model.NewProvider(pdto.Name, pdto.HasProjects, pdto.HasDeepResearch)); err != nil {
-			return nil, fmt.Errorf("store: load provider %q: %w", pdto.Name, err)
+	for _, pdto := range dto.Vendors {
+		if err := reg.AddVendor(model.NewVendor(pdto.Name, pdto.HasProjects, pdto.HasDeepResearch)); err != nil {
+			return nil, fmt.Errorf("store: load vendor %q: %w", pdto.Name, err)
 		}
 	}
 
@@ -153,21 +153,21 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 }
 
 // loadAccounts resolves and attaches Accounts to the Registry using the
-// flat DTO representation. It requires Users, Providers, and Projects to
+// flat DTO representation. It requires Users, Vendors, and Projects to
 // be fully populated in the Registry beforehand. This step also applies
 // active pause states and assigns associated Projects to each Account.
 func loadAccounts(dto *registryDTO, reg *model.Registry) error {
 	for _, adto := range dto.Accounts {
 		u := reg.User(adto.UserEmail)
-		p := reg.Provider(adto.ProviderName)
+		p := reg.Vendor(adto.VendorName)
 		acc, err := reg.AddAccount(u, p)
 		if err != nil {
-			return fmt.Errorf("store: load account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
+			return fmt.Errorf("store: load account %q|%q: %w", adto.UserEmail, adto.VendorName, err)
 		}
 
 		if adto.PauseUntil != nil && !adto.PauseUntil.IsZero() {
 			if err := reg.PauseAccount(acc, *adto.PauseUntil); err != nil {
-				return fmt.Errorf("store: restore pause state for account %q|%q: %w", adto.UserEmail, adto.ProviderName, err)
+				return fmt.Errorf("store: restore pause state for account %q|%q: %w", adto.UserEmail, adto.VendorName, err)
 			}
 			// acc must be re-read because PauseAccount replaces the registry's Account via Copy-on-Write
 			acc = reg.Account(u, p)
@@ -176,7 +176,7 @@ func loadAccounts(dto *registryDTO, reg *model.Registry) error {
 		for _, pName := range adto.Projects {
 			proj := reg.Project(pName)
 			if err := reg.AddProjectToAccount(acc, proj); err != nil {
-				return fmt.Errorf("store: assign project %q to account %q|%q: %w", pName, adto.UserEmail, adto.ProviderName, err)
+				return fmt.Errorf("store: assign project %q to account %q|%q: %w", pName, adto.UserEmail, adto.VendorName, err)
 			}
 		}
 	}
@@ -190,10 +190,10 @@ func loadAccounts(dto *registryDTO, reg *model.Registry) error {
 func loadSessions(dto *registryDTO, reg *model.Registry) error {
 	for i, sdto := range dto.Sessions {
 		u := reg.User(sdto.UserEmail)
-		p := reg.Provider(sdto.ProviderName)
+		p := reg.Vendor(sdto.VendorName)
 		acc := reg.Account(u, p)
 		if acc == nil {
-			return fmt.Errorf("store: load session at index %d: account %q|%q not found", i, sdto.UserEmail, sdto.ProviderName)
+			return fmt.Errorf("store: load session at index %d: account %q|%q not found", i, sdto.UserEmail, sdto.VendorName)
 		}
 
 		var proj *model.Project
@@ -295,12 +295,12 @@ func syncDir(dir string) (err error) {
 // explicitly sorting all slices to guarantee deterministic output and
 // stable session ID reconstruction.
 func buildDTO(reg *model.Registry) (registryDTO, error) {
-	providers := reg.Providers()
+	vendors := reg.Vendors()
 	dto := registryDTO{
-		Providers: make([]providerDTO, 0, len(providers)),
+		Vendors: make([]vendorDTO, 0, len(vendors)),
 	}
-	for _, p := range providers {
-		dto.Providers = append(dto.Providers, providerDTO{
+	for _, p := range vendors {
+		dto.Vendors = append(dto.Vendors, vendorDTO{
 			Name:            p.Name(),
 			HasProjects:     p.HasProjects(),
 			HasDeepResearch: p.HasDeepResearch(),
@@ -330,8 +330,8 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 	dto.Accounts = make([]accountDTO, 0, len(accounts))
 	for _, acc := range accounts {
 		adto := accountDTO{
-			UserEmail:    acc.UserEmail(),
-			ProviderName: acc.ProviderName(),
+			UserEmail:  acc.UserEmail(),
+			VendorName: acc.VendorName(),
 		}
 
 		if !acc.PauseUntil().IsZero() {
@@ -341,7 +341,7 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 
 		accProjects, err := reg.AccountProjects(acc)
 		if err != nil {
-			return registryDTO{}, fmt.Errorf("store: read projects for account %q|%q: %w", acc.UserEmail(), acc.ProviderName(), err)
+			return registryDTO{}, fmt.Errorf("store: read projects for account %q|%q: %w", acc.UserEmail(), acc.VendorName(), err)
 		}
 		adto.Projects = make([]string, 0, len(accProjects))
 		for _, p := range accProjects {
@@ -357,10 +357,10 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 	dto.Sessions = make([]sessionDTO, 0, len(sessions))
 	for _, s := range sessions {
 		sdto := sessionDTO{
-			UserEmail:    s.AccountKey().Email,
-			ProviderName: s.AccountKey().Provider,
-			ProjectName:  s.ProjectName(),
-			Topic:        s.Topic(),
+			UserEmail:   s.AccountKey().Email,
+			VendorName:  s.AccountKey().Vendor,
+			ProjectName: s.ProjectName(),
+			Topic:       s.Topic(),
 		}
 
 		queue := s.Queue()

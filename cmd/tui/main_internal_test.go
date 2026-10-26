@@ -62,9 +62,9 @@ func TestOpenStore(t *testing.T) {
 func TestNew_SizesAccountsPanelToWidestRow(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	proj := model.NewProject("abcdefghijklmnopqrst", "", "")
 	must(t, reg.AddProject(proj))
@@ -124,9 +124,9 @@ func TestNew_SizesAccountsPanelToWidestRow(t *testing.T) {
 func TestNew_AccountInfoFullWidthAndWrapHeight(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	proj := model.NewProject(strings.Repeat("long-project-", 12), "", "")
 	must(t, reg.AddProject(proj))
@@ -177,15 +177,16 @@ func TestNew_AccountInfoFullWidthAndWrapHeight(t *testing.T) {
 	}
 }
 
-// TestNew_DetailPanelsFitContent verifies the provider and project detail
-// panels are sized to their wrapped content rather than a fixed height.
+// TestNew_DetailPanelsFitContent verifies the vendor, project, and user
+// detail panels are sized to their wrapped content rather than a fixed height.
 func TestNew_DetailPanelsFitContent(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	providerName := strings.Repeat("provider-", 12)
-	must(t, reg.AddProvider(model.NewProvider(providerName, true, false)))
+	vendorName := strings.Repeat("vendor-", 12)
+	must(t, reg.AddVendor(model.NewVendor(vendorName, true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider(providerName))
+	must(t, reg.AddUser(model.NewUser(strings.Repeat("long-", 20)+"@example.com", "Aa"+strings.Repeat("long ", 20))))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor(vendorName))
 	must(t, err)
 	proj := model.NewProject("Alpha", strings.Repeat("description ", 12), "instructions")
 	must(t, reg.AddProject(proj))
@@ -203,18 +204,18 @@ func TestNew_DetailPanelsFitContent(t *testing.T) {
 
 	app.resizeDetailPanels(80, 24)
 
-	app.providers.SetRect(0, 0, 80, 24-statusBarHeight)
-	app.providers.Draw(screen)
-	providerInfo, ok := app.providers.GetItem(1).(*tview.TextView)
+	app.vendors.SetRect(0, 0, 80, 24-statusBarHeight)
+	app.vendors.Draw(screen)
+	vendorInfo, ok := app.vendors.GetItem(1).(*tview.TextView)
 	if !ok {
-		t.Fatalf("expected provider info *tview.TextView, got %T", app.providers.GetItem(1))
+		t.Fatalf("expected vendor info *tview.TextView, got %T", app.vendors.GetItem(1))
 	}
-	_, _, _, providerHeight := providerInfo.GetRect()
-	if want := app.providers.RequiredInfoHeight(80); providerHeight != want {
-		t.Errorf("provider info height = %d, want %d", providerHeight, want)
+	_, _, _, vendorHeight := vendorInfo.GetRect()
+	if want := app.vendors.RequiredInfoHeight(80); vendorHeight != want {
+		t.Errorf("vendor info height = %d, want %d", vendorHeight, want)
 	}
-	if want := app.providers.RequiredInfoHeight(80); want <= 5 {
-		t.Errorf("provider info height = %d, want more than 5 for wrapped name", want)
+	if want := app.vendors.RequiredInfoHeight(80); want <= 5 {
+		t.Errorf("vendor info height = %d, want more than 5 for wrapped name", want)
 	}
 
 	app.projects.SetRect(0, 0, 80, 24-statusBarHeight)
@@ -229,5 +230,19 @@ func TestNew_DetailPanelsFitContent(t *testing.T) {
 	}
 	if want := app.projects.RequiredInfoHeight(80); want <= 5 {
 		t.Errorf("project info height = %d, want more than 5 for wrapped description", want)
+	}
+
+	app.users.SetRect(0, 0, 80, 24-statusBarHeight)
+	app.users.Draw(screen)
+	userInfo, ok := app.users.GetItem(1).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected user info *tview.TextView, got %T", app.users.GetItem(1))
+	}
+	_, _, _, userHeight := userInfo.GetRect()
+	if want := app.users.RequiredInfoHeight(80); userHeight != want {
+		t.Errorf("user info height = %d, want %d", userHeight, want)
+	}
+	if want := app.users.RequiredInfoHeight(80); want <= 5 {
+		t.Errorf("user info height = %d, want more than 5 for wrapped name/email", want)
 	}
 }

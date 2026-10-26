@@ -21,9 +21,9 @@ import (
 func newQueueTestApp(t *testing.T) (*mockApp, *model.Account, *model.Session) {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	sess, err := reg.AddSession(acc, nil, "topic", []model.Prompt{
 		model.NewPrompt("first", false),
@@ -69,7 +69,7 @@ func TestNewQueueEditor(t *testing.T) {
 			setup: func(t *testing.T) (*mockApp, *model.Account, *model.Session) {
 				t.Helper()
 				app, acc, sess := newQueueTestApp(t)
-				must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+				must(t, app.svc.EndSession(acc.UserEmail(), acc.VendorName(), sess.ID()))
 				return app, acc, sess // sess is now a stale pointer to a deleted session
 			},
 			wantModal: true,
@@ -222,9 +222,9 @@ func TestQueueEditor_EmptyQueue_NoModal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 			emptySess, err := reg.AddSession(acc, nil, "", nil)
 			must(t, err)
@@ -366,7 +366,7 @@ func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 
 	// Remove the session out from under the editor so the next commit's
 	// UpdateSessionPrompts call fails at resolveSession.
-	must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+	must(t, app.svc.EndSession(acc.UserEmail(), acc.VendorName(), sess.ID()))
 
 	list.SetCurrentItem(1)
 	capture := list.GetInputCapture()
@@ -537,7 +537,7 @@ func TestQueueEditor_PromptSave_Failure(t *testing.T) {
 	form := formFromCenteredModal(t, app.modal)
 	setInputField(t, form, "Text", "will not be saved")
 
-	must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+	must(t, app.svc.EndSession(acc.UserEmail(), acc.VendorName(), sess.ID()))
 
 	triggerSave(t, form)
 
@@ -569,9 +569,9 @@ func TestQueueEditor_RowText(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 			sess, err := reg.AddSession(acc, nil, "", []model.Prompt{model.NewPrompt(tc.text, tc.spawns)})
 			must(t, err)
@@ -660,7 +660,7 @@ func TestQueueEditor_Reopen_SessionGone(t *testing.T) {
 	}
 
 	list.GetInputCapture()(runeKey(views.KeyHelp))
-	must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+	must(t, app.svc.EndSession(acc.UserEmail(), acc.VendorName(), sess.ID()))
 
 	helpOverlayTextView(t, app.modal).GetInputCapture()(escKey())
 

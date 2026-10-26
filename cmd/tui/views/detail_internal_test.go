@@ -3,7 +3,24 @@ package views
 import (
 	"strings"
 	"testing"
+
+	"github.com/balinomad/llm-desk/internal/model"
 )
+
+func TestSessionItemText_PendingLabelWidth(t *testing.T) {
+	t.Parallel()
+	sess := model.NewSession(model.AccountKey{Email: "a@example.com", Vendor: "claude"}, 1, "", "Topic", nil)
+
+	narrow := sessionItemText(sess, 50)
+	if !strings.Contains(narrow, "pending: 0") || strings.Contains(narrow, "pending messages: 0") {
+		t.Errorf("narrow row = %q, want short pending label", narrow)
+	}
+
+	wide := sessionItemText(sess, 70)
+	if !strings.Contains(wide, "pending messages: 0") {
+		t.Errorf("wide row = %q, want long pending label", wide)
+	}
+}
 
 func TestWriteInfoRows(t *testing.T) {
 	t.Parallel()
@@ -16,15 +33,15 @@ func TestWriteInfoRows(t *testing.T) {
 			name: "account labels",
 			rows: []infoRow{
 				{label: "User", value: "alice"},
-				{label: "Provider", value: "claude"},
+				{label: "Vendor", value: "claude"},
 				{label: "Projects", value: "Alpha, Beta"},
 			},
 			want: "[::b]User[-::-]     alice\n" +
-				"[::b]Provider[-::-] claude\n" +
+				"[::b]Vendor[-::-]   claude\n" +
 				"[::b]Projects[-::-] Alpha, Beta\n",
 		},
 		{
-			name: "provider labels",
+			name: "vendor labels",
 			rows: []infoRow{
 				{label: "Name", value: "claude"},
 				{label: "Projects", value: "yes"},

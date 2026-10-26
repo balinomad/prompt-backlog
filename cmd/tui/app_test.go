@@ -114,7 +114,7 @@ func TestApp_Mutate_Success(t *testing.T) {
 	called := false
 	mutateErr := app.Mutate(func(s *service.Service) error {
 		called = true
-		return s.AddProvider("claude", true, false)
+		return s.AddVendor("claude", true, false)
 	})
 	if mutateErr != nil {
 		t.Fatalf("Mutate: %v", mutateErr)
@@ -125,8 +125,8 @@ func TestApp_Mutate_Success(t *testing.T) {
 	if ms.saved == nil {
 		t.Error("expected Save to be called with the mutated registry")
 	}
-	if app.Service().Provider("claude") == nil {
-		t.Error("provider not visible through Service after Mutate")
+	if app.Service().Vendor("claude") == nil {
+		t.Error("vendor not visible through Service after Mutate")
 	}
 }
 
@@ -278,10 +278,10 @@ func TestApp_HideModal(t *testing.T) {
 
 // ── Switch screens ────────────────────────────────────────────────────────────
 
-// TestApp_SwitchScreens covers SwitchToMain, SwitchToProviders, and
-// SwitchToProjects. None of the three expose observable state through
-// tui's exported surface (no current-page or current-focus getter), so a
-// clean call is the only assertion available black-box.
+// TestApp_SwitchScreens covers SwitchToMain, SwitchToVendors,
+// SwitchToProjects, and SwitchToUsers. None of the four expose observable
+// state through tui's exported surface (no current-page or current-focus
+// getter), so a clean call is the only assertion available black-box.
 func TestApp_SwitchScreens(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -289,8 +289,9 @@ func TestApp_SwitchScreens(t *testing.T) {
 		fn   func(*tui.App)
 	}{
 		{"main", func(a *tui.App) { a.SwitchToMain() }},
-		{"providers", func(a *tui.App) { a.SwitchToProviders() }},
+		{"vendors", func(a *tui.App) { a.SwitchToVendors() }},
 		{"projects", func(a *tui.App) { a.SwitchToProjects() }},
+		{"users", func(a *tui.App) { a.SwitchToUsers() }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

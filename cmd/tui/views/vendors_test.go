@@ -11,10 +11,10 @@ import (
 	"github.com/rivo/tview"
 )
 
-// providersPanelParts returns p's provider list and info view, reached
-// via the exported Flex.GetItem — ProvidersPanel puts the list at index
-// 0, the info view at index 1 (see providers.go).
-func providersPanelParts(t *testing.T, p *views.ProvidersPanel) (*tview.List, *tview.TextView) {
+// vendorsPanelParts returns p's vendor list and info view, reached
+// via the exported Flex.GetItem — VendorsPanel puts the list at index
+// 0, the info view at index 1 (see vendors.go).
+func vendorsPanelParts(t *testing.T, p *views.VendorsPanel) (*tview.List, *tview.TextView) {
 	t.Helper()
 	list, ok := p.GetItem(0).(*tview.List)
 	if !ok {
@@ -27,29 +27,29 @@ func providersPanelParts(t *testing.T, p *views.ProvidersPanel) (*tview.List, *t
 	return list, info
 }
 
-func TestNewProvidersPanel(t *testing.T) {
+func TestNewVendorsPanel(t *testing.T) {
 	t.Parallel()
-	p := views.NewProvidersPanel(newMockApp(t))
+	p := views.NewVendorsPanel(newMockApp(t))
 	if p == nil {
-		t.Fatal("expected non-nil ProvidersPanel")
+		t.Fatal("expected non-nil VendorsPanel")
 	}
 	info, ok := p.GetItem(1).(interface{ GetTitle() string })
 	if !ok {
 		t.Fatal("detail panel does not expose a title")
 	}
-	if got := info.GetTitle(); got != " Provider Details " {
-		t.Errorf("GetTitle() = %q, want %q", got, " Provider Details ")
+	if got := info.GetTitle(); got != " Vendor Details " {
+		t.Errorf("GetTitle() = %q, want %q", got, " Vendor Details ")
 	}
 }
 
-func TestProvidersPanel_Refresh(t *testing.T) {
+func TestVendorsPanel_Refresh(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
 		setup     func(*testing.T, *mockApp)
 		wantCount int
 	}{
-		{"two providers", func(_ *testing.T, _ *mockApp) {}, 2},
+		{"two vendors", func(_ *testing.T, _ *mockApp) {}, 2},
 		{"empty registry", func(t *testing.T, app *mockApp) {
 			t.Helper()
 			app.svc = newTestService(t, model.NewRegistry())
@@ -60,9 +60,9 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			tc.setup(t, app)
-			p := views.NewProvidersPanel(app)
+			p := views.NewVendorsPanel(app)
 			p.Refresh()
-			list, _ := providersPanelParts(t, p)
+			list, _ := vendorsPanelParts(t, p)
 			if got := list.GetItemCount(); got != tc.wantCount {
 				t.Errorf("item count: got %d, want %d", got, tc.wantCount)
 			}
@@ -70,12 +70,12 @@ func TestProvidersPanel_Refresh(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_Refresh_SortedByName(t *testing.T) {
+func TestVendorsPanel_Refresh_SortedByName(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 
 	itemCount := list.GetItemCount()
 	names := make([]string, 0, itemCount)
@@ -90,12 +90,12 @@ func TestProvidersPanel_Refresh_SortedByName(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_Refresh_PreservesSelection(t *testing.T) {
+func TestVendorsPanel_Refresh_PreservesSelection(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 	list.SetCurrentItem(1)
 	want, _ := list.GetItemText(1)
 
@@ -107,25 +107,25 @@ func TestProvidersPanel_Refresh_PreservesSelection(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_Keys_SwitchToMain(t *testing.T) {
+func TestVendorsPanel_Keys_SwitchToMain(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 	list.GetInputCapture()(escKey())
 	if app.switchedTo != "main" {
 		t.Errorf("expected switchedTo=main, got %q", app.switchedTo)
 	}
 }
 
-func TestProvidersPanel_Keys_NoHiddenAliases(t *testing.T) {
+func TestVendorsPanel_Keys_NoHiddenAliases(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name  string
 		event *tcell.EventKey
 	}{
-		{"r does not switch screens", runeKey(views.KeyProviders)},
+		{"v does not switch screens", runeKey(views.KeyVendors)},
 		{"tab is consumed", specialKey(views.KeyFocusNext)},
 		{"backtab is consumed", specialKey(views.KeyFocusPrev)},
 	}
@@ -133,9 +133,9 @@ func TestProvidersPanel_Keys_NoHiddenAliases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			p := views.NewProvidersPanel(app)
+			p := views.NewVendorsPanel(app)
 			p.Refresh()
-			list, _ := providersPanelParts(t, p)
+			list, _ := vendorsPanelParts(t, p)
 			got := list.GetInputCapture()(tc.event)
 			if app.switchedTo != "" {
 				t.Errorf("expected no screen switch, got %q", app.switchedTo)
@@ -149,7 +149,7 @@ func TestProvidersPanel_Keys_NoHiddenAliases(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
+func TestVendorsPanel_Keys_ShowModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name         string
@@ -167,9 +167,9 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			p := views.NewProvidersPanel(app)
+			p := views.NewVendorsPanel(app)
 			p.Refresh()
-			list, _ := providersPanelParts(t, p)
+			list, _ := vendorsPanelParts(t, p)
 			capture := list.GetInputCapture()
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
@@ -183,7 +183,7 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
+func TestVendorsPanel_EmptyList_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
@@ -197,9 +197,9 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
 			app.svc = newTestService(t, model.NewRegistry())
-			p := views.NewProvidersPanel(app)
+			p := views.NewVendorsPanel(app)
 			p.Refresh()
-			list, _ := providersPanelParts(t, p)
+			list, _ := vendorsPanelParts(t, p)
 			list.GetInputCapture()(tc.key)
 			if app.modal != nil {
 				t.Errorf("key %q with empty list should not open a modal", tc.name)
@@ -208,16 +208,16 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 	}
 }
 
-// TestProvidersPanel_New_SaveReturnsToPanel closes the loop that
-// TestProvidersPanel_Keys_ShowModal leaves open: that test only checks
+// TestVendorsPanel_New_SaveReturnsToPanel closes the loop that
+// TestVendorsPanel_Keys_ShowModal leaves open: that test only checks
 // that pressing Ins opens a modal with the right hints, not that
 // completing the form hands control back to the panel correctly.
-func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
+func TestVendorsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 
 	list.GetInputCapture()(specialKey(views.KeyInsert))
 
@@ -228,21 +228,21 @@ func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	assertHints(t, app, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
-	if app.svc.Provider("gemini") == nil {
-		t.Error("provider not created")
+	assertHints(t, app, views.HintsVendorsPanelSpecific, views.HintsVendorsPanelCommon)
+	if app.svc.Vendor("gemini") == nil {
+		t.Error("vendor not created")
 	}
 }
 
-// TestProvidersPanel_Edit_SaveReturnsToPanel is the same round trip as
-// TestProvidersPanel_New_SaveReturnsToPanel for handleEdit's own onClose
+// TestVendorsPanel_Edit_SaveReturnsToPanel is the same round trip as
+// TestVendorsPanel_New_SaveReturnsToPanel for handleEdit's own onClose
 // closure.
-func TestProvidersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
+func TestVendorsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh() // selects "chatgpt" first (sorted by name)
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 
 	list.GetInputCapture()(specialKey(views.KeyEdit))
 
@@ -253,24 +253,24 @@ func TestProvidersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	assertHints(t, app, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
-	if got := app.svc.Provider("chatgpt"); !got.HasProjects() {
+	assertHints(t, app, views.HintsVendorsPanelSpecific, views.HintsVendorsPanelCommon)
+	if got := app.svc.Vendor("chatgpt"); !got.HasProjects() {
 		t.Error("HasProjects() = false, want true")
 	}
 }
 
-// TestProvidersPanel_Delete_Cancel is the providers.go counterpart to
+// TestVendorsPanel_Delete_Cancel is the vendors.go counterpart to
 // TestDetailPanel_DeleteSession_Cancel and TestAccountsPanel_Delete_Cancel:
 // confirming the delete is button-click-gated and unreachable black box,
 // so this covers the reachable half.
-func TestProvidersPanel_Delete_Cancel(t *testing.T) {
+func TestVendorsPanel_Delete_Cancel(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 
-	before := len(app.svc.Providers())
+	before := len(app.svc.Vendors())
 
 	list.GetInputCapture()(specialKey(views.KeyDelete))
 
@@ -280,16 +280,16 @@ func TestProvidersPanel_Delete_Cancel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	assertHints(t, app, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
-	if got := len(app.svc.Providers()); got != before {
-		t.Errorf("provider count changed after cancel: got %d, want %d (unchanged)", got, before)
+	assertHints(t, app, views.HintsVendorsPanelSpecific, views.HintsVendorsPanelCommon)
+	if got := len(app.svc.Vendors()); got != before {
+		t.Errorf("vendor count changed after cancel: got %d, want %d (unchanged)", got, before)
 	}
 }
 
-// TestProvidersPanel_RowText verifies the rendered provider row. A provider
+// TestVendorsPanel_RowText verifies the rendered vendor row. A vendor
 // with no capabilities renders as its name; any capability adds a second
 // column.
-func TestProvidersPanel_RowText(t *testing.T) {
+func TestVendorsPanel_RowText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name            string
@@ -306,11 +306,11 @@ func TestProvidersPanel_RowText(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("test", tc.hasProjects, tc.hasDeepResearch)))
+			must(t, reg.AddVendor(model.NewVendor("test", tc.hasProjects, tc.hasDeepResearch)))
 			app := &mockApp{svc: newTestService(t, reg)}
-			p := views.NewProvidersPanel(app)
+			p := views.NewVendorsPanel(app)
 			p.Refresh()
-			list, _ := providersPanelParts(t, p)
+			list, _ := vendorsPanelParts(t, p)
 			got, _ := list.GetItemText(0)
 			if !strings.HasPrefix(got, " ") {
 				t.Errorf("got %q, want a leading one-cell inset", got)
@@ -327,14 +327,14 @@ func TestProvidersPanel_RowText(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_RowText_EscapesName(t *testing.T) {
+func TestVendorsPanel_RowText_EscapesName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude[red]", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude[red]", true, false)))
 	app := &mockApp{svc: newTestService(t, reg)}
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	list, _ := providersPanelParts(t, p)
+	list, _ := vendorsPanelParts(t, p)
 	got, _ := list.GetItemText(0)
 	want := tview.Escape("claude[red]")
 	if !strings.Contains(got, want) {
@@ -342,9 +342,9 @@ func TestProvidersPanel_RowText_EscapesName(t *testing.T) {
 	}
 }
 
-// TestProvidersPanel_InfoPanel_CapabilityDisplay verifies the info panel
+// TestVendorsPanel_InfoPanel_CapabilityDisplay verifies the info panel
 // renders yes or no for each capability.
-func TestProvidersPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
+func TestVendorsPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name            string
@@ -358,11 +358,11 @@ func TestProvidersPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("test", tc.hasProjects, tc.hasDeepResearch)))
+			must(t, reg.AddVendor(model.NewVendor("test", tc.hasProjects, tc.hasDeepResearch)))
 			app := &mockApp{svc: newTestService(t, reg)}
-			p := views.NewProvidersPanel(app)
+			p := views.NewVendorsPanel(app)
 			p.Refresh()
-			_, info := providersPanelParts(t, p)
+			_, info := vendorsPanelParts(t, p)
 			lines := strings.Split(info.GetText(false), "\n")
 			if len(lines) < 3 {
 				t.Fatalf("expected at least 3 info lines, got %d: %q", len(lines), lines)
@@ -387,14 +387,14 @@ func TestProvidersPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 	}
 }
 
-func TestProvidersPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
+func TestVendorsPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("test", true, true)))
+	must(t, reg.AddVendor(model.NewVendor("test", true, true)))
 	app := &mockApp{svc: newTestService(t, reg)}
-	p := views.NewProvidersPanel(app)
+	p := views.NewVendorsPanel(app)
 	p.Refresh()
-	_, info := providersPanelParts(t, p)
+	_, info := vendorsPanelParts(t, p)
 
 	lines := strings.Split(info.GetText(true), "\n")
 	wantValues := []string{"test", "yes", "yes"}

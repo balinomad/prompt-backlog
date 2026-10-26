@@ -8,42 +8,42 @@ import (
 	"github.com/balinomad/llm-desk/internal/model"
 )
 
-func TestValidateProvider(t *testing.T) {
+func TestValidateVendor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		in   *model.Provider
+		in   *model.Vendor
 		want error
 	}{
 		{
 			name: "nil",
 			in:   nil,
-			want: model.ErrProviderNil,
+			want: model.ErrVendorNil,
 		},
 		{
 			name: "empty name",
-			in:   model.NewProvider("", false, false),
+			in:   model.NewVendor("", false, false),
 			want: model.ErrNameRequired,
 		},
 		{
 			name: "whitespace name normalized to empty",
-			in:   model.NewProvider("   ", false, false),
+			in:   model.NewVendor("   ", false, false),
 			want: model.ErrNameRequired,
 		},
 		{
 			name: "valid with no capabilities",
-			in:   model.NewProvider("claude", false, false),
+			in:   model.NewVendor("claude", false, false),
 			want: nil,
 		},
 		{
 			name: "valid with all capabilities",
-			in:   model.NewProvider("claude", true, true),
+			in:   model.NewVendor("claude", true, true),
 			want: nil,
 		},
 		{
 			name: "trimmed valid",
-			in:   model.NewProvider("  claude  ", true, false),
+			in:   model.NewVendor("  claude  ", true, false),
 			want: nil,
 		},
 	}
@@ -51,7 +51,7 @@ func TestValidateProvider(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := model.ValidateProvider(tt.in)
+			err := model.ValidateVendor(tt.in)
 			if tt.want == nil {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
@@ -232,7 +232,7 @@ func TestValidateAccount(t *testing.T) {
 			want: []error{model.ErrEmailRequired},
 		},
 		{
-			name: "missing provider",
+			name: "missing vendor",
 			in:   model.NewAccount("alice@example.com", ""),
 			want: []error{model.ErrNameRequired},
 		},
@@ -338,10 +338,10 @@ func TestErrorCategories(t *testing.T) {
 		specific error
 		category error
 	}{
-		{"provider not found", model.ErrProviderNotFound, apperr.ErrNotFound},
-		{"provider exists", model.ErrProviderExists, apperr.ErrExists},
-		{"provider stale", model.ErrProviderStale, apperr.ErrStale},
-		{"provider nil", model.ErrProviderNil, apperr.ErrNil},
+		{"vendor not found", model.ErrVendorNotFound, apperr.ErrNotFound},
+		{"vendor exists", model.ErrVendorExists, apperr.ErrExists},
+		{"vendor stale", model.ErrVendorStale, apperr.ErrStale},
+		{"vendor nil", model.ErrVendorNil, apperr.ErrNil},
 
 		{"user not found", model.ErrUserNotFound, apperr.ErrNotFound},
 		{"user exists", model.ErrUserExists, apperr.ErrExists},

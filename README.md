@@ -1,14 +1,14 @@
 # llm-desk
 
-`llm-desk` is a terminal-based session manager for operators running multiple LLM conversations in parallel across providers such as Claude, ChatGPT, and Gemini. Rate-limit state is tracked per account, so `llm-desk` tells you when an account is available again; each active session keeps its own topic and a queue of prompts to resume from, so you can switch to another account immediately and lose no context.
+`llm-desk` is a terminal-based session manager for operators running multiple LLM conversations in parallel across vendors such as Claude, ChatGPT, and Gemini. Rate-limit state is tracked per account, so `llm-desk` tells you when an account is available again; each active session keeps its own topic and a list of pending messages to resume from, so you can switch to another account immediately and lose no context.
 
 ## Features
 
 - Track rate-limit reset times (`PauseUntil`) per account, independent of how many sessions run under it
-- Multiple ephemeral sessions per account, each with a topic and a queue of pending prompts
+- Multiple ephemeral sessions per account, each with a topic and a list of pending messages
 - Grant projects to accounts, with per-project instructions and descriptions; a session may reference one granted project
-- Many-to-many account ↔ project relationships; project support is per-provider
-- Manage providers, accounts, sessions, and projects from a keyboard-driven terminal interface
+- Many-to-many account ↔ project relationships; project support is per-vendor
+- Manage vendors, users, accounts, sessions, and projects from a keyboard-driven terminal interface
 - Atomic JSON persistence; no hidden default data path
 
 ## Requirements
@@ -37,13 +37,13 @@ The `--data` / `-d` flag is required. If the file does not exist, an empty regis
 
 Five entity types managed by the registry:
 
-- **Provider** — an LLM service (e.g. `claude`, `chatgpt`). Flags: `HasProjects`, `HasDeepResearch`.
-- **User** — identified by email address. Display name is mutable. Not managed through its own screen; created on demand when an account for a new email is created.
-- **Account** — a unique (user, provider) pairing. The owner of sessions and the holder of pause state (`PauseUntil`) for rate-limit tracking. One account exists per (user, provider) pair.
-- **Session** — an ephemeral conversation instance under an account; multiple sessions may exist per account at once. Tracks a topic, an optional project (must be granted to the account), and a queue of pending prompts, each optionally flagged to spawn a new session. Session IDs are surrogate keys, not persisted — renumbered sequentially on each load.
-- **Project** — a named context with description and instructions. Granted to accounts many-to-many; only accounts on providers with `HasProjects` can receive grants. A session may reference one project from among those granted to its account.
+- **Vendor** — an LLM service (e.g. `claude`, `chatgpt`). Flags: `HasProjects`, `HasDeepResearch`.
+- **User** — identified by email address. Display name is mutable. Managed through its own screen; created explicitly.
+- **Account** — a unique (user, vendor) pairing. The owner of sessions and the holder of pause state (`PauseUntil`) for rate-limit tracking. One account exists per (user, vendor) pair.
+- **Session** — an ephemeral conversation instance under an account; multiple sessions may exist per account at once. Tracks a topic, an optional project (must be granted to the account), and a list of pending messages, each optionally flagged to spawn a new session. Session IDs are surrogate keys, not persisted — renumbered sequentially on each load.
+- **Project** — a named context with description and instructions. Granted to accounts many-to-many; only accounts on vendors with `HasProjects` can receive grants. A session may reference one project from among those granted to its account.
 
-Removing an account requires ending all its sessions and revoking all its granted projects first. Removing a provider or user requires removing every account that references it first. No cascading deletes anywhere in the chain.
+Removing an account requires ending all its sessions and revoking all its granted projects first. Removing a vendor or user requires removing every account that references it first. No cascading deletes anywhere in the chain.
 
 ## Architecture
 

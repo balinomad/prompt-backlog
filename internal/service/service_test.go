@@ -61,7 +61,7 @@ func newService(t *testing.T) *service.Service {
 
 // seedService returns a Service whose registry is pre-populated:
 //
-//	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
+//	Vendors: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
 //	Projects:  "Alpha", "Beta", "Orphan"
 //	Accounts:  alice@example.com|claude (granted Alpha + Beta)
@@ -75,8 +75,8 @@ func newService(t *testing.T) *service.Service {
 func seedService(t *testing.T) *service.Service {
 	t.Helper()
 	svc := newService(t)
-	must(t, svc.AddProvider("claude", true, false))
-	must(t, svc.AddProvider("chatgpt", false, false))
+	must(t, svc.AddVendor("claude", true, false))
+	must(t, svc.AddVendor("chatgpt", false, false))
 	must(t, svc.AddUser("alice@example.com", "Alice"))
 	must(t, svc.AddUser("bob@example.com", "Bob"))
 	must(t, svc.AddProject("Alpha", "", ""))
@@ -86,9 +86,9 @@ func seedService(t *testing.T) *service.Service {
 	must(t, svc.AddAccount("bob@example.com", "chatgpt"))
 	must(t, svc.GrantProject("alice@example.com", "claude", "Alpha"))
 	must(t, svc.GrantProject("alice@example.com", "claude", "Beta"))
-	_, err := svc.StartSession("alice@example.com", "Alice", "claude", "Alpha", "Architecture review", nil)
+	_, err := svc.StartSession("alice@example.com", "claude", "Alpha", "Architecture review", nil)
 	must(t, err)
-	_, err = svc.StartSession("bob@example.com", "Bob", "chatgpt", "", "", nil)
+	_, err = svc.StartSession("bob@example.com", "chatgpt", "", "", nil)
 	must(t, err)
 	return svc
 }
@@ -166,9 +166,9 @@ func TestService_Save(t *testing.T) {
 	}
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Vendor ──────────────────────────────────────────────────────────────────
 
-func TestService_Provider(t *testing.T) {
+func TestService_Vendor(t *testing.T) {
 	t.Parallel()
 	svc := seedService(t)
 
@@ -183,18 +183,18 @@ func TestService_Provider(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p := svc.Provider(tc.query)
+			p := svc.Vendor(tc.query)
 			if tc.wantNil && p != nil {
 				t.Errorf("got %v, want nil", p)
 			}
 			if !tc.wantNil && p == nil {
-				t.Error("got nil, want non-nil provider")
+				t.Error("got nil, want non-nil vendor")
 			}
 		})
 	}
 }
 
-func TestService_Providers(t *testing.T) {
+func TestService_Vendors(t *testing.T) {
 	t.Parallel()
 	empty := newService(t)
 	seeded := seedService(t)
@@ -210,9 +210,9 @@ func TestService_Providers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := tc.svc.Providers()
+			got := tc.svc.Vendors()
 			if len(got) != len(tc.wantNames) {
-				t.Fatalf("got %d providers, want %d", len(got), len(tc.wantNames))
+				t.Fatalf("got %d vendors, want %d", len(got), len(tc.wantNames))
 			}
 			for i, want := range tc.wantNames {
 				if got[i].Name() != want {
@@ -223,12 +223,12 @@ func TestService_Providers(t *testing.T) {
 	}
 }
 
-func TestService_ValidateProvider(t *testing.T) {
+func TestService_ValidateVendor(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name            string
-		providerName    string
+		vendorName      string
 		hasProjects     bool
 		hasDeepResearch bool
 		wantErr         error
@@ -240,7 +240,7 @@ func TestService_ValidateProvider(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := newService(t).ValidateProvider(tc.providerName, tc.hasProjects, tc.hasDeepResearch)
+			err := newService(t).ValidateVendor(tc.vendorName, tc.hasProjects, tc.hasDeepResearch)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Errorf("got %v, want nil", err)
@@ -254,22 +254,22 @@ func TestService_ValidateProvider(t *testing.T) {
 	}
 }
 
-func TestService_AddProvider(t *testing.T) {
+func TestService_AddVendor(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name         string
-		providerName string
-		wantErr      error
+		name       string
+		vendorName string
+		wantErr    error
 	}{
 		{"success", "gemini", nil}, // not in the seed
 		{"empty name", "", model.ErrNameRequired},
-		{"duplicate", "claude", model.ErrProviderExists},
+		{"duplicate", "claude", model.ErrVendorExists},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := seedService(t).AddProvider(tc.providerName, true, false)
+			err := seedService(t).AddVendor(tc.vendorName, true, false)
 			if tc.wantErr == nil {
 				must(t, err)
 				return
@@ -281,15 +281,15 @@ func TestService_AddProvider(t *testing.T) {
 	}
 }
 
-func TestService_UpdateProvider(t *testing.T) {
+func TestService_UpdateVendor(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		svc := newService(t)
-		must(t, svc.AddProvider("claude", false, false))
-		must(t, svc.UpdateProvider("claude", true, true))
-		got := svc.Provider("claude")
+		must(t, svc.AddVendor("claude", false, false))
+		must(t, svc.UpdateVendor("claude", true, true))
+		got := svc.Vendor("claude")
 		if !got.HasProjects() || !got.HasDeepResearch() {
 			t.Errorf("got HasProjects=%v HasDeepResearch=%v, want both true", got.HasProjects(), got.HasDeepResearch())
 		}
@@ -297,34 +297,34 @@ func TestService_UpdateProvider(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
-		err := newService(t).UpdateProvider("ghost", true, false)
-		if !errors.Is(err, model.ErrProviderNotFound) {
-			t.Errorf("got %v, want ErrProviderNotFound", err)
+		err := newService(t).UpdateVendor("ghost", true, false)
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
 		}
 	})
 }
 
-func TestService_DeleteProvider(t *testing.T) {
+func TestService_DeleteVendor(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		svc := newService(t)
-		must(t, svc.AddProvider("claude", true, false))
-		must(t, svc.DeleteProvider("claude"))
+		must(t, svc.AddVendor("claude", true, false))
+		must(t, svc.DeleteVendor("claude"))
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
-		err := newService(t).DeleteProvider("ghost")
-		if !errors.Is(err, model.ErrProviderNotFound) {
-			t.Errorf("got %v, want ErrProviderNotFound", err)
+		err := newService(t).DeleteVendor("ghost")
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
 		}
 	})
 
 	t.Run("has associated accounts", func(t *testing.T) {
 		t.Parallel()
-		err := seedService(t).DeleteProvider("claude")
+		err := seedService(t).DeleteVendor("claude")
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
@@ -363,6 +363,10 @@ func TestService_Users(t *testing.T) {
 	t.Parallel()
 	empty := newService(t)
 	seeded := seedService(t)
+	nameSorted := newService(t)
+	must(t, nameSorted.AddUser("zoe@example.com", "Alice"))
+	must(t, nameSorted.AddUser("alice@example.com", "Zoe"))
+	must(t, nameSorted.AddUser("bob@example.com", "alice"))
 
 	cases := []struct {
 		name       string
@@ -370,7 +374,8 @@ func TestService_Users(t *testing.T) {
 		wantEmails []string
 	}{
 		{"empty", empty, nil},
-		{"sorted by email", seeded, []string{"alice@example.com", "bob@example.com"}},
+		{"sorted by name", seeded, []string{"alice@example.com", "bob@example.com"}},
+		{"name order with email tie-break", nameSorted, []string{"bob@example.com", "zoe@example.com", "alice@example.com"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -744,24 +749,24 @@ func TestService_Account(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		wantErr error
 	}{
 		{"success", "alice@example.com", "claude", nil},
 		{"user not found", "ghost@example.com", "claude", model.ErrUserNotFound},
-		{"provider not found", "alice@example.com", "ghost", model.ErrProviderNotFound},
+		{"vendor not found", "alice@example.com", "ghost", model.ErrVendorNotFound},
 		{"account not found", "bob@example.com", "claude", model.ErrAccountNotFound}, // bob exists, claude exists, no bob|claude account
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			acc, err := seedService(t).Account(tc.email, tc.provider)
+			acc, err := seedService(t).Account(tc.email, tc.vendor)
 			if tc.wantErr == nil {
 				must(t, err)
-				if acc.UserEmail() != tc.email || acc.ProviderName() != tc.provider {
-					t.Errorf("got %+v, want %s|%s", acc.Key(), tc.email, tc.provider)
+				if acc.UserEmail() != tc.email || acc.VendorName() != tc.vendor {
+					t.Errorf("got %+v, want %s|%s", acc.Key(), tc.email, tc.vendor)
 				}
 				return
 			}
@@ -807,19 +812,19 @@ func TestService_AccountProjects(t *testing.T) {
 	cases := []struct {
 		name      string
 		email     string
-		provider  string
+		vendor    string
 		wantErr   error
 		wantNames []string
 	}{
 		{"success", "alice@example.com", "claude", nil, []string{"Alpha", "Beta"}},
 		{"user not found", "ghost@example.com", "claude", model.ErrUserNotFound, nil},
-		{"provider not found", "alice@example.com", "ghost", model.ErrProviderNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", model.ErrVendorNotFound, nil},
 		{"account not found", "bob@example.com", "claude", model.ErrAccountNotFound, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := seedService(t).AccountProjects(tc.email, tc.provider)
+			got, err := seedService(t).AccountProjects(tc.email, tc.vendor)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
@@ -843,21 +848,21 @@ func TestService_AccountSessions(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		wantErr  error
-		wantIDs  []uint64
+		name    string
+		email   string
+		vendor  string
+		wantErr error
+		wantIDs []uint64
 	}{
 		{"success", "alice@example.com", "claude", nil, []uint64{1}},
 		{"user not found", "ghost@example.com", "claude", model.ErrUserNotFound, nil},
-		{"provider not found", "alice@example.com", "ghost", model.ErrProviderNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", model.ErrVendorNotFound, nil},
 		{"account not found", "bob@example.com", "claude", model.ErrAccountNotFound, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := seedService(t).AccountSessions(tc.email, tc.provider)
+			got, err := seedService(t).AccountSessions(tc.email, tc.vendor)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
@@ -881,85 +886,24 @@ func TestService_AddAccount(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		wantErr error
 	}{
 		{"success", "alice@example.com", "chatgpt", nil}, // alice and chatgpt both exist, never paired
 		{"user not found", "ghost@example.com", "claude", model.ErrUserNotFound},
-		{"provider not found", "alice@example.com", "ghost", model.ErrProviderNotFound},
+		{"vendor not found", "alice@example.com", "ghost", model.ErrVendorNotFound},
 		{"duplicate", "alice@example.com", "claude", model.ErrAccountExists},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := seedService(t).AddAccount(tc.email, tc.provider)
+			err := seedService(t).AddAccount(tc.email, tc.vendor)
 			if tc.wantErr == nil {
 				must(t, err)
 				return
 			}
-			if !errors.Is(err, tc.wantErr) {
-				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
-			}
-		})
-	}
-}
-
-// TestService_CreateAccount covers on-demand user creation, name
-// preservation, duplicate rejection, and provider/email errors.
-func TestService_CreateAccount(t *testing.T) {
-	t.Parallel()
-
-	t.Run("creates user and account on demand", func(t *testing.T) {
-		t.Parallel()
-		svc := newService(t)
-		must(t, svc.AddProvider("claude", true, false))
-		acc, err := svc.CreateAccount("alice@example.com", "Alice", "claude")
-		must(t, err)
-		if acc.UserEmail() != "alice@example.com" || acc.ProviderName() != "claude" {
-			t.Errorf("got %+v, want alice@example.com|claude", acc.Key())
-		}
-		if svc.User("alice@example.com") == nil {
-			t.Error("expected user to be created")
-		}
-	})
-
-	t.Run("does not change an existing user's name", func(t *testing.T) {
-		t.Parallel()
-		svc := newService(t)
-		must(t, svc.AddProvider("claude", true, false))
-		must(t, svc.AddUser("alice@example.com", "Alice"))
-		_, err := svc.CreateAccount("alice@example.com", "ignored name", "claude")
-		must(t, err)
-		if got := svc.User("alice@example.com").Name(); got != "Alice" {
-			t.Errorf("got name %q, want existing name preserved (Alice)", got)
-		}
-	})
-
-	t.Run("duplicate account", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t) // alice|claude already exists
-		_, err := svc.CreateAccount("alice@example.com", "Alice", "claude")
-		if !errors.Is(err, model.ErrAccountExists) {
-			t.Errorf("got %v, want ErrAccountExists", err)
-		}
-	})
-
-	errorCases := []struct {
-		name     string
-		email    string
-		userName string
-		provider string
-		wantErr  error
-	}{
-		{"provider not found", "alice@example.com", "Alice", "ghost", model.ErrProviderNotFound},
-		{"new user creation fails on invalid email", "not-an-email", "Nobody", "claude", apperr.ErrEmailInvalid},
-	}
-	for _, tc := range errorCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			_, err := seedService(t).CreateAccount(tc.email, tc.userName, tc.provider)
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
 			}
@@ -973,15 +917,15 @@ func TestService_DeleteAccount(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		seeded   bool
-		email    string
-		provider string
-		wantErr  error
+		name    string
+		seeded  bool
+		email   string
+		vendor  string
+		wantErr error
 	}{
 		{"success", false, "alice@example.com", "claude", nil},
 		{"user not found", true, "ghost@example.com", "claude", model.ErrUserNotFound},
-		{"provider not found", true, "alice@example.com", "ghost", model.ErrProviderNotFound},
+		{"vendor not found", true, "alice@example.com", "ghost", model.ErrVendorNotFound},
 		{"account not found", true, "bob@example.com", "claude", model.ErrAccountNotFound},
 	}
 	for _, tc := range cases {
@@ -992,11 +936,11 @@ func TestService_DeleteAccount(t *testing.T) {
 				svc = seedService(t)
 			} else {
 				svc = newService(t)
-				must(t, svc.AddProvider(tc.provider, true, false))
+				must(t, svc.AddVendor(tc.vendor, true, false))
 				must(t, svc.AddUser(tc.email, "Test"))
-				must(t, svc.AddAccount(tc.email, tc.provider))
+				must(t, svc.AddAccount(tc.email, tc.vendor))
 			}
-			err := svc.DeleteAccount(tc.email, tc.provider)
+			err := svc.DeleteAccount(tc.email, tc.vendor)
 			if tc.wantErr == nil {
 				must(t, err)
 				return
@@ -1020,7 +964,7 @@ func TestService_DeleteAccount(t *testing.T) {
 	t.Run("has assigned projects", func(t *testing.T) {
 		t.Parallel()
 		svc := newService(t)
-		must(t, svc.AddProvider("claude", true, false))
+		must(t, svc.AddVendor("claude", true, false))
 		must(t, svc.AddUser("alice@example.com", "Alice"))
 		must(t, svc.AddAccount("alice@example.com", "claude"))
 		must(t, svc.AddProject("Alpha", "", ""))
@@ -1040,14 +984,14 @@ func TestService_PauseAccount(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		wantErr error
 	}{
 		{"success", "alice@example.com", "claude", nil},
 		{"user not found", "ghost@example.com", "claude", model.ErrUserNotFound},
-		{"provider not found", "alice@example.com", "ghost", model.ErrProviderNotFound},
+		{"vendor not found", "alice@example.com", "ghost", model.ErrVendorNotFound},
 		{"account not found", "bob@example.com", "claude", model.ErrAccountNotFound},
 	}
 	for _, tc := range cases {
@@ -1055,10 +999,10 @@ func TestService_PauseAccount(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
 			until := time.Now().Add(time.Hour).Truncate(time.Second)
-			err := svc.PauseAccount(tc.email, tc.provider, until)
+			err := svc.PauseAccount(tc.email, tc.vendor, until)
 			if tc.wantErr == nil {
 				must(t, err)
-				acc, aErr := svc.Account(tc.email, tc.provider)
+				acc, aErr := svc.Account(tc.email, tc.vendor)
 				must(t, aErr)
 				if !acc.PauseUntil().Equal(until) {
 					t.Errorf("got %v, want %v", acc.PauseUntil(), until)
@@ -1073,29 +1017,29 @@ func TestService_PauseAccount(t *testing.T) {
 }
 
 // TestService_GrantProject covers resolveAccount branches plus project
-// not found, unsupported provider, and already-assigned errors.
+// not found, unsupported vendor, and already-assigned errors.
 func TestService_GrantProject(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		project  string
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		project string
+		wantErr error
 	}{
 		{"success", "alice@example.com", "claude", "Orphan", nil},
 		{"user not found", "ghost@example.com", "claude", "Alpha", model.ErrUserNotFound},
-		{"provider not found", "alice@example.com", "ghost", "Alpha", model.ErrProviderNotFound},
+		{"vendor not found", "alice@example.com", "ghost", "Alpha", model.ErrVendorNotFound},
 		{"account not found", "bob@example.com", "claude", "Alpha", model.ErrAccountNotFound},
 		{"project not found", "alice@example.com", "claude", "Ghost", model.ErrProjectNotFound},
-		{"provider does not support projects", "bob@example.com", "chatgpt", "Orphan", model.ErrProjectsUnsupported},
+		{"vendor does not support projects", "bob@example.com", "chatgpt", "Orphan", model.ErrProjectsUnsupported},
 		{"already assigned", "alice@example.com", "claude", "Alpha", errGeneric},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := seedService(t).GrantProject(tc.email, tc.provider, tc.project)
+			err := seedService(t).GrantProject(tc.email, tc.vendor, tc.project)
 			switch {
 			case tc.wantErr == nil:
 				must(t, err)
@@ -1118,15 +1062,15 @@ func TestService_RevokeProject(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		project  string
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		project string
+		wantErr error
 	}{
 		{"success", "alice@example.com", "claude", "Beta", nil},
 		{"user not found", "ghost@example.com", "claude", "Alpha", model.ErrUserNotFound},
-		{"provider not found", "alice@example.com", "ghost", "Alpha", model.ErrProviderNotFound},
+		{"vendor not found", "alice@example.com", "ghost", "Alpha", model.ErrVendorNotFound},
 		{"account not found", "bob@example.com", "claude", "Alpha", model.ErrAccountNotFound},
 		{"project not found", "alice@example.com", "claude", "Ghost", model.ErrProjectNotFound},
 		{"not assigned", "alice@example.com", "claude", "Orphan", errGeneric},
@@ -1136,11 +1080,11 @@ func TestService_RevokeProject(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.RevokeProject(tc.email, tc.provider, tc.project)
+			err := svc.RevokeProject(tc.email, tc.vendor, tc.project)
 			switch {
 			case tc.wantErr == nil:
 				must(t, err)
-				got, gErr := svc.AccountProjects(tc.email, tc.provider)
+				got, gErr := svc.AccountProjects(tc.email, tc.vendor)
 				must(t, gErr)
 				for _, p := range got {
 					if p.Name() == tc.project {
@@ -1164,19 +1108,19 @@ func TestService_ValidateAccount(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		email    string
-		provider string
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		wantErr error
 	}{
 		{"valid", "alice@example.com", "claude", nil},
 		{"missing email", "", "claude", model.ErrEmailRequired},
-		{"missing provider", "alice@example.com", "", model.ErrNameRequired},
+		{"missing vendor", "alice@example.com", "", model.ErrNameRequired},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := newService(t).ValidateAccount(tc.email, tc.provider)
+			err := newService(t).ValidateAccount(tc.email, tc.vendor)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Errorf("got %v, want nil", err)
@@ -1256,7 +1200,7 @@ func TestService_UpdateSessionTopic(t *testing.T) {
 	cases := []struct {
 		name         string
 		email        string
-		provider     string
+		vendor       string
 		id           uint64
 		topic        string
 		wantErr      error
@@ -1264,7 +1208,7 @@ func TestService_UpdateSessionTopic(t *testing.T) {
 	}{
 		{"success", "alice@example.com", "claude", 1, "New Topic", nil, nil},
 		{"user not found", "ghost@example.com", "claude", 1, "x", model.ErrUserNotFound, nil},
-		{"provider not found", "alice@example.com", "ghost", 1, "x", model.ErrProviderNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, "x", model.ErrVendorNotFound, nil},
 		{"account not found", "alice@example.com", "chatgpt", 1, "x", model.ErrAccountNotFound, nil},
 		{"session not found", "alice@example.com", "claude", 9999, "x", model.ErrSessionNotFound, nil},
 		{"cross-account session", "alice@example.com", "claude", 2, "x", apperr.ErrNotFound, model.ErrSessionNotFound},
@@ -1273,7 +1217,7 @@ func TestService_UpdateSessionTopic(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.UpdateSessionTopic(tc.email, tc.provider, tc.id, tc.topic)
+			err := svc.UpdateSessionTopic(tc.email, tc.vendor, tc.id, tc.topic)
 			if tc.wantErr == nil {
 				must(t, err)
 				if got := svc.Session(tc.id).Topic(); got != tc.topic {
@@ -1299,7 +1243,7 @@ func TestService_UpdateSessionProject(t *testing.T) {
 	cases := []struct {
 		name         string
 		email        string
-		provider     string
+		vendor       string
 		id           uint64
 		projectName  string
 		wantErr      error
@@ -1308,7 +1252,7 @@ func TestService_UpdateSessionProject(t *testing.T) {
 		{"assign", "alice@example.com", "claude", 1, "Beta", nil, nil},
 		{"unassign via empty project name", "alice@example.com", "claude", 1, "", nil, nil},
 		{"user not found", "ghost@example.com", "claude", 1, "Alpha", model.ErrUserNotFound, nil},
-		{"provider not found", "alice@example.com", "ghost", 1, "Alpha", model.ErrProviderNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, "Alpha", model.ErrVendorNotFound, nil},
 		{"account not found", "alice@example.com", "chatgpt", 1, "Alpha", model.ErrAccountNotFound, nil},
 		{"session not found", "alice@example.com", "claude", 9999, "Alpha", model.ErrSessionNotFound, nil},
 		{"cross-account session", "alice@example.com", "claude", 2, "Alpha", apperr.ErrNotFound, model.ErrSessionNotFound},
@@ -1319,7 +1263,7 @@ func TestService_UpdateSessionProject(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.UpdateSessionProject(tc.email, tc.provider, tc.id, tc.projectName)
+			err := svc.UpdateSessionProject(tc.email, tc.vendor, tc.id, tc.projectName)
 			switch {
 			case tc.wantErr == nil:
 				must(t, err)
@@ -1350,7 +1294,7 @@ func TestService_UpdateSessionPrompts(t *testing.T) {
 	cases := []struct {
 		name         string
 		email        string
-		provider     string
+		vendor       string
 		id           uint64
 		queue        []model.Prompt
 		wantErr      error
@@ -1359,7 +1303,7 @@ func TestService_UpdateSessionPrompts(t *testing.T) {
 		{"success", "alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("step one", false), model.NewPrompt("step two", true)}, nil, nil},
 		{"invalid prompt", "alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("", false)}, model.ErrTextRequired, nil},
 		{"user not found", "ghost@example.com", "claude", 1, nil, model.ErrUserNotFound, nil},
-		{"provider not found", "alice@example.com", "ghost", 1, nil, model.ErrProviderNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, nil, model.ErrVendorNotFound, nil},
 		{"account not found", "alice@example.com", "chatgpt", 1, nil, model.ErrAccountNotFound, nil},
 		{"session not found", "alice@example.com", "claude", 9999, nil, model.ErrSessionNotFound, nil},
 		{"cross-account session", "alice@example.com", "claude", 2, nil, apperr.ErrNotFound, model.ErrSessionNotFound},
@@ -1368,7 +1312,7 @@ func TestService_UpdateSessionPrompts(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.UpdateSessionPrompts(tc.email, tc.provider, tc.id, tc.queue)
+			err := svc.UpdateSessionPrompts(tc.email, tc.vendor, tc.id, tc.queue)
 			if tc.wantErr == nil {
 				must(t, err)
 				got := svc.Session(tc.id).Queue()
@@ -1399,14 +1343,14 @@ func TestService_EndSession(t *testing.T) {
 	cases := []struct {
 		name         string
 		email        string
-		provider     string
+		vendor       string
 		id           uint64
 		wantErr      error
 		wantErrIsNot error
 	}{
 		{"success", "alice@example.com", "claude", 1, nil, nil},
 		{"user not found", "ghost@example.com", "claude", 1, model.ErrUserNotFound, nil},
-		{"provider not found", "alice@example.com", "ghost", 1, model.ErrProviderNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, model.ErrVendorNotFound, nil},
 		{"account not found", "alice@example.com", "chatgpt", 1, model.ErrAccountNotFound, nil},
 		{"session not found", "alice@example.com", "claude", 9999, model.ErrSessionNotFound, nil},
 		{"cross-account session", "alice@example.com", "claude", 2, apperr.ErrNotFound, model.ErrSessionNotFound},
@@ -1415,7 +1359,7 @@ func TestService_EndSession(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.EndSession(tc.email, tc.provider, tc.id)
+			err := svc.EndSession(tc.email, tc.vendor, tc.id)
 			if tc.wantErr == nil {
 				must(t, err)
 				if svc.Session(tc.id) != nil {
@@ -1435,37 +1379,20 @@ func TestService_EndSession(t *testing.T) {
 
 // ── Workflows ─────────────────────────────────────────────────────────────────
 
-// TestService_StartSession covers on-demand user and account creation,
+// TestService_StartSession covers account creation for an existing user,
 // project and queue passthrough, and the error branches.
 func TestService_StartSession(t *testing.T) {
 	t.Parallel()
 
-	t.Run("creates user and account on demand", func(t *testing.T) {
+	t.Run("creates an account for an existing user", func(t *testing.T) {
 		t.Parallel()
 		svc := newService(t)
-		must(t, svc.AddProvider("claude", true, false))
-		sess, err := svc.StartSession("alice@example.com", "Alice", "claude", "", "Topic", nil)
+		must(t, svc.AddVendor("claude", true, false))
+		must(t, svc.AddUser("alice@example.com", "Alice"))
+		sess, err := svc.StartSession("alice@example.com", "claude", "", "Topic", nil)
 		must(t, err)
 		if sess.ProjectName() != "" {
 			t.Errorf("got project %q, want empty", sess.ProjectName())
-		}
-		if svc.User("alice@example.com") == nil {
-			t.Error("expected user to be created")
-		}
-		if _, err := svc.Account("alice@example.com", "claude"); err != nil {
-			t.Errorf("expected account to be created: %v", err)
-		}
-	})
-
-	t.Run("creates an account for an existing user without changing its name", func(t *testing.T) {
-		t.Parallel()
-		svc := newService(t)
-		must(t, svc.AddProvider("claude", true, false))
-		must(t, svc.AddUser("alice@example.com", "Alice"))
-		_, err := svc.StartSession("alice@example.com", "ignored name", "claude", "", "", nil)
-		must(t, err)
-		if got := svc.User("alice@example.com").Name(); got != "Alice" {
-			t.Errorf("got name %q, want existing name preserved (Alice)", got)
 		}
 		if _, err := svc.Account("alice@example.com", "claude"); err != nil {
 			t.Errorf("expected account to be created: %v", err)
@@ -1475,7 +1402,7 @@ func TestService_StartSession(t *testing.T) {
 	t.Run("reuses an existing account without creating a duplicate", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
-		_, err := svc.StartSession("alice@example.com", "Alice", "claude", "", "second", nil)
+		_, err := svc.StartSession("alice@example.com", "claude", "", "second", nil)
 		must(t, err)
 		got, err := svc.AccountSessions("alice@example.com", "claude")
 		must(t, err)
@@ -1494,7 +1421,7 @@ func TestService_StartSession(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
 		queue := []model.Prompt{model.NewPrompt("continue", false)}
-		sess, err := svc.StartSession("alice@example.com", "Alice", "claude", "Alpha", "Topic", queue)
+		sess, err := svc.StartSession("alice@example.com", "claude", "Alpha", "Topic", queue)
 		must(t, err)
 		if sess.ProjectName() != "Alpha" {
 			t.Errorf("got project %q, want Alpha", sess.ProjectName())
@@ -1506,27 +1433,26 @@ func TestService_StartSession(t *testing.T) {
 
 	t.Run("project not granted to account", func(t *testing.T) {
 		t.Parallel()
-		_, err := seedService(t).StartSession("alice@example.com", "Alice", "claude", "Orphan", "", nil)
+		_, err := seedService(t).StartSession("alice@example.com", "claude", "Orphan", "", nil)
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
 	})
 
 	errorCases := []struct {
-		name     string
-		email    string
-		userName string
-		provider string
-		project  string
-		topic    string
-		queue    []model.Prompt
-		wantErr  error
+		name    string
+		email   string
+		vendor  string
+		project string
+		topic   string
+		queue   []model.Prompt
+		wantErr error
 	}{
-		{"provider not found", "alice@example.com", "Alice", "ghost", "", "", nil, model.ErrProviderNotFound},
-		{"new user creation fails on invalid email", "not-an-email", "Nobody", "claude", "", "", nil, apperr.ErrEmailInvalid},
-		{"project not found", "alice@example.com", "Alice", "claude", "Ghost", "", nil, model.ErrProjectNotFound},
+		{"user not found", "ghost@example.com", "claude", "", "", nil, model.ErrUserNotFound},
+		{"vendor not found", "alice@example.com", "ghost", "", "", nil, model.ErrVendorNotFound},
+		{"project not found", "alice@example.com", "claude", "Ghost", "", nil, model.ErrProjectNotFound},
 		{
-			"invalid prompt in queue", "alice@example.com", "Alice", "claude", "", "",
+			"invalid message in queue", "alice@example.com", "claude", "", "",
 			[]model.Prompt{model.NewPrompt("ok", false), model.NewPrompt("", false)},
 			model.ErrTextRequired,
 		},
@@ -1534,7 +1460,7 @@ func TestService_StartSession(t *testing.T) {
 	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := seedService(t).StartSession(tc.email, tc.userName, tc.provider, tc.project, tc.topic, tc.queue)
+			_, err := seedService(t).StartSession(tc.email, tc.vendor, tc.project, tc.topic, tc.queue)
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
 			}

@@ -150,9 +150,9 @@ func triggerSave(t *testing.T, form *tview.Form) {
 func newSessionFormTestAccount(t *testing.T) (*mockApp, *model.Account, *model.Session) {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	sess, err := reg.AddSession(acc, nil, "", nil)
 	must(t, err)
@@ -165,9 +165,9 @@ func newSessionFormTestAccount(t *testing.T) (*mockApp, *model.Account, *model.S
 func sessionSaveFixture(t *testing.T) (*mockApp, *model.Account, *model.Session) {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
@@ -263,9 +263,9 @@ func TestSessionForm_ProjectNames(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 			tc.setup(t, reg, acc)
 
@@ -292,9 +292,9 @@ func TestSessionForm_ProjectNames(t *testing.T) {
 func TestNewSessionForm_ProjectDropdown_BracketNameSurvivesSave(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Weird[Name]", "", "")))
 	must(t, reg.AddProjectToAccount(acc, reg.Project("Weird[Name]")))
@@ -368,9 +368,9 @@ func TestSessionFormInitial(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 			must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 			must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
@@ -440,7 +440,7 @@ func TestNewSessionForm_Save_Edit(t *testing.T) {
 	t.Run("selecting none clears an assigned project", func(t *testing.T) {
 		t.Parallel()
 		app, acc, sess := sessionSaveFixture(t)
-		must(t, app.svc.UpdateSessionProject(acc.UserEmail(), acc.ProviderName(), sess.ID(), "Alpha"))
+		must(t, app.svc.UpdateSessionProject(acc.UserEmail(), acc.VendorName(), sess.ID(), "Alpha"))
 		sess = app.svc.Session(sess.ID()) // re-read: UpdateSessionProject replaced it via Copy-on-Write
 		form := formFromCenteredModal(t, views.NewSessionForm(app, acc, sess, func() {}))
 
@@ -460,7 +460,7 @@ func TestNewSessionForm_Save_Edit(t *testing.T) {
 		t.Parallel()
 		app, acc, sess := sessionSaveFixture(t)
 		form := formFromCenteredModal(t, views.NewSessionForm(app, acc, sess, func() {}))
-		must(t, app.svc.EndSession(acc.UserEmail(), acc.ProviderName(), sess.ID()))
+		must(t, app.svc.EndSession(acc.UserEmail(), acc.VendorName(), sess.ID()))
 
 		triggerSave(t, form)
 
@@ -485,7 +485,7 @@ func TestNewSessionForm_Save_Create(t *testing.T) {
 		setInputField(t, form, "Topic", "Fresh topic")
 		triggerSave(t, form)
 
-		sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+		sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 		must(t, err)
 		var found bool
 		for _, s := range sessions {
@@ -504,9 +504,9 @@ func TestNewSessionForm_Save_Create(t *testing.T) {
 		form := formFromCenteredModal(t, views.NewSessionForm(app, acc, nil, func() {}))
 		setDropDown(t, form, "Project", 1) // Alpha
 
-		must(t, app.svc.RevokeProject(acc.UserEmail(), acc.ProviderName(), "Alpha"))
+		must(t, app.svc.RevokeProject(acc.UserEmail(), acc.VendorName(), "Alpha"))
 
-		before, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+		before, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 		must(t, err)
 
 		triggerSave(t, form)
@@ -514,7 +514,7 @@ func TestNewSessionForm_Save_Create(t *testing.T) {
 		if app.status == "" {
 			t.Error("expected a status message reporting the save failure")
 		}
-		after, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+		after, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 		must(t, err)
 		if len(after) != len(before) {
 			t.Errorf("session count changed: got %d, want %d (unchanged)", len(after), len(before))
@@ -717,13 +717,13 @@ func TestNewProjectForm_Save_Create(t *testing.T) {
 	})
 }
 
-// ── NewProviderForm ───────────────────────────────────────────────────────────
+// ── NewVendorForm ───────────────────────────────────────────────────────────
 
-func TestNewProviderForm_ReturnsForm(t *testing.T) {
+func TestNewVendorForm_ReturnsForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name         string
-		providerName string // empty = nil provider = create mode
+		name       string
+		vendorName string // empty = nil vendor = create mode
 	}{
 		{"create mode", ""},
 		{"edit mode", "claude"},
@@ -732,24 +732,24 @@ func TestNewProviderForm_ReturnsForm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := newMockApp(t)
-			var prov *model.Provider
-			if tc.providerName != "" {
-				prov = app.svc.Provider(tc.providerName)
+			var prov *model.Vendor
+			if tc.vendorName != "" {
+				prov = app.svc.Vendor(tc.vendorName)
 			}
-			result := views.NewProviderForm(app, prov, func() {})
+			result := views.NewVendorForm(app, prov, func() {})
 			assertFormOrModal(t, result, false)
 		})
 	}
 }
 
-func TestNewProviderForm_NameFieldDisabledState(t *testing.T) {
+func TestNewVendorForm_NameFieldDisabledState(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
 
 	cases := []struct {
-		name         string
-		providerName string // empty = nil provider = create mode
-		wantAccepts  bool
+		name        string
+		vendorName  string // empty = nil vendor = create mode
+		wantAccepts bool
 	}{
 		{"create mode: enabled", "", true},
 		{"edit mode: disabled", "claude", false},
@@ -757,11 +757,11 @@ func TestNewProviderForm_NameFieldDisabledState(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			var prov *model.Provider
-			if tc.providerName != "" {
-				prov = app.svc.Provider(tc.providerName)
+			var prov *model.Vendor
+			if tc.vendorName != "" {
+				prov = app.svc.Vendor(tc.vendorName)
 			}
-			form := formFromCenteredModal(t, views.NewProviderForm(app, prov, func() {}))
+			form := formFromCenteredModal(t, views.NewVendorForm(app, prov, func() {}))
 			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
 			if !ok {
 				t.Fatal("expected Name *tview.InputField")
@@ -773,37 +773,37 @@ func TestNewProviderForm_NameFieldDisabledState(t *testing.T) {
 	}
 }
 
-// TestNewProviderForm_Save_Edit covers save()'s isEdit branch:
-// UpdateProvider's success and not-found paths.
-func TestNewProviderForm_Save_Edit(t *testing.T) {
+// TestNewVendorForm_Save_Edit covers save()'s isEdit branch:
+// UpdateVendor's success and not-found paths.
+func TestNewVendorForm_Save_Edit(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
 		app := &mockApp{svc: newTestService(t, reg)}
-		form := formFromCenteredModal(t, views.NewProviderForm(app, app.svc.Provider("claude"), func() {}))
+		form := formFromCenteredModal(t, views.NewVendorForm(app, app.svc.Vendor("claude"), func() {}))
 
 		setCheckbox(t, form, "Supports projects")
 		setCheckbox(t, form, "Supports deep research")
 		triggerSave(t, form)
 
-		got := app.svc.Provider("claude")
+		got := app.svc.Vendor("claude")
 		if !got.HasProjects() || !got.HasDeepResearch() {
 			t.Errorf("HasProjects=%v HasDeepResearch=%v, want both true", got.HasProjects(), got.HasDeepResearch())
 		}
 	})
 
-	t.Run("failure: provider deleted before save", func(t *testing.T) {
+	t.Run("failure: vendor deleted before save", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
 		app := &mockApp{svc: newTestService(t, reg)}
-		prov := app.svc.Provider("claude")
-		form := formFromCenteredModal(t, views.NewProviderForm(app, prov, func() {}))
+		prov := app.svc.Vendor("claude")
+		form := formFromCenteredModal(t, views.NewVendorForm(app, prov, func() {}))
 
-		must(t, app.svc.DeleteProvider("claude"))
+		must(t, app.svc.DeleteVendor("claude"))
 
 		triggerSave(t, form)
 
@@ -813,24 +813,24 @@ func TestNewProviderForm_Save_Edit(t *testing.T) {
 	})
 }
 
-// TestNewProviderForm_Save_Create covers save()'s !isEdit branch: the
-// pre-Mutate ValidateProvider check, AddProvider's success path, and
-// AddProvider's own failure path (duplicate name).
-func TestNewProviderForm_Save_Create(t *testing.T) {
+// TestNewVendorForm_Save_Create covers save()'s !isEdit branch: the
+// pre-Mutate ValidateVendor check, AddVendor's success path, and
+// AddVendor's own failure path (duplicate name).
+func TestNewVendorForm_Save_Create(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		app := newMockApp(t)
-		form := formFromCenteredModal(t, views.NewProviderForm(app, nil, func() {}))
+		form := formFromCenteredModal(t, views.NewVendorForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "gemini")
 		setCheckbox(t, form, "Supports projects")
 		triggerSave(t, form)
 
-		got := app.svc.Provider("gemini")
+		got := app.svc.Vendor("gemini")
 		if got == nil {
-			t.Fatal("provider not created")
+			t.Fatal("vendor not created")
 		}
 		if !got.HasProjects() {
 			t.Error("HasProjects() = false, want true")
@@ -840,8 +840,8 @@ func TestNewProviderForm_Save_Create(t *testing.T) {
 	t.Run("validation failure: empty name never mutates", func(t *testing.T) {
 		t.Parallel()
 		app := newMockApp(t)
-		before := len(app.svc.Providers())
-		form := formFromCenteredModal(t, views.NewProviderForm(app, nil, func() {}))
+		before := len(app.svc.Vendors())
+		form := formFromCenteredModal(t, views.NewVendorForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "")
 		triggerSave(t, form)
@@ -849,15 +849,15 @@ func TestNewProviderForm_Save_Create(t *testing.T) {
 		if app.status == "" {
 			t.Error("expected a status message reporting the validation failure")
 		}
-		if got := len(app.svc.Providers()); got != before {
-			t.Errorf("provider count changed: got %d, want %d (unchanged)", got, before)
+		if got := len(app.svc.Vendors()); got != before {
+			t.Errorf("vendor count changed: got %d, want %d (unchanged)", got, before)
 		}
 	})
 
 	t.Run("failure: duplicate name", func(t *testing.T) {
 		t.Parallel()
 		app := newMockApp(t) // already has "claude"
-		form := formFromCenteredModal(t, views.NewProviderForm(app, nil, func() {}))
+		form := formFromCenteredModal(t, views.NewVendorForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "claude")
 		triggerSave(t, form)
@@ -878,7 +878,7 @@ func TestNewAccountForm(t *testing.T) {
 		wantModal bool
 	}{
 		{
-			name: "no providers",
+			name: "no vendors",
 			setup: func(t *testing.T) (*mockApp, *model.Account) {
 				t.Helper()
 				app := newMockApp(t)
@@ -925,8 +925,8 @@ func TestAccountEditForm_Layout(t *testing.T) {
 
 	form := formFromCenteredModal(t, views.NewAccountForm(app, acc, func() {}))
 
-	if got := strings.TrimSpace(form.GetTitle()); got != "Edit Account" {
-		t.Errorf("title = %q, want %q", got, "Edit Account")
+	if got := strings.TrimSpace(form.GetTitle()); got != "Pause Account" {
+		t.Errorf("title = %q, want %q", got, "Pause Account")
 	}
 
 	if got := form.GetFormItemCount(); got != 2 {
@@ -942,55 +942,14 @@ func TestAccountEditForm_Layout(t *testing.T) {
 	if got := form.GetFormItem(1).GetLabel(); got != "Pause until" {
 		t.Errorf("form item 1 label = %q, want %q", got, "Pause until")
 	}
-	if item := form.GetFormItemByLabel("Provider"); item != nil {
-		t.Error("Provider should not be a separate form field")
+	if item := form.GetFormItemByLabel("Vendor"); item != nil {
+		t.Error("Vendor should not be a separate form field")
 	}
 	if item := form.GetFormItemByLabel("User"); item != nil {
 		t.Error("User should not be a separate form field")
 	}
-
-	if idx := form.GetButtonIndex("Account…"); idx < 0 {
-		t.Error("expected Account… button")
-	}
-}
-
-func TestAccountEditForm_AccountButton(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	acc, err := app.svc.Account("alice@example.com", "claude")
-	must(t, err)
-
-	onClose := func() {
-		app.SetHints(views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-		app.HideModal()
-	}
-	form := formFromCenteredModal(t, views.NewAccountForm(app, acc, onClose))
-
-	idx := form.GetButtonIndex("Account…")
-	if idx < 0 {
-		t.Fatal("expected Account… button")
-	}
-	form.GetButton(idx).InputHandler()(specialKey(tcell.KeyEnter), func(tview.Primitive) {})
-
-	if app.modal == nil {
-		t.Fatal("expected account details modal to be shown")
-	}
-	assertHints(t, app, views.HintsFormSpecific, views.HintsFormCommon)
-
-	details := formFromCenteredModal(t, app.modal)
-	if got := strings.TrimSpace(details.GetTitle()); got != "Rename User: alice@example.com" {
-		t.Errorf("details title = %q, want %q", got, "Rename User: alice@example.com")
-	}
-
-	setInputField(t, details, "Name", "Alice Smith")
-	triggerSave(t, details)
-
-	if app.modal != nil {
-		t.Error("expected modal to be hidden after a successful save")
-	}
-	assertHints(t, app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	if got := app.svc.User("alice@example.com").Name(); got != "Alice Smith" {
-		t.Errorf("Name() = %q, want %q", got, "Alice Smith")
+	if idx := form.GetButtonIndex("Account…"); idx >= 0 {
+		t.Error("Account… button must be removed")
 	}
 }
 
@@ -1062,9 +1021,9 @@ func TestAccountEditForm_Save(t *testing.T) {
 	t.Run("failure: account removed before save", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		app := &mockApp{svc: newTestService(t, reg)}
 		form := formFromCenteredModal(t, views.NewAccountForm(app, acc, func() {}))
@@ -1080,63 +1039,77 @@ func TestAccountEditForm_Save(t *testing.T) {
 	})
 }
 
-// TestAccountCreateForm_Save covers accountCreateForm's save(): a
-// brand-new user, an existing user selected from the dropdown, the
-// pre-Mutate ValidateAccount failure (invalid email), and CreateAccount's
-// own failure path (the account already exists).
+// TestAccountCreateForm_Save covers accountCreateForm's save: selecting an
+// existing user, creating a user through the "+ New user" flow, the zero-user
+// guard, and the duplicate-account failure.
 func TestAccountCreateForm_Save(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success: new user", func(t *testing.T) {
+	t.Run("success: existing user selected from dropdown", func(t *testing.T) {
 		t.Parallel()
 		app := newMockApp(t)
 		form := formFromCenteredModal(t, views.NewAccountForm(app, nil, func() {}))
 
-		setInputField(t, form, "Email", "carol@example.com")
-		setInputField(t, form, "Name", "Carol")
-		setDropDown(t, form, "Provider", 1) // 0 = chatgpt, 1 = claude (sorted by name)
+		setDropDown(t, form, "User", 1)   // 0 = "+ New user", 1 = alice
+		setDropDown(t, form, "Vendor", 0) // 0 = chatgpt, 1 = claude
 		triggerSave(t, form)
 
-		gotUser := app.svc.User("carol@example.com")
-		if gotUser == nil {
-			t.Fatal("user not created")
+		if _, err := app.svc.Account("alice@example.com", "chatgpt"); err != nil {
+			t.Errorf("account not created: %v", err)
 		}
-		if gotUser.Name() != "Carol" {
-			t.Errorf("Name() = %q, want %q", gotUser.Name(), "Carol")
+	})
+
+	t.Run("success: new user flow", func(t *testing.T) {
+		t.Parallel()
+		app := newMockApp(t)
+		form := formFromCenteredModal(t, views.NewAccountForm(app, nil, func() {}))
+
+		setDropDown(t, form, "Vendor", 1) // claude
+		userDropDown, ok := form.GetFormItemByLabel("User").(*tview.DropDown)
+		if !ok {
+			t.Fatal("expected User *tview.DropDown")
 		}
+		userDropDown.SetCurrentOption(0) // opens NewUserForm; SetCurrentOption fires the callback
+
+		userForm := formFromCenteredModal(t, app.modal)
+		setInputField(t, userForm, "Email", "carol@example.com")
+		setInputField(t, userForm, "Name", "Carol")
+		triggerSave(t, userForm)
+
+		accountForm := formFromCenteredModal(t, app.modal)
+		userDropDown, ok = accountForm.GetFormItemByLabel("User").(*tview.DropDown)
+		if !ok {
+			t.Fatal("expected User *tview.DropDown after reopen")
+		}
+		idx, text := userDropDown.GetCurrentOption()
+		if idx <= 0 || !strings.Contains(text, "carol@example.com") {
+			t.Errorf("user selection = %d %q, want carol@example.com preselected", idx, text)
+		}
+		vendorDropDown, ok := accountForm.GetFormItemByLabel("Vendor").(*tview.DropDown)
+		if !ok {
+			t.Fatal("expected Vendor *tview.DropDown after reopen")
+		}
+		if _, vendorText := vendorDropDown.GetCurrentOption(); vendorText != "claude" {
+			t.Errorf("vendor selection = %q, want claude", vendorText)
+		}
+
+		triggerSave(t, accountForm)
 		if _, err := app.svc.Account("carol@example.com", "claude"); err != nil {
 			t.Errorf("account not created: %v", err)
 		}
 	})
 
-	t.Run("success: existing user selected from dropdown", func(t *testing.T) {
+	t.Run("zero users: saving with new user selected fails", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // bob@example.com exists with a chatgpt account, no claude one
+		reg := model.NewRegistry()
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+		app := &mockApp{svc: newTestService(t, reg)}
 		form := formFromCenteredModal(t, views.NewAccountForm(app, nil, func() {}))
 
-		setDropDown(t, form, "User", 2)     // 0 = "+ New user", 1 = alice, 2 = bob (sorted by email)
-		setDropDown(t, form, "Provider", 1) // 0 = chatgpt, 1 = claude (sorted by name)
-		triggerSave(t, form)
-
-		if _, err := app.svc.Account("bob@example.com", "claude"); err != nil {
-			t.Errorf("account not created: %v", err)
-		}
-	})
-
-	t.Run("validation failure: invalid email never mutates", func(t *testing.T) {
-		t.Parallel()
-		app := newMockApp(t)
-		form := formFromCenteredModal(t, views.NewAccountForm(app, nil, func() {}))
-
-		setInputField(t, form, "Email", "not-an-email")
-		setInputField(t, form, "Name", "Nobody")
 		triggerSave(t, form)
 
 		if app.status == "" {
-			t.Error("expected a status message reporting the validation failure")
-		}
-		if app.svc.User("not-an-email") != nil {
-			t.Error("user should not have been created")
+			t.Error("expected a status message reporting the missing user")
 		}
 	})
 
@@ -1145,8 +1118,8 @@ func TestAccountCreateForm_Save(t *testing.T) {
 		app := newMockApp(t) // alice|claude already exists
 		form := formFromCenteredModal(t, views.NewAccountForm(app, nil, func() {}))
 
-		setDropDown(t, form, "User", 1)     // alice
-		setDropDown(t, form, "Provider", 1) // claude (0 = chatgpt, 1 = claude)
+		setDropDown(t, form, "User", 1)   // alice
+		setDropDown(t, form, "Vendor", 1) // claude
 		triggerSave(t, form)
 
 		if app.status == "" {
@@ -1161,41 +1134,32 @@ func TestNewUserForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(t *testing.T) (*mockApp, *model.Account)
+		setup     func(t *testing.T) (*mockApp, *model.User)
 		wantModal bool
 	}{
 		{
-			name: "nil account",
-			setup: func(t *testing.T) (*mockApp, *model.Account) {
+			name: "nil user creates form",
+			setup: func(t *testing.T) (*mockApp, *model.User) {
 				t.Helper()
 				return newMockApp(t), nil
 			},
-			wantModal: true,
+			wantModal: false,
 		},
 		{
 			name: "user no longer exists",
-			setup: func(t *testing.T) (*mockApp, *model.Account) {
+			setup: func(t *testing.T) (*mockApp, *model.User) {
 				t.Helper()
 				app := newMockApp(t)
-				// Constructed directly rather than resolved from the
-				// registry: a real Account can't outlive its User through
-				// normal service calls (DeleteUser refuses while any
-				// account still references it), so this is the only way
-				// to reach NewUserForm's defensive "user no longer exists"
-				// check.
-				ghost := model.NewAccount("ghost@example.com", "claude")
-				return app, ghost
+				return app, model.NewUser("ghost@example.com", "Ghost")
 			},
 			wantModal: true,
 		},
 		{
-			name: "success",
-			setup: func(t *testing.T) (*mockApp, *model.Account) {
+			name: "edit mode",
+			setup: func(t *testing.T) (*mockApp, *model.User) {
 				t.Helper()
 				app := newMockApp(t)
-				acc, err := app.svc.Account("alice@example.com", "claude")
-				must(t, err)
-				return app, acc
+				return app, app.svc.User("alice@example.com")
 			},
 			wantModal: false,
 		},
@@ -1203,25 +1167,65 @@ func TestNewUserForm(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app, acc := tc.setup(t)
-			result := views.NewUserForm(app, acc, func() {})
+			app, user := tc.setup(t)
+			result := views.NewUserForm(app, user, func() {})
 			assertFormOrModal(t, result, tc.wantModal)
 		})
 	}
 }
 
-// TestNewUserForm_Save covers save()'s UpdateUser call: the success path,
-// and the failure path where the underlying user is gone by the time
-// save runs.
+func TestNewUserForm_FieldState(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		user        *model.User
+		wantEmailOK bool
+	}{
+		{"create mode email editable", nil, true},
+		{"edit mode email disabled", model.NewUser("alice@example.com", "Alice"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newMockApp(t)
+			form := formFromCenteredModal(t, views.NewUserForm(app, tc.user, func() {}))
+			emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+			if !ok {
+				t.Fatal("expected Email *tview.InputField")
+			}
+			if got := inputFieldAcceptsText(emailField); got != tc.wantEmailOK {
+				t.Errorf("email accepts text: got %v, want %v", got, tc.wantEmailOK)
+			}
+		})
+	}
+}
+
+// TestNewUserForm_Save covers create and edit saves plus the failure paths.
 func TestNewUserForm_Save(t *testing.T) {
 	t.Parallel()
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("create success", func(t *testing.T) {
 		t.Parallel()
 		app := newMockApp(t)
-		acc, err := app.svc.Account("alice@example.com", "claude")
-		must(t, err)
-		form := formFromCenteredModal(t, views.NewUserForm(app, acc, func() {}))
+		form := formFromCenteredModal(t, views.NewUserForm(app, nil, func() {}))
+
+		setInputField(t, form, "Email", "carol@example.com")
+		setInputField(t, form, "Name", "Carol")
+		triggerSave(t, form)
+
+		got := app.svc.User("carol@example.com")
+		if got == nil {
+			t.Fatal("user not created")
+		}
+		if got.Name() != "Carol" {
+			t.Errorf("Name() = %q, want %q", got.Name(), "Carol")
+		}
+	})
+
+	t.Run("edit success", func(t *testing.T) {
+		t.Parallel()
+		app := newMockApp(t)
+		form := formFromCenteredModal(t, views.NewUserForm(app, app.svc.User("alice@example.com"), func() {}))
 
 		setInputField(t, form, "Name", "Alice Smith")
 		triggerSave(t, form)
@@ -1232,21 +1236,45 @@ func TestNewUserForm_Save(t *testing.T) {
 		}
 	})
 
-	t.Run("failure: user removed before save", func(t *testing.T) {
+	t.Run("create failure: invalid email", func(t *testing.T) {
+		t.Parallel()
+		app := newMockApp(t)
+		form := formFromCenteredModal(t, views.NewUserForm(app, nil, func() {}))
+
+		setInputField(t, form, "Email", "not-an-email")
+		setInputField(t, form, "Name", "Nobody")
+		triggerSave(t, form)
+
+		if app.status == "" {
+			t.Error("expected a status message reporting the validation failure")
+		}
+		if app.svc.User("not-an-email") != nil {
+			t.Error("user should not have been created")
+		}
+	})
+
+	t.Run("create failure: duplicate email", func(t *testing.T) {
+		t.Parallel()
+		app := newMockApp(t)
+		form := formFromCenteredModal(t, views.NewUserForm(app, nil, func() {}))
+
+		setInputField(t, form, "Email", "alice@example.com")
+		setInputField(t, form, "Name", "Alice2")
+		triggerSave(t, form)
+
+		if app.status == "" {
+			t.Error("expected a status message reporting the save failure")
+		}
+	})
+
+	t.Run("edit failure: user removed before save", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
-		must(t, err)
+		must(t, reg.AddUser(model.NewUser("solo@example.com", "Solo")))
 		app := &mockApp{svc: newTestService(t, reg)}
-		form := formFromCenteredModal(t, views.NewUserForm(app, acc, func() {}))
+		form := formFromCenteredModal(t, views.NewUserForm(app, app.svc.User("solo@example.com"), func() {}))
 
-		// Both the account and the user must go: DeleteUser refuses while
-		// any account still references it, same constraint noted in the
-		// "user no longer exists" precondition test above.
-		must(t, app.svc.DeleteAccount("alice@example.com", "claude"))
-		must(t, app.svc.DeleteUser("alice@example.com"))
+		must(t, app.svc.DeleteUser("solo@example.com"))
 
 		triggerSave(t, form)
 
@@ -1315,7 +1343,7 @@ func TestNewGrantForm(t *testing.T) {
 }
 
 // TestNewGrantForm_FiltersCandidates verifies the picker excludes accounts
-// that already have access and accounts whose provider does not support
+// that already have access and accounts whose vendor does not support
 // projects.
 func TestNewGrantForm_FiltersCandidates(t *testing.T) {
 	t.Parallel()

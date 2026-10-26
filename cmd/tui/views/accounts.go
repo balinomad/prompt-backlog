@@ -15,19 +15,19 @@ import (
 // minAccountsPanelWidth is wide enough to show the list title and border.
 const minAccountsPanelWidth = len(" Accounts ") + 2
 
-// providerColumnWidthCap and nameColumnWidthCap bound the account columns so
+// vendorColumnWidthCap and nameColumnWidthCap bound the account columns so
 // a single unusually long value cannot push later columns off screen.
 const (
-	providerColumnWidthCap = 12
-	nameColumnWidthCap     = 20
+	vendorColumnWidthCap = 12
+	nameColumnWidthCap   = 20
 )
 
 // accountRow holds the display cells for one account row.
 type accountRow struct {
-	provider string
-	name     string
-	pause    string
-	project  string
+	vendor  string
+	name    string
+	pause   string
+	project string
 }
 
 // AccountsPanel is the left panel that lists all accounts with their
@@ -110,7 +110,7 @@ func (p *AccountsPanel) Refresh() {
 		prevKey = a.Key()
 	}
 
-	// Resolve only the values rendered in the list. Provider, user, and
+	// Resolve only the values rendered in the list. Vendor, user, and
 	// project values are capped with an ellipsis, while pause status keeps its
 	// full rendered text, including day offsets such as "12:34 -5". Optional
 	// columns are included only when at least one rendered row has a value.
@@ -131,16 +131,16 @@ func (p *AccountsPanel) Refresh() {
 		hasProject = hasProject || project != ""
 
 		rawRows[i] = accountRow{
-			provider: tview.Escape(truncateWidth(a.ProviderName(), providerColumnWidthCap)),
-			name:     tview.Escape(truncateWidth(userName, nameColumnWidthCap)),
-			pause:    pause,
-			project:  tview.Escape(truncateWidth(project, projectColumnWidth)),
+			vendor:  tview.Escape(truncateWidth(a.VendorName(), vendorColumnWidthCap)),
+			name:    tview.Escape(truncateWidth(userName, nameColumnWidthCap)),
+			pause:   pause,
+			project: tview.Escape(truncateWidth(project, projectColumnWidth)),
 		}
 	}
 
 	rows := make([][]string, len(rawRows))
 	for i, row := range rawRows {
-		rows[i] = []string{row.provider, row.name}
+		rows[i] = []string{row.vendor, row.name}
 		if hasPause {
 			rows[i] = append(rows[i], row.pause)
 		}
@@ -199,11 +199,14 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	switch event.Rune() {
-	case KeyProviders:
-		p.app.SwitchToProviders()
+	case KeyVendors:
+		p.app.SwitchToVendors()
 		return nil
 	case KeyProjects:
 		p.app.SwitchToProjects()
+		return nil
+	case KeyUsers:
+		p.app.SwitchToUsers()
 		return nil
 	}
 	return event
@@ -237,13 +240,13 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 		return nil
 	}
 	email := a.UserEmail()
-	provider := a.ProviderName()
-	label := fmt.Sprintf("%s / %s", tview.Escape(email), tview.Escape(provider))
+	vendor := a.VendorName()
+	label := fmt.Sprintf("%s / %s", tview.Escape(email), tview.Escape(vendor))
 	modal := NewConfirmModal(
 		fmt.Sprintf("Remove account\n%s?\nAll its sessions and project grants must be removed first.", label),
 		func() {
 			if err := p.app.Mutate(func(s *service.Service) error {
-				return s.DeleteAccount(email, provider)
+				return s.DeleteAccount(email, vendor)
 			}); err != nil {
 				setErrorStatus(p.app, err)
 			}
@@ -288,7 +291,7 @@ func latestGrantedProject(latest map[model.AccountKey]string, granted map[model.
 func grantedProjectNames(svc *service.Service, accounts []*model.Account) map[model.AccountKey]map[string]struct{} {
 	granted := make(map[model.AccountKey]map[string]struct{}, len(accounts))
 	for _, a := range accounts {
-		projects, err := svc.AccountProjects(a.UserEmail(), a.ProviderName())
+		projects, err := svc.AccountProjects(a.UserEmail(), a.VendorName())
 		if err != nil {
 			continue
 		}

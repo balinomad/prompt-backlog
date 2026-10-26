@@ -29,6 +29,7 @@ type DetailPanel struct {
 	app      App
 	account  *model.Account   // currently displayed account; may be nil
 	sessions []*model.Session // mirrors list items; rebuilt on Refresh
+	width    int              // available inner width for row labels
 }
 
 // NewDetailPanel constructs the detail panel. Call Refresh after the
@@ -69,6 +70,15 @@ func (p *DetailPanel) Selected() *model.Session {
 	return p.sessions[idx]
 }
 
+// SetWidth updates the available inner width and refreshes when it changes.
+func (p *DetailPanel) SetWidth(width int) {
+	if width == p.width {
+		return
+	}
+	p.width = width
+	p.Refresh()
+}
+
 // Refresh repopulates the panel from the current service state.
 // The account reference is re-validated against the registry so that a
 // deleted account gracefully clears the panel rather than showing stale data.
@@ -78,7 +88,7 @@ func (p *DetailPanel) Refresh() {
 	// Re-validate: look the account up by identity in case it was deleted.
 	var acc *model.Account
 	if p.account != nil {
-		resolved, err := svc.Account(p.account.UserEmail(), p.account.ProviderName())
+		resolved, err := svc.Account(p.account.UserEmail(), p.account.VendorName())
 		if err == nil {
 			acc = resolved
 		}
@@ -94,12 +104,12 @@ func (p *DetailPanel) Refresh() {
 	p.Clear()
 	p.sessions = nil
 	if acc != nil {
-		sessions, err := svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+		sessions, err := svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 		if err == nil {
 			p.sessions = sessions
 		}
 		for _, s := range p.sessions {
-			p.AddItem(sessionItemText(s), "", 0, nil)
+			p.AddItem(sessionItemText(s, p.width), "", 0, nil)
 		}
 	}
 
@@ -176,7 +186,7 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 		return nil
 	}
 	email := p.account.UserEmail()
-	provider := p.account.ProviderName()
+	vendor := p.account.VendorName()
 	id := s.ID()
 	label := s.Topic()
 	if label == "" {
@@ -186,7 +196,7 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 		fmt.Sprintf("End session\n%q?", tview.Escape(label)),
 		func() {
 			if err := p.app.Mutate(func(svc *service.Service) error {
-				return svc.EndSession(email, provider, id)
+				return svc.EndSession(email, vendor, id)
 			}); err != nil {
 				setErrorStatus(p.app, err)
 			}
@@ -221,11 +231,11 @@ func (p *DetailPanel) handleToggle() *tcell.EventKey {
 		return nil
 	}
 	email := p.account.UserEmail()
-	provider := p.account.ProviderName()
+	vendor := p.account.VendorName()
 	id := s.ID()
 	queue := toggleContinuePrompt(s.Queue())
 	if err := p.app.Mutate(func(svc *service.Service) error {
-		return svc.UpdateSessionPrompts(email, provider, id, queue)
+		return svc.UpdateSessionPrompts(email, vendor, id, queue)
 	}); err != nil {
 		setErrorStatus(p.app, err)
 	}
@@ -272,7 +282,7 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 	}
 	svc := p.app.Service()
 	email := acc.UserEmail()
-	provider := acc.ProviderName()
+	vendor := acc.VendorName()
 
 	userName := email
 	if u := svc.User(email); u != nil {
@@ -281,7 +291,7 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 
 	var sb strings.Builder
 
-	projects, err := svc.AccountProjects(email, provider)
+	projects, err := svc.AccountProjects(email, vendor)
 	if err != nil {
 		// The account was resolved by the accounts panel; a resolution error
 		// here would indicate a concurrent deletion. Render with no projects
@@ -290,7 +300,7 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 	}
 	projectsText := dimText("none")
 	if len(projects) > 0 {
-		sessions, err := svc.AccountSessions(email, provider)
+		sessions, err := svc.AccountSessions(email, vendor)
 		if err != nil {
 			sessions = nil
 		}
@@ -312,7 +322,7 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 	}
 	writeInfoRows(&sb, []infoRow{
 		{label: "User", value: fmt.Sprintf("%s (%s)", tview.Escape(userName), tview.Escape(email))},
-		{label: "Provider", value: tview.Escape(provider)},
+		{label: "Vendor", value: tview.Escape(vendor)},
 		{label: "Projects", value: projectsText},
 	})
 
@@ -392,8 +402,10 @@ func fitInfoHeight(required, available, minOtherHeight int) int {
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
 // sessionItemText formats a session row for the list: topic, project, and
-// queue length. A pending trailing "continue" prompt is highlighted in yellow.
-func sessionItemText(s *model.Session) string {
+// pending message count. The long count label is used when it fits the
+// available inner width. A pending trailing "continue" prompt is highlighted
+// in yellow.
+func sessionItemText(s *model.Session, availableWidth int) string {
 	topic := tview.Escape(truncateWidth(s.Topic(), topicColumnWidth))
 	if topic == "" {
 		topic = dimText("(untitled)")
@@ -402,12 +414,26 @@ func sessionItemText(s *model.Session) string {
 	if proj == "" {
 		proj = dimText("—")
 	}
+	prefix := insetListRow(padWidth(topic, topicFieldWidth) + "  " + padWidth(proj, projectFieldWidth) + "  ")
 	queue := s.Queue()
-	info := fmt.Sprintf("queue: %d", len(queue))
+
+	longInfo := pendingCountText(len(queue), true)
+	shortInfo := pendingCountText(len(queue), false)
 	if isContinuePending(queue) {
-		info = fmt.Sprintf("[yellow]%s ↻[-]", info)
+		longInfo = fmt.Sprintf("[yellow]%s ↻[-]", longInfo)
+		shortInfo = fmt.Sprintf("[yellow]%s ↻[-]", shortInfo)
 	}
-	return insetListRow(padWidth(topic, topicFieldWidth) + "  " + padWidth(proj, projectFieldWidth) + "  " + info)
+	if availableWidth > 0 && tview.TaggedStringWidth(prefix+longInfo) <= availableWidth {
+		return prefix + longInfo
+	}
+	return prefix + shortInfo
+}
+
+func pendingCountText(n int, long bool) string {
+	if long {
+		return fmt.Sprintf("pending messages: %d", n)
+	}
+	return fmt.Sprintf("pending: %d", n)
 }
 
 // continuePrompt is the canonical trailing prompt toggled by KeyToggle.

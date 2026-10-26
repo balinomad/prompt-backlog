@@ -50,9 +50,9 @@ func TestDetailPanel_FocusFunc_SetsHints(t *testing.T) {
 func newDetailTestApp(t *testing.T) (*mockApp, *model.Account) {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
@@ -98,9 +98,9 @@ func TestDetailPanel_SetAccount_ItemCount(t *testing.T) {
 func TestDetailPanel_Refresh_ClearsOnDeletedAccount(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	app := &mockApp{svc: newTestService(t, reg)}
 
@@ -253,9 +253,9 @@ func TestDetailPanel_NoSessions_NoModal(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 			app := &mockApp{svc: newTestService(t, reg)}
 
@@ -394,7 +394,7 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 			list := detailPanelList(t, p)
 			list.SetCurrentItem(tc.idx)
 
-			sessionsBefore, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+			sessionsBefore, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 			must(t, err)
 			wantCount := len(sessionsBefore)
 
@@ -410,7 +410,7 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 				t.Error("expected modal to be hidden after cancelling")
 			}
 			assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-			sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+			sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 			must(t, err)
 			if len(sessionsAfter) != wantCount {
 				t.Errorf("session count changed after cancel: got %d, want %d (unchanged)", len(sessionsAfter), wantCount)
@@ -437,9 +437,9 @@ func TestDetailPanel_Toggle_Continue(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 			sess, err := reg.AddSession(acc, nil, "topic", tc.initQueue)
 			must(t, err)
@@ -475,9 +475,9 @@ func TestDetailPanel_Toggle_Continue(t *testing.T) {
 func TestDetailPanel_Toggle_NoSession_NoOp(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	app := &mockApp{svc: newTestService(t, reg)}
 
@@ -496,9 +496,9 @@ func TestDetailPanel_Toggle_NoSession_NoOp(t *testing.T) {
 func TestDetailPanel_Toggle_MutateError(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	_, err = reg.AddSession(acc, nil, "topic", nil)
 	must(t, err)
@@ -536,7 +536,7 @@ func TestDetailPanel_NewSession_SaveReturnsToPanel(t *testing.T) {
 		t.Error("expected modal to be hidden after a successful save")
 	}
 	assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 	must(t, err)
 	var found bool
 	for _, s := range sessions {
@@ -570,7 +570,7 @@ func TestDetailPanel_EditSession_SaveReturnsToPanel(t *testing.T) {
 		t.Error("expected modal to be hidden after a successful save")
 	}
 	assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
+	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.VendorName())
 	must(t, err)
 	if sessions[0].Topic() != "Renamed topic" {
 		t.Errorf("Topic() = %q, want %q", sessions[0].Topic(), "Renamed topic")
@@ -607,7 +607,7 @@ func TestDetailPanel_Queue_CloseReturnsToPanel(t *testing.T) {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // TestDetailPanel_SessionRowText verifies the rendered session row: topic,
-// project, queue count, escaping, and the pending marker.
+// project, pending message count, escaping, and the pending marker.
 func TestDetailPanel_SessionRowText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -620,13 +620,13 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 	}{
 		{
 			name:         "untitled, no project, empty queue",
-			wantContains: []string{"(untitled)", "queue: 0"},
+			wantContains: []string{"(untitled)", "pending: 0"},
 		},
 		{
 			name:         "topic and project shown",
 			topic:        "Architecture review",
 			projectName:  "Alpha",
-			wantContains: []string{"Architecture review", "Alpha", "queue: 0"},
+			wantContains: []string{"Architecture review", "Alpha", "pending: 0"},
 		},
 		{
 			name:         "bracket in topic and project is escaped",
@@ -638,23 +638,23 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 			name:         "pending continue shows marker",
 			topic:        "topic",
 			queue:        []model.Prompt{model.NewPrompt("continue", false)},
-			wantContains: []string{"queue: 1"},
+			wantContains: []string{"pending: 1"},
 			wantMarker:   true,
 		},
 		{
 			name:         "continue not last: no marker",
 			queue:        []model.Prompt{model.NewPrompt("continue", false), model.NewPrompt("do X", false)},
-			wantContains: []string{"queue: 2"},
+			wantContains: []string{"pending: 2"},
 		},
 		{
 			name:         "continue with spawnsSession true: no marker",
 			queue:        []model.Prompt{model.NewPrompt("continue", true)},
-			wantContains: []string{"queue: 1"},
+			wantContains: []string{"pending: 1"},
 		},
 		{
 			name:         "non-continue tail: no marker",
 			queue:        []model.Prompt{model.NewPrompt("do X", false)},
-			wantContains: []string{"queue: 1"},
+			wantContains: []string{"pending: 1"},
 		},
 		{
 			name:         "long topic is truncated",
@@ -666,9 +666,9 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
-			must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 			must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+			acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 			must(t, err)
 
 			var proj *model.Project
@@ -698,6 +698,25 @@ func TestDetailPanel_SessionRowText(t *testing.T) {
 				t.Errorf("marker present: got %v, want %v (row: %q)", hasMarker, tc.wantMarker, got)
 			}
 		})
+	}
+}
+
+func TestDetailPanel_SetWidth_UsesAdaptivePendingLabel(t *testing.T) {
+	t.Parallel()
+	app, acc := newDetailTestApp(t)
+	p := views.NewDetailPanel(app)
+	p.SetWidth(70)
+	p.SetAccount(acc)
+	list := detailPanelList(t, p)
+	wide, _ := list.GetItemText(0)
+	if !strings.Contains(wide, "pending messages: 1") {
+		t.Errorf("wide row = %q, want long pending label", wide)
+	}
+
+	p.SetWidth(50)
+	narrow, _ := list.GetItemText(0)
+	if !strings.Contains(narrow, "pending: 1") || strings.Contains(narrow, "pending messages: 1") {
+		t.Errorf("narrow row = %q, want short pending label", narrow)
 	}
 }
 
@@ -737,7 +756,7 @@ func TestAccountInfoPanel_RendersDetailsWithoutPaused(t *testing.T) {
 	p.SetAccount(acc)
 
 	got := p.GetText(false)
-	for _, want := range []string{"User", "Alice", "alice@example.com", "Provider", "claude", "Projects", "Alpha", "Beta"} {
+	for _, want := range []string{"User", "Alice", "alice@example.com", "Vendor", "claude", "Projects", "Alpha", "Beta"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("got %q, want it to contain %q", got, want)
 		}
@@ -774,9 +793,9 @@ func TestAccountInfoPanel_AlignedDetailRows(t *testing.T) {
 func TestAccountInfoPanel_WrappedLinesKeepInsets(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	project := model.NewProject(strings.Repeat("long-project-name-", 8), "", "")
 	must(t, reg.AddProject(project))
@@ -784,7 +803,7 @@ func TestAccountInfoPanel_WrappedLinesKeepInsets(t *testing.T) {
 
 	app := &mockApp{svc: newTestService(t, reg)}
 	p := views.NewAccountInfoPanel(app)
-	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Provider("claude")))
+	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Vendor("claude")))
 
 	screen := tcell.NewSimulationScreen("UTF-8")
 	must(t, screen.Init())
@@ -830,9 +849,9 @@ func TestAccountInfoPanel_NoProjects(t *testing.T) {
 func TestAccountInfoPanel_RequiredHeight_Wraps(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	project := model.NewProject(strings.Repeat("long-project-name-", 8), "", "")
 	must(t, reg.AddProject(project))
@@ -840,7 +859,7 @@ func TestAccountInfoPanel_RequiredHeight_Wraps(t *testing.T) {
 
 	app := &mockApp{svc: newTestService(t, reg)}
 	p := views.NewAccountInfoPanel(app)
-	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Provider("claude")))
+	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Vendor("claude")))
 
 	narrow := p.RequiredHeight(20)
 	wide := p.RequiredHeight(200)

@@ -120,7 +120,7 @@ func showHelp(app App, returnSpecific, returnCommon string) {
 }
 
 // errorModal returns a simple message modal for conditions where a form
-// cannot be shown (e.g. no providers configured).
+// cannot be shown (e.g. no vendors configured).
 func errorModal(message string, onClose func()) tview.Primitive {
 	return NewConfirmModal(message, onClose, onClose)
 }
@@ -165,23 +165,29 @@ var helpSections = []helpSection{
 		{"Shift+Tab", "Switch focus back (multi-pane)"},
 	}},
 	{"Accounts list", hints{
-		{"Enter", "Edit selected account"},
+		{"Enter", "Pause selected account"},
 		{"Ins", "Add account"},
 		{"Del", "Delete selected account"},
-		{string(KeyProviders), "Providers screen"},
+		{string(KeyVendors), "Vendors screen"},
 		{string(KeyProjects), "Projects screen"},
+		{string(KeyUsers), "Users screen"},
 	}},
 	{"Session detail", hints{
 		{"Enter", "Edit selected session"},
 		{"Ins", "Add session"},
 		{"Del", "Delete selected session"},
-		{string(KeyQueue), "Open queue editor"},
-		{"Space", `Toggle "continue" prompt`},
+		{string(KeyQueue), "Open messages editor"},
+		{"Space", `Toggle "continue" message`},
 	}},
-	{"Providers screen", hints{
-		{"Enter", "Edit selected provider"},
-		{"Ins", "Add provider"},
-		{"Del", "Delete selected provider"},
+	{"Vendors screen", hints{
+		{"Enter", "Edit selected vendor"},
+		{"Ins", "Add vendor"},
+		{"Del", "Delete selected vendor"},
+	}},
+	{"Users screen", hints{
+		{"Enter", "Edit selected user"},
+		{"Ins", "Add user"},
+		{"Del", "Delete selected user"},
 	}},
 	{"Projects screen", hints{
 		{"Enter", "Edit selected project"},
@@ -194,12 +200,12 @@ var helpSections = []helpSection{
 		{"Del", "Delete selected account from project"},
 		{"Tab", "Switch to projects"},
 	}},
-	{"Queue editor", hints{
-		{"Enter", "Edit selected prompt"},
-		{"Ins", "Add prompt"},
-		{"Del", "Delete selected prompt"},
-		{"Ctrl+↑", "Move prompt up"},
-		{"Ctrl+↓", "Move prompt down"},
+	{"Messages editor", hints{
+		{"Enter", "Edit selected message"},
+		{"Ins", "Add message"},
+		{"Del", "Delete selected message"},
+		{"Ctrl+↑", "Move message up"},
+		{"Ctrl+↓", "Move message down"},
 	}},
 	{"Forms", hints{
 		{"Tab", "Next field"},

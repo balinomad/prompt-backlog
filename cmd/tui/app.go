@@ -52,8 +52,9 @@ type App struct {
 	accounts    *views.AccountsPanel
 	detail      *views.DetailPanel
 	accountInfo *views.AccountInfoPanel
-	providers   *views.ProvidersPanel
+	vendors     *views.VendorsPanel
 	projects    *views.ProjectsPanel
+	users       *views.UsersPanel
 }
 
 // New constructs the fully wired application around svc. The caller is
@@ -201,9 +202,9 @@ func (a *App) SetFocus(p tview.Primitive) {
 	a.tv.SetFocus(p)
 }
 
-// SwitchToProviders refreshes and shows the providers management screen.
-func (a *App) SwitchToProviders() {
-	a.switchTo("providers", a.providers.Refresh, a.providers)
+// SwitchToVendors refreshes and shows the vendors management screen.
+func (a *App) SwitchToVendors() {
+	a.switchTo("vendors", a.vendors.Refresh, a.vendors)
 }
 
 // SwitchToMain shows the main accounts, sessions, and account-info screen
@@ -216,6 +217,11 @@ func (a *App) SwitchToMain() {
 // SwitchToProjects refreshes and shows the projects management screen.
 func (a *App) SwitchToProjects() {
 	a.switchTo("projects", a.projects.Refresh, a.projects)
+}
+
+// SwitchToUsers refreshes and shows the users management screen.
+func (a *App) SwitchToUsers() {
+	a.switchTo("users", a.users.Refresh, a.users)
 }
 
 func (a *App) switchTo(page string, refresh func(), focus tview.Primitive) {
@@ -250,8 +256,9 @@ func (a *App) build() {
 	a.accounts = views.NewAccountsPanel(a)
 	a.detail = views.NewDetailPanel(a)
 	a.accountInfo = views.NewAccountInfoPanel(a)
-	a.providers = views.NewProvidersPanel(a)
+	a.vendors = views.NewVendorsPanel(a)
 	a.projects = views.NewProjectsPanel(a)
+	a.users = views.NewUsersPanel(a)
 
 	// Wire account-list selection changes to both account views.
 	a.accounts.SetOnSelect(func(acc *model.Account) {
@@ -274,8 +281,9 @@ func (a *App) build() {
 	// The "modal" page is added/removed dynamically by ShowModal/HideModal.
 	a.pages = tview.NewPages().
 		AddPage("main", a.mainFlex, true, true).
-		AddPage("providers", a.providers, true, false).
-		AddPage("projects", a.projects, true, false)
+		AddPage("vendors", a.vendors, true, false).
+		AddPage("projects", a.projects, true, false).
+		AddPage("users", a.users, true, false)
 
 	// Root layout: content area above, status bar pinned to the bottom.
 	root := tview.NewFlex().
@@ -295,12 +303,12 @@ func (a *App) build() {
 	a.refreshAll()
 	a.tv.SetFocus(a.accounts)
 
-	// First-run: no providers means nothing can be done yet.
-	// Send the operator to the providers screen with a helpful prompt.
-	if len(a.svc.Providers()) == 0 {
-		a.SwitchToProviders()
+	// First-run: no vendors means nothing can be done yet.
+	// Send the operator to the vendors screen with a helpful prompt.
+	if len(a.svc.Vendors()) == 0 {
+		a.SwitchToVendors()
 		a.statusBar.SetMessage(
-			"No providers configured — press [::b]Ins[-::-] to add one.")
+			"No vendors configured — press [::b]Ins[-::-] to add one.")
 	}
 }
 
@@ -312,8 +320,9 @@ func (a *App) refreshAll() {
 	// build(), which calls both SetAccount methods. Explicit calls here
 	// would run them a second time for no benefit.
 	a.refreshAccounts()
-	a.providers.Refresh()
+	a.vendors.Refresh()
 	a.projects.Refresh()
+	a.users.Refresh()
 }
 
 // refreshAccounts repopulates the accounts panel and sizes it to fit the
@@ -328,15 +337,24 @@ func (a *App) refreshAccounts() {
 func (a *App) resizeDetailPanels(screenWidth, screenHeight int) {
 	a.resizeAccountInfo(screenWidth, screenHeight)
 
+	if a.detail != nil {
+		if _, _, width, _ := a.detail.GetInnerRect(); width > 0 {
+			a.detail.SetWidth(width)
+		}
+	}
+
 	available := screenHeight - statusBarHeight
 	if available <= 0 {
 		return
 	}
-	if a.providers != nil {
-		a.providers.ResizeInfo(screenWidth, available)
+	if a.vendors != nil {
+		a.vendors.ResizeInfo(screenWidth, available)
 	}
 	if a.projects != nil {
 		a.projects.ResizeInfo(screenWidth, available)
+	}
+	if a.users != nil {
+		a.users.ResizeInfo(screenWidth, available)
 	}
 }
 

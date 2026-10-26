@@ -4,8 +4,8 @@
 //
 // Validation is not duplicated: Registry.Add*/Update* already enforce
 // model.Validate*. The ValidateX methods are read-only passthroughs for
-// pre-flight UI feedback. StartSession and CreateAccount are the only
-// multi-call workflows; both resolve or create the user on demand.
+// pre-flight UI feedback. StartSession is the only multi-call workflow; it
+// requires an existing user and creates the account on demand.
 package service
 
 import (
@@ -58,12 +58,12 @@ func (s *Service) Save() error {
 
 // ── Resolution helpers (private) ───────────────────────────────────────────────
 
-// resolveProvider resolves name to its current *model.Provider, or returns
-// a "<verb> provider: ... not found" error when it does not exist.
-func (s *Service) resolveProvider(verb, name string) (*model.Provider, error) {
-	p := s.reg.Provider(name)
+// resolveVendor resolves name to its current *model.Vendor, or returns
+// a "<verb> vendor: ... not found" error when it does not exist.
+func (s *Service) resolveVendor(verb, name string) (*model.Vendor, error) {
+	p := s.reg.Vendor(name)
 	if p == nil {
-		return nil, fmt.Errorf("%s provider: %q %w", verb, name, model.ErrProviderNotFound)
+		return nil, fmt.Errorf("%s vendor: %q %w", verb, name, model.ErrVendorNotFound)
 	}
 	return p, nil
 }
@@ -88,29 +88,29 @@ func (s *Service) resolveProject(verb, name string) (*model.Project, error) {
 	return p, nil
 }
 
-// resolveAccount resolves (userEmail, providerName) to its current
-// *model.Account, checking user and provider existence first so the error
+// resolveAccount resolves (userEmail, vendorName) to its current
+// *model.Account, checking user and vendor existence first so the error
 // names whichever is actually missing.
-func (s *Service) resolveAccount(userEmail, providerName string) (*model.Account, error) {
+func (s *Service) resolveAccount(userEmail, vendorName string) (*model.Account, error) {
 	u := s.reg.User(userEmail)
 	if u == nil {
 		return nil, fmt.Errorf("%q %w", userEmail, model.ErrUserNotFound)
 	}
-	p := s.reg.Provider(providerName)
+	p := s.reg.Vendor(vendorName)
 	if p == nil {
-		return nil, fmt.Errorf("%q %w", providerName, model.ErrProviderNotFound)
+		return nil, fmt.Errorf("%q %w", vendorName, model.ErrVendorNotFound)
 	}
 	acc := s.reg.Account(u, p)
 	if acc == nil {
-		return nil, fmt.Errorf("account for user %q and provider %q: %w", userEmail, providerName, model.ErrAccountNotFound)
+		return nil, fmt.Errorf("account for user %q and vendor %q: %w", userEmail, vendorName, model.ErrAccountNotFound)
 	}
 	return acc, nil
 }
 
 // resolveSession resolves id to its current *model.Session, verifying it
-// belongs to the account for (userEmail, providerName).
-func (s *Service) resolveSession(userEmail, providerName string, id uint64) (*model.Session, error) {
-	acc, err := s.resolveAccount(userEmail, providerName)
+// belongs to the account for (userEmail, vendorName).
+func (s *Service) resolveSession(userEmail, vendorName string, id uint64) (*model.Session, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return nil, err
 	}
@@ -126,43 +126,43 @@ func (s *Service) resolveSession(userEmail, providerName string, id uint64) (*mo
 	return sess, nil
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Vendor ──────────────────────────────────────────────────────────────────
 
-// Provider returns the provider with the given name, or nil if not found.
-func (s *Service) Provider(name string) *model.Provider { return s.reg.Provider(name) }
+// Vendor returns the vendor with the given name, or nil if not found.
+func (s *Service) Vendor(name string) *model.Vendor { return s.reg.Vendor(name) }
 
-// Providers returns all providers sorted by name.
-func (s *Service) Providers() []*model.Provider { return s.reg.Providers() }
+// Vendors returns all vendors sorted by name.
+func (s *Service) Vendors() []*model.Vendor { return s.reg.Vendors() }
 
-// ValidateProvider reports whether (name, hasProjects, hasDeepResearch)
-// would form a valid provider, without inserting anything.
-func (s *Service) ValidateProvider(name string, hasProjects, hasDeepResearch bool) error {
-	return model.ValidateProvider(model.NewProvider(name, hasProjects, hasDeepResearch))
+// ValidateVendor reports whether (name, hasProjects, hasDeepResearch)
+// would form a valid vendor, without inserting anything.
+func (s *Service) ValidateVendor(name string, hasProjects, hasDeepResearch bool) error {
+	return model.ValidateVendor(model.NewVendor(name, hasProjects, hasDeepResearch))
 }
 
-// AddProvider inserts a provider into the registry.
-// Returns an error when the provider is nil, has an empty name, or already exists.
-func (s *Service) AddProvider(name string, hasProjects, hasDeepResearch bool) error {
-	return s.reg.AddProvider(model.NewProvider(name, hasProjects, hasDeepResearch))
+// AddVendor inserts a vendor into the registry.
+// Returns an error when the vendor is nil, has an empty name, or already exists.
+func (s *Service) AddVendor(name string, hasProjects, hasDeepResearch bool) error {
+	return s.reg.AddVendor(model.NewVendor(name, hasProjects, hasDeepResearch))
 }
 
-// UpdateProvider updates a provider's capabilities.
-func (s *Service) UpdateProvider(name string, hasProjects, hasDeepResearch bool) error {
-	current, err := s.resolveProvider("update", name)
+// UpdateVendor updates a vendor's capabilities.
+func (s *Service) UpdateVendor(name string, hasProjects, hasDeepResearch bool) error {
+	current, err := s.resolveVendor("update", name)
 	if err != nil {
 		return err
 	}
-	return s.reg.UpdateProvider(current, model.NewProvider(name, hasProjects, hasDeepResearch))
+	return s.reg.UpdateVendor(current, model.NewVendor(name, hasProjects, hasDeepResearch))
 }
 
-// DeleteProvider removes a provider from the registry.
-// Returns an error when the provider is not found or has associated accounts.
-func (s *Service) DeleteProvider(name string) error {
-	p, err := s.resolveProvider("delete", name)
+// DeleteVendor removes a vendor from the registry.
+// Returns an error when the vendor is not found or has associated accounts.
+func (s *Service) DeleteVendor(name string) error {
+	p, err := s.resolveVendor("delete", name)
 	if err != nil {
 		return err
 	}
-	return s.reg.DeleteProvider(p)
+	return s.reg.DeleteVendor(p)
 }
 
 // ── User ──────────────────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ func (s *Service) DeleteProvider(name string) error {
 // User returns the user with the given email, or nil if not found.
 func (s *Service) User(email string) *model.User { return s.reg.User(email) }
 
-// Users returns all users sorted by email.
+// Users returns all users sorted by name.
 func (s *Service) Users() []*model.User { return s.reg.Users() }
 
 // ValidateUser reports whether (email, name) would form a valid user,
@@ -263,18 +263,18 @@ func (s *Service) DeleteProject(name string) error {
 
 // ── Account ───────────────────────────────────────────────────────────────────
 
-// Account returns the account for the given user and provider.
-func (s *Service) Account(userEmail, providerName string) (*model.Account, error) {
-	return s.resolveAccount(userEmail, providerName)
+// Account returns the account for the given user and vendor.
+func (s *Service) Account(userEmail, vendorName string) (*model.Account, error) {
+	return s.resolveAccount(userEmail, vendorName)
 }
 
 // Accounts returns all accounts sorted by composite key.
 func (s *Service) Accounts() []*model.Account { return s.reg.Accounts() }
 
 // AccountProjects returns all projects assigned to the account for the
-// given user and provider.
-func (s *Service) AccountProjects(userEmail, providerName string) ([]*model.Project, error) {
-	acc, err := s.resolveAccount(userEmail, providerName)
+// given user and vendor.
+func (s *Service) AccountProjects(userEmail, vendorName string) ([]*model.Project, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return nil, fmt.Errorf("account projects: %w", err)
 	}
@@ -282,30 +282,30 @@ func (s *Service) AccountProjects(userEmail, providerName string) ([]*model.Proj
 }
 
 // AccountSessions returns all sessions for the account for the given user
-// and provider.
-func (s *Service) AccountSessions(userEmail, providerName string) ([]*model.Session, error) {
-	acc, err := s.resolveAccount(userEmail, providerName)
+// and vendor.
+func (s *Service) AccountSessions(userEmail, vendorName string) ([]*model.Session, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return nil, fmt.Errorf("account sessions: %w", err)
 	}
 	return s.reg.AccountSessions(acc)
 }
 
-// ValidateAccount reports whether (email, provider) would form a valid
+// ValidateAccount reports whether (email, vendor) would form a valid
 // account. It checks presence only; email format is validated when the
 // underlying user is created.
-func (s *Service) ValidateAccount(email, provider string) error {
-	return model.ValidateAccount(model.NewAccount(email, provider))
+func (s *Service) ValidateAccount(email, vendor string) error {
+	return model.ValidateAccount(model.NewAccount(email, vendor))
 }
 
-// AddAccount inserts an account for an existing user and provider. It is the
+// AddAccount inserts an account for an existing user and vendor. It is the
 // strict counterpart to StartSession's on-demand creation.
-func (s *Service) AddAccount(userEmail, providerName string) error {
+func (s *Service) AddAccount(userEmail, vendorName string) error {
 	u, err := s.resolveUser("add account", userEmail)
 	if err != nil {
 		return err
 	}
-	p, err := s.resolveProvider("add account", providerName)
+	p, err := s.resolveVendor("add account", vendorName)
 	if err != nil {
 		return err
 	}
@@ -316,8 +316,8 @@ func (s *Service) AddAccount(userEmail, providerName string) error {
 // DeleteAccount removes an account.
 // Returns an error if the account is not found or has active sessions or
 // assigned projects.
-func (s *Service) DeleteAccount(userEmail, providerName string) error {
-	acc, err := s.resolveAccount(userEmail, providerName)
+func (s *Service) DeleteAccount(userEmail, vendorName string) error {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return fmt.Errorf("delete account: %w", err)
 	}
@@ -326,8 +326,8 @@ func (s *Service) DeleteAccount(userEmail, providerName string) error {
 
 // PauseAccount pauses an account until the given time; no session under
 // the account should be used before then.
-func (s *Service) PauseAccount(userEmail, providerName string, until time.Time) error {
-	acc, err := s.resolveAccount(userEmail, providerName)
+func (s *Service) PauseAccount(userEmail, vendorName string, until time.Time) error {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return fmt.Errorf("pause account: %w", err)
 	}
@@ -335,8 +335,8 @@ func (s *Service) PauseAccount(userEmail, providerName string, until time.Time) 
 }
 
 // GrantProject gives an account access to a specific project.
-func (s *Service) GrantProject(userEmail, providerName, projectName string) error {
-	acc, err := s.resolveAccount(userEmail, providerName)
+func (s *Service) GrantProject(userEmail, vendorName, projectName string) error {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return fmt.Errorf("grant project: %w", err)
 	}
@@ -348,8 +348,8 @@ func (s *Service) GrantProject(userEmail, providerName, projectName string) erro
 }
 
 // RevokeProject removes an account's access to a specific project.
-func (s *Service) RevokeProject(userEmail, providerName, projectName string) error {
-	acc, err := s.resolveAccount(userEmail, providerName)
+func (s *Service) RevokeProject(userEmail, vendorName, projectName string) error {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return fmt.Errorf("revoke project: %w", err)
 	}
@@ -369,8 +369,8 @@ func (s *Service) Session(id uint64) *model.Session { return s.reg.Session(id) }
 func (s *Service) Sessions() []*model.Session { return s.reg.Sessions() }
 
 // UpdateSessionTopic updates the high-level topic of a session.
-func (s *Service) UpdateSessionTopic(userEmail, providerName string, id uint64, topic string) error {
-	sess, err := s.resolveSession(userEmail, providerName, id)
+func (s *Service) UpdateSessionTopic(userEmail, vendorName string, id uint64, topic string) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
 		return fmt.Errorf("update session topic: %w", err)
 	}
@@ -378,8 +378,8 @@ func (s *Service) UpdateSessionTopic(userEmail, providerName string, id uint64, 
 }
 
 // UpdateSessionProject reassigns a session to a different project.
-func (s *Service) UpdateSessionProject(userEmail, providerName string, id uint64, projectName string) error {
-	sess, err := s.resolveSession(userEmail, providerName, id)
+func (s *Service) UpdateSessionProject(userEmail, vendorName string, id uint64, projectName string) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
 		return fmt.Errorf("update session project: %w", err)
 	}
@@ -396,18 +396,18 @@ func (s *Service) UpdateSessionProject(userEmail, providerName string, id uint64
 }
 
 // UpdateSessionPrompts overwrites the pending prompt queue for a session.
-func (s *Service) UpdateSessionPrompts(userEmail, providerName string, id uint64, queue []model.Prompt) error {
-	sess, err := s.resolveSession(userEmail, providerName, id)
+func (s *Service) UpdateSessionPrompts(userEmail, vendorName string, id uint64, queue []model.Prompt) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
-		return fmt.Errorf("update session prompts: %w", err)
+		return fmt.Errorf("update session messages: %w", err)
 	}
 	return s.reg.UpdateSessionPrompts(sess, queue)
 }
 
 // EndSession removes a session from its account and cleans up indexes —
 // the counterpart to StartSession.
-func (s *Service) EndSession(userEmail, providerName string, id uint64) error {
-	sess, err := s.resolveSession(userEmail, providerName, id)
+func (s *Service) EndSession(userEmail, vendorName string, id uint64) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
 		return fmt.Errorf("end session: %w", err)
 	}
@@ -416,40 +416,26 @@ func (s *Service) EndSession(userEmail, providerName string, id uint64) error {
 
 // ── Workflows (cross-aggregate) ────────────────────────────────────────────────
 
-// resolveOrCreateUser returns the user for email, creating one with name if
-// none exists. An existing user's name is left untouched.
-func (s *Service) resolveOrCreateUser(email, name string) (*model.User, error) {
-	if u := s.reg.User(email); u != nil {
-		return u, nil
-	}
-	u := model.NewUser(email, name)
-	if err := s.reg.AddUser(u); err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
-	}
-	return u, nil
-}
-
-// ensureAccount returns the account for userEmail and p, creating the user and
-// account on demand.
-func (s *Service) ensureAccount(userEmail, userName string, p *model.Provider) (*model.Account, error) {
-	u, err := s.resolveOrCreateUser(userEmail, userName)
-	if err != nil {
-		return nil, err
-	}
-
+// ensureAccount returns the account for u and p, creating it on demand.
+func (s *Service) ensureAccount(u *model.User, p *model.Vendor) (*model.Account, error) {
 	if acc := s.reg.Account(u, p); acc != nil {
 		return acc, nil
 	}
 	return s.reg.AddAccount(u, p)
 }
 
-// StartSession is the entry point for the "new session" action. The user and
-// account are resolved or created on demand; projectName is optional and must
-// already be granted to the account.
-func (s *Service) StartSession(userEmail, userName, providerName, projectName, topic string, queue []model.Prompt) (*model.Session, error) {
-	p, err := s.resolveProvider("resolve", providerName)
+// StartSession is the entry point for the "new session" action. The user must
+// already exist; the account is created on demand. projectName is optional and
+// must already be granted to the account.
+func (s *Service) StartSession(userEmail, vendorName, projectName, topic string, queue []model.Prompt) (*model.Session, error) {
+	p, err := s.resolveVendor("resolve", vendorName)
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
+	}
+
+	u, err := s.resolveUser("start session", userEmail)
+	if err != nil {
+		return nil, err
 	}
 
 	var proj *model.Project
@@ -460,27 +446,10 @@ func (s *Service) StartSession(userEmail, userName, providerName, projectName, t
 		}
 	}
 
-	acc, err := s.ensureAccount(userEmail, userName, p)
+	acc, err := s.ensureAccount(u, p)
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
 	}
 
 	return s.reg.AddSession(acc, proj, topic, queue)
-}
-
-// CreateAccount is the entry point for the "new account" action. The user is
-// resolved or created on demand; an existing account is reported as
-// model.ErrAccountExists.
-func (s *Service) CreateAccount(userEmail, userName, providerName string) (*model.Account, error) {
-	p, err := s.resolveProvider("create account", providerName)
-	if err != nil {
-		return nil, err
-	}
-
-	u, err := s.resolveOrCreateUser(userEmail, userName)
-	if err != nil {
-		return nil, fmt.Errorf("create account: %w", err)
-	}
-
-	return s.reg.AddAccount(u, p)
 }

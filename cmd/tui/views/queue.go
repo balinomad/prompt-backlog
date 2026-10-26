@@ -18,15 +18,15 @@ import (
 // each case is scored for cyclomatic complexity on its own rather than
 // folded into NewQueueEditor.
 type queueEditor struct {
-	app      App
-	account  *model.Account
-	session  *model.Session
-	onClose  func()
-	email    string
-	provider string
-	id       uint64
-	queue    []model.Prompt
-	list     *tview.List
+	app     App
+	account *model.Account
+	session *model.Session
+	onClose func()
+	email   string
+	vendor  string
+	id      uint64
+	queue   []model.Prompt
+	list    *tview.List
 }
 
 // NewQueueEditor returns a view for managing a session's prompt queue:
@@ -47,19 +47,19 @@ func NewQueueEditor(app App, account *model.Account, session *model.Session, onC
 	}
 
 	qe := &queueEditor{
-		app:      app,
-		account:  account,
-		session:  session,
-		onClose:  onClose,
-		email:    account.UserEmail(),
-		provider: account.ProviderName(),
-		id:       id,
-		queue:    live.Queue(),
+		app:     app,
+		account: account,
+		session: session,
+		onClose: onClose,
+		email:   account.UserEmail(),
+		vendor:  account.VendorName(),
+		id:      id,
+		queue:   live.Queue(),
 	}
 
 	qe.list = tview.NewList().ShowSecondaryText(false)
 	qe.list.SetBorder(true)
-	qe.list.SetTitle(fmt.Sprintf(" Queue: session #%d ", id))
+	qe.list.SetTitle(fmt.Sprintf(" Messages: session #%d ", id))
 	qe.rebuildList()
 	qe.list.SetInputCapture(qe.handleKey)
 
@@ -85,7 +85,7 @@ func (qe *queueEditor) reopen() {
 // free-text input must check it.
 func (qe *queueEditor) commit(newQueue []model.Prompt) bool {
 	if err := qe.app.Mutate(func(s *service.Service) error {
-		return s.UpdateSessionPrompts(qe.email, qe.provider, qe.id, newQueue)
+		return s.UpdateSessionPrompts(qe.email, qe.vendor, qe.id, newQueue)
 	}); err != nil {
 		setErrorStatus(qe.app, err)
 		return false
@@ -158,7 +158,7 @@ func (qe *queueEditor) handleDelete() *tcell.EventKey {
 	}
 	label := qe.queue[idx].Text()
 	modal := NewConfirmModal(
-		fmt.Sprintf("Delete prompt\n%q?", tview.Escape(label)),
+		fmt.Sprintf("Delete message\n%q?", tview.Escape(label)),
 		func() {
 			qe.commit(slices.Delete(slices.Clone(qe.queue), idx, idx+1))
 			qe.reopen()
@@ -232,9 +232,9 @@ func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.P
 		initSpawn = queue[idx].SpawnsSession()
 	}
 
-	title := "New Prompt"
+	title := "New Message"
 	if !isNew {
-		title = "Edit Prompt"
+		title = "Edit Message"
 	}
 	form := newForm(title)
 

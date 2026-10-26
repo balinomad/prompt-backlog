@@ -11,7 +11,7 @@ import (
 )
 
 // compareFold compares a and b case-insensitively, for name-based sorting.
-// Providers, Projects, and AccountKey (whose provider segment is not
+// Vendors, Projects, and AccountKey (whose vendor segment is not
 // case-normalised the way User.email already is) are ordered with this;
 // email-keyed sorts don't need it since NormalizeEmail lowercases first.
 func compareFold(a, b string) int {
@@ -54,11 +54,11 @@ type Registry struct {
 	// exist; AddSession assigns lastSessionID+1 to the next session.
 	lastSessionID uint64
 
-	providers map[string]*Provider // [providerName]
-	users     map[string]*User     // [userEmail]
-	projects  map[string]*Project  // [projectName]
-	accounts  map[AccountKey]*Account
-	sessions  map[uint64]*Session // [sessionID]
+	vendors  map[string]*Vendor  // [vendorName]
+	users    map[string]*User    // [userEmail]
+	projects map[string]*Project // [projectName]
+	accounts map[AccountKey]*Account
+	sessions map[uint64]*Session // [sessionID]
 
 	// One-to-many lookup sets
 	accountSessions map[AccountKey]map[uint64]struct{} // [accountKey][sessionID]
@@ -73,7 +73,7 @@ type Registry struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		lastSessionID:   0,
-		providers:       make(map[string]*Provider),
+		vendors:         make(map[string]*Vendor),
 		users:           make(map[string]*User),
 		projects:        make(map[string]*Project),
 		accounts:        make(map[AccountKey]*Account),
@@ -85,105 +85,105 @@ func NewRegistry() *Registry {
 	}
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Vendor ──────────────────────────────────────────────────────────────────
 
-// AddProvider inserts a provider into the registry.
-// Returns an error when the provider is nil, has an empty name, or already exists.
-func (r *Registry) AddProvider(p *Provider) error {
-	if err := ValidateProvider(p); err != nil {
-		return fmt.Errorf("add provider: %w", err)
+// AddVendor inserts a vendor into the registry.
+// Returns an error when the vendor is nil, has an empty name, or already exists.
+func (r *Registry) AddVendor(p *Vendor) error {
+	if err := ValidateVendor(p); err != nil {
+		return fmt.Errorf("add vendor: %w", err)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.providers[p.name]; exists {
-		return fmt.Errorf("add provider %q: %w", p.name, ErrProviderExists)
+	if _, exists := r.vendors[p.name]; exists {
+		return fmt.Errorf("add vendor %q: %w", p.name, ErrVendorExists)
 	}
-	r.providers[p.name] = p
+	r.vendors[p.name] = p
 	return nil
 }
 
-// Provider returns the provider with the given name, or nil if not found.
-func (r *Registry) Provider(name string) *Provider {
+// Vendor returns the vendor with the given name, or nil if not found.
+func (r *Registry) Vendor(name string) *Vendor {
 	name = NormalizeText(name)
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return r.providers[name]
+	return r.vendors[name]
 }
 
-// Providers returns all providers sorted by name.
-func (r *Registry) Providers() []*Provider {
+// Vendors returns all vendors sorted by name.
+func (r *Registry) Vendors() []*Vendor {
 	r.mu.RLock()
-	providers := slices.Collect(maps.Values(r.providers))
+	vendors := slices.Collect(maps.Values(r.vendors))
 	r.mu.RUnlock()
 
-	slices.SortFunc(providers, func(a, b *Provider) int { return compareFold(a.name, b.name) })
-	return providers
+	slices.SortFunc(vendors, func(a, b *Vendor) int { return compareFold(a.name, b.name) })
+	return vendors
 }
 
-// DeleteProvider removes a provider from the registry.
-// Returns ErrProviderNotFound if no provider with that name exists,
-// ErrProviderStale if p no longer matches the live registry entry, or
+// DeleteVendor removes a vendor from the registry.
+// Returns ErrVendorNotFound if no vendor with that name exists,
+// ErrVendorStale if p no longer matches the live registry entry, or
 // an error if it has associated accounts.
-func (r *Registry) DeleteProvider(p *Provider) error {
+func (r *Registry) DeleteVendor(p *Vendor) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if err := r.verifyProvider(p); err != nil {
-		return fmt.Errorf("delete provider: %w", err)
+	if err := r.verifyVendor(p); err != nil {
+		return fmt.Errorf("delete vendor: %w", err)
 	}
 	for _, acc := range r.accounts {
-		if acc.key.Provider == p.name {
-			return fmt.Errorf("delete provider %q: it has associated accounts", p.name)
+		if acc.key.Vendor == p.name {
+			return fmt.Errorf("delete vendor %q: it has associated accounts", p.name)
 		}
 	}
-	delete(r.providers, p.name)
+	delete(r.vendors, p.name)
 	return nil
 }
 
-// UpdateProvider replaces an existing provider's capability flags via
-// Copy-on-Write. current must be the exact *Provider the caller most
-// recently read from the registry (e.g. via Registry.Provider); next
+// UpdateVendor replaces an existing vendor's capability flags via
+// Copy-on-Write. current must be the exact *Vendor the caller most
+// recently read from the registry (e.g. via Registry.Vendor); next
 // carries the desired new values under the same name. name itself cannot
-// change through this method — it is Provider's natural key.
+// change through this method — it is Vendor's natural key.
 //
-// Returns ErrProviderNotFound if no provider with that name exists, or
-// ErrProviderStale if current no longer matches the live registry entry.
-func (r *Registry) UpdateProvider(current, next *Provider) error {
+// Returns ErrVendorNotFound if no vendor with that name exists, or
+// ErrVendorStale if current no longer matches the live registry entry.
+func (r *Registry) UpdateVendor(current, next *Vendor) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if err := r.verifyProvider(current); err != nil {
-		return fmt.Errorf("update provider: current %w", err)
+	if err := r.verifyVendor(current); err != nil {
+		return fmt.Errorf("update vendor: current %w", err)
 	}
-	if err := ValidateProvider(next); err != nil {
-		return fmt.Errorf("update provider: next %w", err)
+	if err := ValidateVendor(next); err != nil {
+		return fmt.Errorf("update vendor: next %w", err)
 	}
 	if current.name != next.name {
-		return fmt.Errorf("update provider: name mismatch %q != %q", current.name, next.name)
+		return fmt.Errorf("update vendor: name mismatch %q != %q", current.name, next.name)
 	}
-	r.providers[next.name] = next
+	r.vendors[next.name] = next
 	return nil
 }
 
-// verifyProvider returns ErrProviderNil if p is nil, ErrProviderNotFound if no
-// provider with that name exists, or ErrProviderStale if p no longer matches the
+// verifyVendor returns ErrVendorNil if p is nil, ErrVendorNotFound if no
+// vendor with that name exists, or ErrVendorStale if p no longer matches the
 // live registry entry.
 //
 // The caller must hold the registry read lock.
-func (r *Registry) verifyProvider(p *Provider) error {
+func (r *Registry) verifyVendor(p *Vendor) error {
 	if p == nil {
-		return ErrProviderNil
+		return ErrVendorNil
 	}
-	live, exists := r.providers[p.name]
+	live, exists := r.vendors[p.name]
 	if !exists {
-		return fmt.Errorf("%q %w", p.name, ErrProviderNotFound)
+		return fmt.Errorf("%q %w", p.name, ErrVendorNotFound)
 	}
 	if live != p {
-		return fmt.Errorf("%q %w", p.name, ErrProviderStale)
+		return fmt.Errorf("%q %w", p.name, ErrVendorStale)
 	}
 	return nil
 }
@@ -217,13 +217,18 @@ func (r *Registry) User(email string) *User {
 	return r.users[email]
 }
 
-// Users returns all users sorted by email.
+// Users returns all users sorted by name, then email.
 func (r *Registry) Users() []*User {
 	r.mu.RLock()
 	users := slices.Collect(maps.Values(r.users))
 	r.mu.RUnlock()
 
-	slices.SortFunc(users, func(a, b *User) int { return cmp.Compare(a.email, b.email) })
+	slices.SortFunc(users, func(a, b *User) int {
+		if c := compareFold(a.name, b.name); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.email, b.email)
+	})
 	return users
 }
 
@@ -448,13 +453,13 @@ func (r *Registry) verifyProject(p *Project) error {
 // ── Account ───────────────────────────────────────────────────────────────────
 
 // AddAccount inserts an account into the registry.
-// Returns an error if the user or provider is not registered in the registry
+// Returns an error if the user or vendor is not registered in the registry
 // or the account already exists.
-func (r *Registry) AddAccount(u *User, p *Provider) (*Account, error) {
+func (r *Registry) AddAccount(u *User, p *Vendor) (*Account, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if err := r.verifyProvider(p); err != nil {
+	if err := r.verifyVendor(p); err != nil {
 		return nil, fmt.Errorf("add account: %w", err)
 	}
 	if err := r.verifyUser(u); err != nil {
@@ -462,24 +467,24 @@ func (r *Registry) AddAccount(u *User, p *Provider) (*Account, error) {
 	}
 	acc := NewAccount(u.email, p.name)
 	if _, exists := r.accounts[acc.key]; exists {
-		return nil, fmt.Errorf("add account: %w for user %q and provider %q", ErrAccountExists, u.email, p.name)
+		return nil, fmt.Errorf("add account: %w for user %q and vendor %q", ErrAccountExists, u.email, p.name)
 	}
 	r.accounts[acc.key] = acc
 	return acc, nil
 }
 
-// Account returns the account with the given user and provider, or nil if not found.
-func (r *Registry) Account(u *User, p *Provider) *Account {
+// Account returns the account with the given user and vendor, or nil if not found.
+func (r *Registry) Account(u *User, p *Vendor) *Account {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if err := r.verifyProvider(p); err != nil {
+	if err := r.verifyVendor(p); err != nil {
 		return nil
 	}
 	if err := r.verifyUser(u); err != nil {
 		return nil
 	}
-	if acc, exists := r.accounts[AccountKey{Email: u.email, Provider: p.name}]; exists {
+	if acc, exists := r.accounts[AccountKey{Email: u.email, Vendor: p.name}]; exists {
 		return acc
 	}
 	return nil
@@ -507,10 +512,10 @@ func (r *Registry) DeleteAccount(acc *Account) error {
 		return fmt.Errorf("delete account: %w", err)
 	}
 	if sessions, exists := r.accountSessions[acc.key]; exists && len(sessions) > 0 {
-		return fmt.Errorf("delete account: the account for user %q and provider %q has %d active sessions", acc.key.Email, acc.key.Provider, len(sessions))
+		return fmt.Errorf("delete account: the account for user %q and vendor %q has %d active sessions", acc.key.Email, acc.key.Vendor, len(sessions))
 	}
 	if projects, exists := r.accountProjects[acc.key]; exists && len(projects) > 0 {
-		return fmt.Errorf("delete account: %d projects assigned for user %q and provider %q", len(projects), acc.key.Email, acc.key.Provider)
+		return fmt.Errorf("delete account: %d projects assigned for user %q and vendor %q", len(projects), acc.key.Email, acc.key.Vendor)
 	}
 
 	delete(r.accountSessions, acc.key)
@@ -538,8 +543,8 @@ func (r *Registry) PauseAccount(acc *Account, until time.Time) error {
 }
 
 // AddProjectToAccount associates a project with an account. Returns an
-// error if the account's provider does not support projects
-// (Provider.HasProjects), or if the project is already assigned.
+// error if the account's vendor does not support projects
+// (Vendor.HasProjects), or if the project is already assigned.
 func (r *Registry) AddProjectToAccount(acc *Account, p *Project) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -550,14 +555,14 @@ func (r *Registry) AddProjectToAccount(acc *Account, p *Project) error {
 	if err := r.verifyProject(p); err != nil {
 		return fmt.Errorf("add project to account: %w", err)
 	}
-	prov := r.providers[acc.key.Provider]
+	prov := r.vendors[acc.key.Vendor]
 	if prov == nil {
-		// Unreachable in practice: DeleteProvider refuses while any account
+		// Unreachable in practice: DeleteVendor refuses while any account
 		// still references it.
-		return fmt.Errorf("add project to account: provider %q %w", acc.key.Provider, ErrProviderNotFound)
+		return fmt.Errorf("add project to account: vendor %q %w", acc.key.Vendor, ErrVendorNotFound)
 	}
 	if !prov.hasProjects {
-		return fmt.Errorf("add project to account: provider %q %w", acc.key.Provider, ErrProjectsUnsupported)
+		return fmt.Errorf("add project to account: vendor %q %w", acc.key.Vendor, ErrProjectsUnsupported)
 	}
 	if _, exists := r.accountProjects[acc.key][p.name]; exists {
 		return fmt.Errorf("add project to account: %q is already assigned to this account", p.name)
@@ -646,7 +651,7 @@ func (r *Registry) AccountSessions(acc *Account) ([]*Session, error) {
 }
 
 // verifyAccount returns ErrAccountNil if acc is nil, ErrAccountNotFound
-// if no account with that user and provider exists, or ErrAccountStale
+// if no account with that user and vendor exists, or ErrAccountStale
 // if acc no longer matches the live registry entry.
 //
 // The caller must hold the registry read lock.
@@ -656,10 +661,10 @@ func (r *Registry) verifyAccount(acc *Account) error {
 	}
 	live, exists := r.accounts[acc.key]
 	if !exists {
-		return fmt.Errorf("%w for user %q and provider %q", ErrAccountNotFound, acc.key.Email, acc.key.Provider)
+		return fmt.Errorf("%w for user %q and vendor %q", ErrAccountNotFound, acc.key.Email, acc.key.Vendor)
 	}
 	if live != acc {
-		return fmt.Errorf("%w for user %q and provider %q", ErrAccountStale, acc.key.Email, acc.key.Provider)
+		return fmt.Errorf("%w for user %q and vendor %q", ErrAccountStale, acc.key.Email, acc.key.Vendor)
 	}
 	return nil
 }
@@ -686,7 +691,7 @@ func (r *Registry) AddSession(acc *Account, project *Project, topic string, queu
 
 	for i, p := range queue {
 		if err := ValidatePrompt(p); err != nil {
-			return nil, fmt.Errorf("add session: invalid prompt at index %d: %w", i, err)
+			return nil, fmt.Errorf("add session: invalid message at index %d: %w", i, err)
 		}
 	}
 
@@ -837,12 +842,12 @@ func (r *Registry) UpdateSessionPrompts(sess *Session, queue []Prompt) error {
 	defer r.mu.Unlock()
 
 	if err := r.verifySession(sess); err != nil {
-		return fmt.Errorf("update session prompts: %w", err)
+		return fmt.Errorf("update session messages: %w", err)
 	}
 
 	for i, p := range queue {
 		if err := ValidatePrompt(p); err != nil {
-			return fmt.Errorf("update session prompts: invalid prompt at index %d: %w", i, err)
+			return fmt.Errorf("update session messages: invalid message at index %d: %w", i, err)
 		}
 	}
 

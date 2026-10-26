@@ -21,7 +21,7 @@ func must(t *testing.T, err error) {
 
 // seedRegistry returns a populated registry for use across multiple tests.
 //
-//	Providers:   "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
+//	Vendors:   "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
 //	Users:       alice@example.com / Alice, bob@example.com / Bob
 //	Accounts:    alice@example.com|claude, bob@example.com|chatgpt
 //	Projects:    "Alpha", "Beta", "Orphan"
@@ -32,8 +32,8 @@ func must(t *testing.T, err error) {
 func seedRegistry(t *testing.T) *model.Registry {
 	t.Helper()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-	must(t, reg.AddProvider(model.NewProvider("chatgpt", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("chatgpt", false, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
 
@@ -41,9 +41,9 @@ func seedRegistry(t *testing.T) *model.Registry {
 	must(t, reg.AddProject(model.NewProject("Beta", "", "")))
 	must(t, reg.AddProject(model.NewProject("Orphan", "", "")))
 
-	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	bobChatgpt, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+	bobChatgpt, err := reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 	must(t, err)
 
 	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Alpha")))
@@ -65,8 +65,8 @@ func TestNewRegistry(t *testing.T) {
 	if reg == nil {
 		t.Fatal("NewRegistry() returned nil")
 	}
-	if got := reg.Providers(); len(got) != 0 {
-		t.Errorf("Providers() = %v, want empty", got)
+	if got := reg.Vendors(); len(got) != 0 {
+		t.Errorf("Vendors() = %v, want empty", got)
 	}
 	if got := reg.Users(); len(got) != 0 {
 		t.Errorf("Users() = %v, want empty", got)
@@ -82,28 +82,28 @@ func TestNewRegistry(t *testing.T) {
 	}
 }
 
-// ── Provider CRUD ─────────────────────────────────────────────────────────────
+// ── Vendor CRUD ─────────────────────────────────────────────────────────────
 
-func TestRegistry_AddProvider(t *testing.T) {
+func TestRegistry_AddVendor(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name     string
-		setup    func(*testing.T, *model.Registry)
-		provider *model.Provider
-		wantErr  error
+		name    string
+		setup   func(*testing.T, *model.Registry)
+		vendor  *model.Vendor
+		wantErr error
 	}{
-		{"success", func(*testing.T, *model.Registry) {}, model.NewProvider("gemini", true, true), nil},
-		{"nil provider", func(*testing.T, *model.Registry) {}, nil, model.ErrProviderNil},
-		{"empty name", func(*testing.T, *model.Registry) {}, model.NewProvider("", false, false), model.ErrNameRequired},
-		{"whitespace-only name", func(*testing.T, *model.Registry) {}, model.NewProvider("   ", false, false), model.ErrNameRequired},
+		{"success", func(*testing.T, *model.Registry) {}, model.NewVendor("gemini", true, true), nil},
+		{"nil vendor", func(*testing.T, *model.Registry) {}, nil, model.ErrVendorNil},
+		{"empty name", func(*testing.T, *model.Registry) {}, model.NewVendor("", false, false), model.ErrNameRequired},
+		{"whitespace-only name", func(*testing.T, *model.Registry) {}, model.NewVendor("   ", false, false), model.ErrNameRequired},
 		{
 			"duplicate name",
 			func(t *testing.T, r *model.Registry) {
 				t.Helper()
-				must(t, r.AddProvider(model.NewProvider("claude", true, false)))
+				must(t, r.AddVendor(model.NewVendor("claude", true, false)))
 			},
-			model.NewProvider("claude", false, false),
-			model.ErrProviderExists,
+			model.NewVendor("claude", false, false),
+			model.ErrVendorExists,
 		},
 	}
 	for _, tc := range cases {
@@ -111,7 +111,7 @@ func TestRegistry_AddProvider(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
 			tc.setup(t, reg)
-			err := reg.AddProvider(tc.provider)
+			err := reg.AddVendor(tc.vendor)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Errorf("got %v, want nil", err)
@@ -125,7 +125,7 @@ func TestRegistry_AddProvider(t *testing.T) {
 	}
 }
 
-func TestRegistry_Provider(t *testing.T) {
+func TestRegistry_Vendor(t *testing.T) {
 	t.Parallel()
 	reg := seedRegistry(t)
 	cases := []struct {
@@ -141,7 +141,7 @@ func TestRegistry_Provider(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			p := reg.Provider(tc.query)
+			p := reg.Vendor(tc.query)
 			if tc.wantName == "" {
 				if p != nil {
 					t.Errorf("got %v, want nil", p)
@@ -155,20 +155,20 @@ func TestRegistry_Provider(t *testing.T) {
 	}
 }
 
-func TestRegistry_Providers(t *testing.T) {
+func TestRegistry_Vendors(t *testing.T) {
 	t.Parallel()
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
-		if got := model.NewRegistry().Providers(); len(got) != 0 {
-			t.Errorf("got %d providers, want 0", len(got))
+		if got := model.NewRegistry().Vendors(); len(got) != 0 {
+			t.Errorf("got %d vendors, want 0", len(got))
 		}
 	})
 	t.Run("sorted by name", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		got := reg.Providers()
+		got := reg.Vendors()
 		if len(got) != 2 {
-			t.Fatalf("got %d providers, want 2", len(got))
+			t.Fatalf("got %d vendors, want 2", len(got))
 		}
 		if got[0].Name() != "chatgpt" || got[1].Name() != "claude" {
 			t.Errorf("got %q, %q; want chatgpt, claude in order", got[0].Name(), got[1].Name())
@@ -176,106 +176,106 @@ func TestRegistry_Providers(t *testing.T) {
 	})
 }
 
-func TestRegistry_DeleteProvider(t *testing.T) {
+func TestRegistry_DeleteVendor(t *testing.T) {
 	t.Parallel()
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("gemini", true, false)))
-		must(t, reg.DeleteProvider(reg.Provider("gemini")))
-		if reg.Provider("gemini") != nil {
-			t.Error("provider still present after delete")
+		must(t, reg.AddVendor(model.NewVendor("gemini", true, false)))
+		must(t, reg.DeleteVendor(reg.Vendor("gemini")))
+		if reg.Vendor("gemini") != nil {
+			t.Error("vendor still present after delete")
 		}
 	})
 	t.Run("nil", func(t *testing.T) {
 		t.Parallel()
-		err := model.NewRegistry().DeleteProvider(nil)
-		if !errors.Is(err, model.ErrProviderNil) {
-			t.Errorf("got %v, want ErrProviderNil", err)
+		err := model.NewRegistry().DeleteVendor(nil)
+		if !errors.Is(err, model.ErrVendorNil) {
+			t.Errorf("got %v, want ErrVendorNil", err)
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
-		ghost := model.NewProvider("ghost", false, false)
-		err := model.NewRegistry().DeleteProvider(ghost)
-		if !errors.Is(err, model.ErrProviderNotFound) {
-			t.Errorf("got %v, want ErrProviderNotFound", err)
+		ghost := model.NewVendor("ghost", false, false)
+		err := model.NewRegistry().DeleteVendor(ghost)
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
 		}
 	})
 	t.Run("stale", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		stale := reg.Provider("claude")
-		must(t, reg.UpdateProvider(stale, model.NewProvider("claude", true, false)))
-		err := reg.DeleteProvider(stale)
-		if !errors.Is(err, model.ErrProviderStale) {
-			t.Errorf("got %v, want ErrProviderStale", err)
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		stale := reg.Vendor("claude")
+		must(t, reg.UpdateVendor(stale, model.NewVendor("claude", true, false)))
+		err := reg.DeleteVendor(stale)
+		if !errors.Is(err, model.ErrVendorStale) {
+			t.Errorf("got %v, want ErrVendorStale", err)
 		}
 	})
 	t.Run("has associated accounts", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		err := reg.DeleteProvider(reg.Provider("claude"))
+		err := reg.DeleteVendor(reg.Vendor("claude"))
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
 	})
 }
 
-func TestRegistry_UpdateProvider(t *testing.T) {
+func TestRegistry_UpdateVendor(t *testing.T) {
 	t.Parallel()
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		current := reg.Provider("claude")
-		must(t, reg.UpdateProvider(current, model.NewProvider("claude", true, true)))
-		got := reg.Provider("claude")
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		current := reg.Vendor("claude")
+		must(t, reg.UpdateVendor(current, model.NewVendor("claude", true, true)))
+		got := reg.Vendor("claude")
 		if !got.HasProjects() || !got.HasDeepResearch() {
 			t.Errorf("got HasProjects=%v HasDeepResearch=%v, want both true", got.HasProjects(), got.HasDeepResearch())
 		}
 	})
 	t.Run("current nil", func(t *testing.T) {
 		t.Parallel()
-		err := model.NewRegistry().UpdateProvider(nil, model.NewProvider("claude", true, false))
-		if !errors.Is(err, model.ErrProviderNil) {
-			t.Errorf("got %v, want ErrProviderNil", err)
+		err := model.NewRegistry().UpdateVendor(nil, model.NewVendor("claude", true, false))
+		if !errors.Is(err, model.ErrVendorNil) {
+			t.Errorf("got %v, want ErrVendorNil", err)
 		}
 	})
 	t.Run("current not found", func(t *testing.T) {
 		t.Parallel()
-		ghost := model.NewProvider("ghost", false, false)
-		err := model.NewRegistry().UpdateProvider(ghost, model.NewProvider("ghost", true, false))
-		if !errors.Is(err, model.ErrProviderNotFound) {
-			t.Errorf("got %v, want ErrProviderNotFound", err)
+		ghost := model.NewVendor("ghost", false, false)
+		err := model.NewRegistry().UpdateVendor(ghost, model.NewVendor("ghost", true, false))
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
 		}
 	})
 	t.Run("current stale", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		stale := reg.Provider("claude")
-		must(t, reg.UpdateProvider(stale, model.NewProvider("claude", true, false)))
-		err := reg.UpdateProvider(stale, model.NewProvider("claude", true, true))
-		if !errors.Is(err, model.ErrProviderStale) {
-			t.Errorf("got %v, want ErrProviderStale", err)
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		stale := reg.Vendor("claude")
+		must(t, reg.UpdateVendor(stale, model.NewVendor("claude", true, false)))
+		err := reg.UpdateVendor(stale, model.NewVendor("claude", true, true))
+		if !errors.Is(err, model.ErrVendorStale) {
+			t.Errorf("got %v, want ErrVendorStale", err)
 		}
 	})
 	t.Run("next nil", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		err := reg.UpdateProvider(reg.Provider("claude"), nil)
-		if !errors.Is(err, model.ErrProviderNil) {
-			t.Errorf("got %v, want ErrProviderNil", err)
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		err := reg.UpdateVendor(reg.Vendor("claude"), nil)
+		if !errors.Is(err, model.ErrVendorNil) {
+			t.Errorf("got %v, want ErrVendorNil", err)
 		}
 	})
 	t.Run("next has empty name", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		err := reg.UpdateProvider(reg.Provider("claude"), model.NewProvider("", true, false))
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		err := reg.UpdateVendor(reg.Vendor("claude"), model.NewVendor("", true, false))
 		if !errors.Is(err, model.ErrNameRequired) {
 			t.Errorf("got %v, want ErrNameRequired", err)
 		}
@@ -283,8 +283,8 @@ func TestRegistry_UpdateProvider(t *testing.T) {
 	t.Run("name mismatch", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		err := reg.UpdateProvider(reg.Provider("claude"), model.NewProvider("gemini", true, false))
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		err := reg.UpdateVendor(reg.Vendor("claude"), model.NewVendor("gemini", true, false))
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
@@ -373,7 +373,7 @@ func TestRegistry_Users(t *testing.T) {
 			t.Errorf("got %d users, want 0", len(got))
 		}
 	})
-	t.Run("sorted by email", func(t *testing.T) {
+	t.Run("sorted by name", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		got := reg.Users()
@@ -382,6 +382,23 @@ func TestRegistry_Users(t *testing.T) {
 		}
 		if got[0].Email() != "alice@example.com" || got[1].Email() != "bob@example.com" {
 			t.Errorf("got %q, %q; want alice, bob in order", got[0].Email(), got[1].Email())
+		}
+	})
+	t.Run("sorted by name case-insensitively with email tie-break", func(t *testing.T) {
+		t.Parallel()
+		reg := model.NewRegistry()
+		must(t, reg.AddUser(model.NewUser("zoe@example.com", "Alice")))
+		must(t, reg.AddUser(model.NewUser("alice@example.com", "Zoe")))
+		must(t, reg.AddUser(model.NewUser("bob@example.com", "alice")))
+		got := reg.Users()
+		wantEmails := []string{"bob@example.com", "zoe@example.com", "alice@example.com"}
+		if len(got) != len(wantEmails) {
+			t.Fatalf("got %d users, want %d", len(got), len(wantEmails))
+		}
+		for i, want := range wantEmails {
+			if got[i].Email() != want {
+				t.Errorf("got[%d] = %q, want %q", i, got[i].Email(), want)
+			}
 		}
 	})
 }
@@ -769,53 +786,53 @@ func TestRegistry_AddAccount(t *testing.T) {
 	t.Run("success returns the new account", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		if acc == nil {
 			t.Fatal("got nil account")
 		}
-		if acc.Key() != (model.AccountKey{Email: "alice@example.com", Provider: "claude"}) {
+		if acc.Key() != (model.AccountKey{Email: "alice@example.com", Vendor: "claude"}) {
 			t.Errorf("got key %+v, want alice@example.com|claude", acc.Key())
 		}
 	})
-	t.Run("provider nil", func(t *testing.T) {
+	t.Run("vendor nil", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 		_, err := reg.AddAccount(reg.User("alice@example.com"), nil)
-		if !errors.Is(err, model.ErrProviderNil) {
-			t.Errorf("got %v, want ErrProviderNil", err)
+		if !errors.Is(err, model.ErrVendorNil) {
+			t.Errorf("got %v, want ErrVendorNil", err)
 		}
 	})
-	t.Run("provider not found", func(t *testing.T) {
+	t.Run("vendor not found", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		ghost := model.NewProvider("ghost", false, false)
+		ghost := model.NewVendor("ghost", false, false)
 		_, err := reg.AddAccount(reg.User("alice@example.com"), ghost)
-		if !errors.Is(err, model.ErrProviderNotFound) {
-			t.Errorf("got %v, want ErrProviderNotFound", err)
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
 		}
 	})
-	t.Run("provider stale", func(t *testing.T) {
+	t.Run("vendor stale", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		must(t, reg.AddProvider(model.NewProvider("claude", false, false)))
-		stale := reg.Provider("claude")
-		must(t, reg.UpdateProvider(stale, model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
+		stale := reg.Vendor("claude")
+		must(t, reg.UpdateVendor(stale, model.NewVendor("claude", true, false)))
 		_, err := reg.AddAccount(reg.User("alice@example.com"), stale)
-		if !errors.Is(err, model.ErrProviderStale) {
-			t.Errorf("got %v, want ErrProviderStale", err)
+		if !errors.Is(err, model.ErrVendorStale) {
+			t.Errorf("got %v, want ErrVendorStale", err)
 		}
 	})
 	t.Run("user nil", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
-		_, err := reg.AddAccount(nil, reg.Provider("claude"))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+		_, err := reg.AddAccount(nil, reg.Vendor("claude"))
 		if !errors.Is(err, model.ErrUserNil) {
 			t.Errorf("got %v, want ErrUserNil", err)
 		}
@@ -823,9 +840,9 @@ func TestRegistry_AddAccount(t *testing.T) {
 	t.Run("user not found", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		ghost := model.NewUser("ghost@example.com", "Ghost")
-		_, err := reg.AddAccount(ghost, reg.Provider("claude"))
+		_, err := reg.AddAccount(ghost, reg.Vendor("claude"))
 		if !errors.Is(err, model.ErrUserNotFound) {
 			t.Errorf("got %v, want ErrUserNotFound", err)
 		}
@@ -833,11 +850,11 @@ func TestRegistry_AddAccount(t *testing.T) {
 	t.Run("user stale", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 		stale := reg.User("alice@example.com")
 		must(t, reg.UpdateUser(stale, model.NewUser("alice@example.com", "Alice Smith")))
-		_, err := reg.AddAccount(stale, reg.Provider("claude"))
+		_, err := reg.AddAccount(stale, reg.Vendor("claude"))
 		if !errors.Is(err, model.ErrUserStale) {
 			t.Errorf("got %v, want ErrUserStale", err)
 		}
@@ -845,7 +862,7 @@ func TestRegistry_AddAccount(t *testing.T) {
 	t.Run("duplicate", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		_, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		_, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		if !errors.Is(err, model.ErrAccountExists) {
 			t.Errorf("got %v, want ErrAccountExists", err)
 		}
@@ -857,18 +874,18 @@ func TestRegistry_Account(t *testing.T) {
 	t.Run("found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		if acc == nil {
 			t.Fatal("got nil")
 		}
-		if acc.UserEmail() != "alice@example.com" || acc.ProviderName() != "claude" {
+		if acc.UserEmail() != "alice@example.com" || acc.VendorName() != "claude" {
 			t.Errorf("got %+v, want alice@example.com|claude", acc.Key())
 		}
 	})
-	t.Run("provider verify-fail returns nil", func(t *testing.T) {
+	t.Run("vendor verify-fail returns nil", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		ghost := model.NewProvider("ghost", false, false)
+		ghost := model.NewVendor("ghost", false, false)
 		if acc := reg.Account(reg.User("alice@example.com"), ghost); acc != nil {
 			t.Errorf("got %v, want nil", acc)
 		}
@@ -877,7 +894,7 @@ func TestRegistry_Account(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		ghost := model.NewUser("ghost@example.com", "Ghost")
-		if acc := reg.Account(ghost, reg.Provider("claude")); acc != nil {
+		if acc := reg.Account(ghost, reg.Vendor("claude")); acc != nil {
 			t.Errorf("got %v, want nil", acc)
 		}
 	})
@@ -885,7 +902,7 @@ func TestRegistry_Account(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		// bob exists and chatgpt exists, but alice never has a chatgpt account.
-		if acc := reg.Account(reg.User("alice@example.com"), reg.Provider("chatgpt")); acc != nil {
+		if acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("chatgpt")); acc != nil {
 			t.Errorf("got %v, want nil", acc)
 		}
 	})
@@ -917,12 +934,12 @@ func TestRegistry_DeleteAccount(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		must(t, reg.DeleteAccount(acc))
-		if reg.Account(reg.User("alice@example.com"), reg.Provider("claude")) != nil {
+		if reg.Account(reg.User("alice@example.com"), reg.Vendor("claude")) != nil {
 			t.Error("account still present after delete")
 		}
 	})
@@ -944,9 +961,9 @@ func TestRegistry_DeleteAccount(t *testing.T) {
 	t.Run("stale", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		must(t, reg.PauseAccount(acc, time.Now().Add(time.Hour)))
 		err = reg.DeleteAccount(acc)
@@ -957,7 +974,7 @@ func TestRegistry_DeleteAccount(t *testing.T) {
 	t.Run("has active sessions", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+		acc := reg.Account(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 		err := reg.DeleteAccount(acc)
 		if err == nil {
 			t.Fatal("got nil, want error")
@@ -966,9 +983,9 @@ func TestRegistry_DeleteAccount(t *testing.T) {
 	t.Run("has assigned projects but no sessions", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 		must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
@@ -985,15 +1002,15 @@ func TestRegistry_PauseAccount(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 
 		until := time.Now().Add(time.Hour).Truncate(time.Second)
 		must(t, reg.PauseAccount(acc, until))
 
-		got := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		got := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		if !got.PauseUntil().Equal(until) {
 			t.Errorf("got %v, want %v", got.PauseUntil(), until)
 		}
@@ -1020,9 +1037,9 @@ func TestRegistry_PauseAccount(t *testing.T) {
 	t.Run("stale", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		must(t, reg.PauseAccount(acc, time.Now().Add(time.Hour)))
 		err = reg.PauseAccount(acc, time.Now().Add(2*time.Hour))
@@ -1037,7 +1054,7 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, reg.AddProjectToAccount(acc, reg.Project("Orphan")))
 		got, err := reg.AccountProjects(acc)
 		must(t, err)
@@ -1065,7 +1082,7 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 	t.Run("account stale", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, reg.PauseAccount(acc, time.Now().Add(time.Hour)))
 		err := reg.AddProjectToAccount(acc, reg.Project("Orphan"))
 		if !errors.Is(err, model.ErrAccountStale) {
@@ -1075,7 +1092,7 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 	t.Run("project nil", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		err := reg.AddProjectToAccount(acc, nil)
 		if !errors.Is(err, model.ErrProjectNil) {
 			t.Errorf("got %v, want ErrProjectNil", err)
@@ -1084,7 +1101,7 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 	t.Run("project not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		ghost := model.NewProject("Ghost", "", "")
 		err := reg.AddProjectToAccount(acc, ghost)
 		if !errors.Is(err, model.ErrProjectNotFound) {
@@ -1094,7 +1111,7 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 	t.Run("project stale", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		stale := reg.Project("Orphan")
 		must(t, reg.UpdateProject(stale, model.NewProject("Orphan", "new", "")))
 		err := reg.AddProjectToAccount(acc, stale)
@@ -1102,10 +1119,10 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 			t.Errorf("got %v, want ErrProjectStale", err)
 		}
 	})
-	t.Run("provider does not support projects", func(t *testing.T) {
+	t.Run("vendor does not support projects", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+		acc := reg.Account(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 		err := reg.AddProjectToAccount(acc, reg.Project("Orphan"))
 		if !errors.Is(err, model.ErrProjectsUnsupported) {
 			t.Errorf("got %v, want ErrProjectsUnsupported", err)
@@ -1114,7 +1131,7 @@ func TestRegistry_AddProjectToAccount(t *testing.T) {
 	t.Run("already assigned", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		err := reg.AddProjectToAccount(acc, reg.Project("Alpha"))
 		if err == nil {
 			t.Fatal("got nil, want error")
@@ -1127,7 +1144,7 @@ func TestRegistry_RemoveProjectFromAccount(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, reg.RemoveProjectFromAccount(acc, reg.Project("Beta")))
 		got, err := reg.AccountProjects(acc)
 		must(t, err)
@@ -1155,7 +1172,7 @@ func TestRegistry_RemoveProjectFromAccount(t *testing.T) {
 	t.Run("project nil", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		err := reg.RemoveProjectFromAccount(acc, nil)
 		if !errors.Is(err, model.ErrProjectNil) {
 			t.Errorf("got %v, want ErrProjectNil", err)
@@ -1164,7 +1181,7 @@ func TestRegistry_RemoveProjectFromAccount(t *testing.T) {
 	t.Run("project not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		ghost := model.NewProject("Ghost", "", "")
 		err := reg.RemoveProjectFromAccount(acc, ghost)
 		if !errors.Is(err, model.ErrProjectNotFound) {
@@ -1174,7 +1191,7 @@ func TestRegistry_RemoveProjectFromAccount(t *testing.T) {
 	t.Run("not assigned", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		err := reg.RemoveProjectFromAccount(acc, reg.Project("Orphan"))
 		if err == nil {
 			t.Fatal("got nil, want error")
@@ -1183,7 +1200,7 @@ func TestRegistry_RemoveProjectFromAccount(t *testing.T) {
 	t.Run("has active sessions", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		// Session 1 uses Alpha for this account.
 		err := reg.RemoveProjectFromAccount(acc, reg.Project("Alpha"))
 		if err == nil {
@@ -1212,7 +1229,7 @@ func TestRegistry_AccountProjects(t *testing.T) {
 	t.Run("none assigned", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+		acc := reg.Account(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 		got, err := reg.AccountProjects(acc)
 		must(t, err)
 		if len(got) != 0 {
@@ -1222,7 +1239,7 @@ func TestRegistry_AccountProjects(t *testing.T) {
 	t.Run("assigned, sorted by name", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		got, err := reg.AccountProjects(acc)
 		must(t, err)
 		if len(got) != 2 || got[0].Name() != "Alpha" || got[1].Name() != "Beta" {
@@ -1251,7 +1268,7 @@ func TestRegistry_AccountSessions(t *testing.T) {
 	t.Run("has sessions, sorted by ID", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		got, err := reg.AccountSessions(acc)
 		must(t, err)
 		if len(got) != 1 || got[0].ID() != 1 {
@@ -1261,9 +1278,9 @@ func TestRegistry_AccountSessions(t *testing.T) {
 	t.Run("none", func(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
-		must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
 		got, err := reg.AccountSessions(acc)
 		must(t, err)
@@ -1280,7 +1297,7 @@ func TestRegistry_AddSession_Success(t *testing.T) {
 	t.Run("success without project", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		sess, err := reg.AddSession(acc, nil, "Topic", nil)
 		must(t, err)
 		if sess.ProjectName() != "" {
@@ -1293,7 +1310,7 @@ func TestRegistry_AddSession_Success(t *testing.T) {
 	t.Run("success with project", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		queue := []model.Prompt{model.NewPrompt("continue", false)}
 		sess, err := reg.AddSession(acc, reg.Project("Beta"), "Topic", queue)
 		must(t, err)
@@ -1333,7 +1350,7 @@ func TestRegistry_AddSession_Validation(t *testing.T) {
 	t.Run("account stale", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, reg.PauseAccount(acc, time.Now().Add(time.Hour)))
 		_, err := reg.AddSession(acc, nil, "", nil)
 		if !errors.Is(err, model.ErrAccountStale) {
@@ -1343,7 +1360,7 @@ func TestRegistry_AddSession_Validation(t *testing.T) {
 	t.Run("invalid prompt in queue", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		queue := []model.Prompt{
 			model.NewPrompt("ok", false),
 			model.NewPrompt("", false),
@@ -1356,7 +1373,7 @@ func TestRegistry_AddSession_Validation(t *testing.T) {
 	t.Run("project not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		ghost := model.NewProject("Ghost", "", "")
 		_, err := reg.AddSession(acc, ghost, "", nil)
 		if !errors.Is(err, model.ErrProjectNotFound) {
@@ -1366,7 +1383,7 @@ func TestRegistry_AddSession_Validation(t *testing.T) {
 	t.Run("project stale", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		stale := reg.Project("Alpha")
 		must(t, reg.UpdateProject(stale, model.NewProject("Alpha", "new", "")))
 		_, err := reg.AddSession(acc, stale, "", nil)
@@ -1377,7 +1394,7 @@ func TestRegistry_AddSession_Validation(t *testing.T) {
 	t.Run("project not assigned to account", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		_, err := reg.AddSession(acc, reg.Project("Orphan"), "", nil)
 		if err == nil {
 			t.Fatal("got nil, want error")
@@ -1388,12 +1405,12 @@ func TestRegistry_AddSession_Validation(t *testing.T) {
 func TestRegistry_AddSession_GlobalSequence(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-	aliceAcc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	aliceAcc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	bobAcc, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("claude"))
+	bobAcc, err := reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("claude"))
 	must(t, err)
 
 	s1, err := reg.AddSession(aliceAcc, nil, "", nil)
@@ -1452,7 +1469,7 @@ func TestRegistry_DeleteSession(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Provider: "claude"}, 999, "", "", nil)
+		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, 999, "", "", nil)
 		err := reg.DeleteSession(ghost)
 		if !errors.Is(err, model.ErrSessionNotFound) {
 			t.Errorf("got %v, want ErrSessionNotFound", err)
@@ -1472,7 +1489,7 @@ func TestRegistry_DeleteSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		sess := reg.Session(1)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 
 		must(t, reg.DeleteSession(sess))
 
@@ -1546,7 +1563,7 @@ func TestRegistry_UpdateSessionTopic(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Provider: "claude"}, 999, "", "", nil)
+		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, 999, "", "", nil)
 		err := reg.UpdateSessionTopic(ghost, "x")
 		if !errors.Is(err, model.ErrSessionNotFound) {
 			t.Errorf("got %v, want ErrSessionNotFound", err)
@@ -1569,7 +1586,7 @@ func TestRegistry_UpdateSessionProject(t *testing.T) {
 	t.Run("assign", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		newSess, err := reg.AddSession(acc, nil, "", nil)
 		must(t, err)
 		must(t, reg.UpdateSessionProject(newSess, reg.Project("Beta")))
@@ -1659,7 +1676,7 @@ func TestRegistry_UpdateSessionProject_Errors(t *testing.T) {
 	t.Run("session not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Provider: "claude"}, 999, "", "", nil)
+		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, 999, "", "", nil)
 		err := reg.UpdateSessionProject(ghost, reg.Project("Alpha"))
 		if !errors.Is(err, model.ErrSessionNotFound) {
 			t.Errorf("got %v, want ErrSessionNotFound", err)
@@ -1728,7 +1745,7 @@ func TestRegistry_UpdateSessionPrompts(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		queue := []model.Prompt{model.NewPrompt("same", false)}
-		sess, err := reg.AddSession(reg.Account(reg.User("alice@example.com"), reg.Provider("claude")), nil, "", queue)
+		sess, err := reg.AddSession(reg.Account(reg.User("alice@example.com"), reg.Vendor("claude")), nil, "", queue)
 		must(t, err)
 		before := reg.Session(sess.ID())
 		must(t, reg.UpdateSessionPrompts(before, queue))
@@ -1756,7 +1773,7 @@ func TestRegistry_UpdateSessionPrompts(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
-		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Provider: "claude"}, 999, "", "", nil)
+		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, 999, "", "", nil)
 		err := reg.UpdateSessionPrompts(ghost, nil)
 		if !errors.Is(err, model.ErrSessionNotFound) {
 			t.Errorf("got %v, want ErrSessionNotFound", err)

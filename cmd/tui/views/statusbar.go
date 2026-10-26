@@ -11,32 +11,34 @@ import (
 var (
 	// Canonical hint fragments. Reuse these so repeated actions keep the
 	// same wording everywhere.
-	hintEdit      = hint{"Enter", "edit"}
-	hintAdd       = hint{"Ins", "add"}
-	hintDelete    = hint{"Del", "delete"}
-	hintQueue     = hint{"u", "queue"}
-	hintContinue  = hint{"Space", "continue"}
-	hintMoveUp    = hint{"Ctrl+↑", "up"}
-	hintMoveDown  = hint{"Ctrl+↓", "down"}
-	hintHelp      = hint{"?", "help"}
-	hintQuit      = hint{"q", "quit"}
-	hintBack      = hint{"Esc", "back"}
-	hintClose     = hint{"Esc", "close"}
-	hintCancel    = hint{"Esc", "cancel"}
-	hintConfirm   = hint{"Enter", "confirm"}
-	hintProviders = hint{"r", "providers"}
-	hintProjects  = hint{"p", "projects"}
+	hintEdit     = hint{"Enter", "edit"}
+	hintPause    = hint{"Enter", "pause"}
+	hintAdd      = hint{"Ins", "add"}
+	hintDelete   = hint{"Del", "delete"}
+	hintQueue    = hint{string(KeyQueue), "messages"}
+	hintContinue = hint{"Space", "continue"}
+	hintMoveUp   = hint{"Ctrl+↑", "up"}
+	hintMoveDown = hint{"Ctrl+↓", "down"}
+	hintHelp     = hint{string(KeyHelp), "help"}
+	hintQuit     = hint{string(KeyQuit), "quit"}
+	hintBack     = hint{"Esc", "back"}
+	hintClose    = hint{"Esc", "close"}
+	hintCancel   = hint{"Esc", "cancel"}
+	hintConfirm  = hint{"Enter", "confirm"}
+	hintVendors  = hint{string(KeyVendors), "vendors"}
+	hintProjects = hint{string(KeyProjects), "projects"}
+	hintUsers    = hint{string(KeyUsers), "users"}
 
 	// HintsAccountsPanelSpecific is the context-specific hint line shown when
 	// the accounts list has focus.
 	HintsAccountsPanelSpecific = hints{
-		hintEdit, hintAdd, hintDelete,
+		hintPause, hintAdd, hintDelete,
 	}.String()
 
 	// HintsAccountsPanelCommon is the common hint line shown when the
 	// accounts list has focus.
 	HintsAccountsPanelCommon = hints{
-		{"Tab", "sessions"}, hintProviders, hintProjects, hintHelp, hintQuit,
+		{"Tab", "sessions"}, hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
 	}.String()
 
 	// HintsDetailPanelSpecific is the context-specific hint line shown when
@@ -51,15 +53,27 @@ var (
 		{"Tab", "accounts"}, hintHelp, hintQuit,
 	}.String()
 
-	// HintsProvidersPanelSpecific is the context-specific hint line shown when
-	// the providers screen has focus.
-	HintsProvidersPanelSpecific = hints{
+	// HintsVendorsPanelSpecific is the context-specific hint line shown when
+	// the vendors screen has focus.
+	HintsVendorsPanelSpecific = hints{
 		hintEdit, hintAdd, hintDelete,
 	}.String()
 
-	// HintsProvidersPanelCommon is the common hint line shown when the
-	// providers screen has focus.
-	HintsProvidersPanelCommon = hints{
+	// HintsVendorsPanelCommon is the common hint line shown when the
+	// vendors screen has focus.
+	HintsVendorsPanelCommon = hints{
+		hintBack, hintHelp, hintQuit,
+	}.String()
+
+	// HintsUsersPanelSpecific is the context-specific hint line shown when
+	// the users screen has focus.
+	HintsUsersPanelSpecific = hints{
+		hintEdit, hintAdd, hintDelete,
+	}.String()
+
+	// HintsUsersPanelCommon is the common hint line shown when the users
+	// screen has focus.
+	HintsUsersPanelCommon = hints{
 		hintBack, hintHelp, hintQuit,
 	}.String()
 

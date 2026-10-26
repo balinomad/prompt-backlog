@@ -9,12 +9,12 @@ import (
 )
 
 // Entity-specific — wraps its category, so both checks succeed on the
-// same error: errors.Is(err, ErrProviderNotFound) and errors.Is(err, apperr.ErrNotFound).
+// same error: errors.Is(err, ErrVendorNotFound) and errors.Is(err, apperr.ErrNotFound).
 var (
-	ErrProviderNotFound = fmt.Errorf("provider %w", apperr.ErrNotFound)
-	ErrProviderExists   = fmt.Errorf("provider %w", apperr.ErrExists)
-	ErrProviderStale    = fmt.Errorf("provider %w", apperr.ErrStale)
-	ErrProviderNil      = fmt.Errorf("provider %w", apperr.ErrNil)
+	ErrVendorNotFound = fmt.Errorf("vendor %w", apperr.ErrNotFound)
+	ErrVendorExists   = fmt.Errorf("vendor %w", apperr.ErrExists)
+	ErrVendorStale    = fmt.Errorf("vendor %w", apperr.ErrStale)
+	ErrVendorNil      = fmt.Errorf("vendor %w", apperr.ErrNil)
 
 	ErrUserNotFound = fmt.Errorf("user %w", apperr.ErrNotFound)
 	ErrUserExists   = fmt.Errorf("user %w", apperr.ErrExists)
@@ -42,11 +42,11 @@ var (
 	ErrTextRequired  = fmt.Errorf("text %w", apperr.ErrRequired)
 )
 
-// ValidateProvider returns an error when the provider is invalid.
-func ValidateProvider(p *Provider) error {
+// ValidateVendor returns an error when the vendor is invalid.
+func ValidateVendor(p *Vendor) error {
 	switch {
 	case p == nil:
-		return ErrProviderNil
+		return ErrVendorNil
 	case p.name == "":
 		return ErrNameRequired
 	default:
@@ -95,8 +95,8 @@ func ValidateAccount(acc *Account) error {
 		if acc.key.Email == "" {
 			errs = append(errs, fmt.Errorf("user %w", ErrEmailRequired))
 		}
-		if acc.key.Provider == "" {
-			errs = append(errs, fmt.Errorf("provider %w", ErrNameRequired))
+		if acc.key.Vendor == "" {
+			errs = append(errs, fmt.Errorf("vendor %w", ErrNameRequired))
 		}
 	}
 	return errJoin(errs)

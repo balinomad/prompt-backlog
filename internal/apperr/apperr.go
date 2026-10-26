@@ -6,7 +6,7 @@
 // produced it.
 //
 // internal/model wraps these into entity-specific sentinels (e.g.
-// model.ErrProviderNotFound wraps ErrNotFound); callers that need to know
+// model.ErrVendorNotFound wraps ErrNotFound); callers that need to know
 // which entity failed match on the model sentinel; callers that only need
 // the failure category match on these directly.
 package apperr

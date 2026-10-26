@@ -200,7 +200,7 @@ func TestNormalizeText(t *testing.T) {
 	}
 }
 
-func TestNewProvider(t *testing.T) {
+func TestNewVendor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -256,7 +256,7 @@ func TestNewProvider(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewProvider(tt.inName, tt.hasProjects, tt.hasDeepResearch)
+			p := model.NewVendor(tt.inName, tt.hasProjects, tt.hasDeepResearch)
 			if got := p.Name(); got != tt.wantName {
 				t.Errorf("Name() = %q, want %q", got, tt.wantName)
 			}
@@ -405,7 +405,7 @@ func TestAccountKey_String(t *testing.T) {
 		key  model.AccountKey
 		want string
 	}{
-		{"normal", model.AccountKey{Email: "alice@example.com", Provider: "claude"}, "alice@example.com|claude"},
+		{"normal", model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, "alice@example.com|claude"},
 		{"zero value", model.AccountKey{}, "|"},
 	}
 	for _, tt := range tests {
@@ -420,9 +420,9 @@ func TestAccountKey_String(t *testing.T) {
 
 func TestAccountKey_Equality(t *testing.T) {
 	t.Parallel()
-	a := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
-	b := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
-	c := model.AccountKey{Email: "bob@example.com", Provider: "claude"}
+	a := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
+	b := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
+	c := model.AccountKey{Email: "bob@example.com", Vendor: "claude"}
 
 	if a != b {
 		t.Error("identical field values should compare equal")
@@ -446,10 +446,10 @@ func TestNewAccount(t *testing.T) {
 		wantProv  string
 	}{
 		{
-			name:      "trims and lowercases email, trims provider",
+			name:      "trims and lowercases email, trims vendor",
 			inEmail:   " ALICE@Example.com ",
 			inProv:    " claude ",
-			wantKey:   model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			wantKey:   model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			wantEmail: "alice@example.com",
 			wantProv:  "claude",
 		},
@@ -457,7 +457,7 @@ func TestNewAccount(t *testing.T) {
 			name:      "already normalized",
 			inEmail:   "bob@example.com",
 			inProv:    "chatgpt",
-			wantKey:   model.AccountKey{Email: "bob@example.com", Provider: "chatgpt"},
+			wantKey:   model.AccountKey{Email: "bob@example.com", Vendor: "chatgpt"},
 			wantEmail: "bob@example.com",
 			wantProv:  "chatgpt",
 		},
@@ -472,8 +472,8 @@ func TestNewAccount(t *testing.T) {
 			if got := a.UserEmail(); got != tt.wantEmail {
 				t.Errorf("UserEmail() = %q, want %q", got, tt.wantEmail)
 			}
-			if got := a.ProviderName(); got != tt.wantProv {
-				t.Errorf("ProviderName() = %q, want %q", got, tt.wantProv)
+			if got := a.VendorName(); got != tt.wantProv {
+				t.Errorf("VendorName() = %q, want %q", got, tt.wantProv)
 			}
 			if !a.PauseUntil().IsZero() {
 				t.Errorf("PauseUntil() = %v, want zero value", a.PauseUntil())
@@ -500,7 +500,7 @@ func TestNewSession(t *testing.T) {
 	}{
 		{
 			name:        "basic fields",
-			key:         model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			key:         model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			id:          7,
 			inProject:   " Alpha ",
 			inTopic:     " Architecture review ",
@@ -511,7 +511,7 @@ func TestNewSession(t *testing.T) {
 		},
 		{
 			name:        "no project empty topic nil queue",
-			key:         model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			key:         model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			id:          1,
 			wantProject: "",
 			wantTopic:   "",
@@ -519,7 +519,7 @@ func TestNewSession(t *testing.T) {
 		},
 		{
 			name: "queue order preserved",
-			key:  model.AccountKey{Email: "alice@example.com", Provider: "claude"},
+			key:  model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			id:   1,
 			inQueue: []model.Prompt{
 				model.NewPrompt("first", false),
@@ -568,7 +568,7 @@ func TestNewSession_Behavioral(t *testing.T) {
 
 	t.Run("input queue is defensively cloned", func(t *testing.T) {
 		t.Parallel()
-		key := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
+		key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
 		queue := []model.Prompt{model.NewPrompt("first", false)}
 		s := model.NewSession(key, 1, "", "", queue)
 
@@ -582,7 +582,7 @@ func TestNewSession_Behavioral(t *testing.T) {
 
 	t.Run("returned queue is a defensive copy", func(t *testing.T) {
 		t.Parallel()
-		key := model.AccountKey{Email: "alice@example.com", Provider: "claude"}
+		key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
 		queue := []model.Prompt{model.NewPrompt("first", false)}
 		s := model.NewSession(key, 1, "", "", queue)
 

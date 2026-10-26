@@ -145,12 +145,12 @@ func TestProjectsPanel_AccountList_GrantedOnly(t *testing.T) {
 func TestProjectsPanel_AccountList_Format(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-	alice, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	alice, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	bob, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("claude"))
+	bob, err := reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	must(t, reg.AddProjectToAccount(alice, reg.Project("Alpha")))
@@ -173,11 +173,11 @@ func TestProjectsPanel_AccountList_Format(t *testing.T) {
 	}
 }
 
-func TestProjectsPanel_AccountList_OrderByProviderThenUser(t *testing.T) {
+func TestProjectsPanel_AccountList_OrderByVendorThenUser(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("qwen", true, false)))
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("qwen", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	for _, u := range []struct {
 		email string
 		name  string
@@ -189,15 +189,15 @@ func TestProjectsPanel_AccountList_OrderByProviderThenUser(t *testing.T) {
 	}
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	for _, pair := range []struct {
-		email    string
-		provider string
+		email  string
+		vendor string
 	}{
 		{"zoe@example.com", "qwen"},
 		{"alice@example.com", "claude"},
 		{"zoe@example.com", "claude"},
 		{"alice@example.com", "qwen"},
 	} {
-		acc, err := reg.AddAccount(reg.User(pair.email), reg.Provider(pair.provider))
+		acc, err := reg.AddAccount(reg.User(pair.email), reg.Vendor(pair.vendor))
 		must(t, err)
 		must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
 	}
@@ -227,12 +227,12 @@ func TestProjectsPanel_AccountList_OrderByProviderThenUser(t *testing.T) {
 func TestProjectsPanel_Refresh_PreservesAccountSelection(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-	alice, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	alice, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	bob, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("claude"))
+	bob, err := reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	must(t, reg.AddProjectToAccount(alice, reg.Project("Alpha")))
@@ -568,12 +568,12 @@ func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 func TestProjectsPanel_GrantFromAccounts_SaveReturnsToAccountHints(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-	alice, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	alice, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	_, err = reg.AddAccount(reg.User("bob@example.com"), reg.Provider("claude"))
+	_, err = reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	must(t, reg.AddProjectToAccount(alice, reg.Project("Alpha")))
@@ -662,9 +662,9 @@ func TestProjectsPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
 func TestProjectsPanel_RowText_EscapesName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("Alpha[red]", "", "")))
 	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha[red]")))

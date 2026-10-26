@@ -61,11 +61,14 @@ type App interface {
 	// SetFocus moves keyboard focus to p.
 	SetFocus(p tview.Primitive)
 
-	// SwitchToProviders switches the display to the providers management screen.
-	SwitchToProviders()
+	// SwitchToVendors switches the display to the vendors management screen.
+	SwitchToVendors()
 
 	// SwitchToProjects switches the display to the projects management screen.
 	SwitchToProjects()
+
+	// SwitchToUsers switches the display to the users management screen.
+	SwitchToUsers()
 
 	// SwitchToMain switches the display back to the accounts + detail screen.
 	SwitchToMain()

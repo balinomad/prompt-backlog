@@ -69,6 +69,41 @@ func formatColumns(rows [][]string) ([]string, int) {
 	return lines, width
 }
 
+// dropEmptyColumns removes columns that are empty in every row.
+func dropEmptyColumns(rows [][]string) [][]string {
+	if len(rows) == 0 {
+		return rows
+	}
+	columns := 0
+	for _, row := range rows {
+		columns = max(columns, len(row))
+	}
+	keep := make([]bool, columns)
+	for _, row := range rows {
+		for i, cell := range row {
+			if cell != "" {
+				keep[i] = true
+			}
+		}
+	}
+	result := make([][]string, len(rows))
+	for r, row := range rows {
+		out := make([]string, 0, columns)
+		for i := range columns {
+			if !keep[i] {
+				continue
+			}
+			cell := ""
+			if i < len(row) {
+				cell = row[i]
+			}
+			out = append(out, cell)
+		}
+		result[r] = out
+	}
+	return result
+}
+
 // insetListRow prefixes a list row with the shared one-cell inset.
 func insetListRow(s string) string {
 	return rowInset + s

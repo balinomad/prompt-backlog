@@ -47,7 +47,7 @@ func writeTempFile(t *testing.T, content string) string {
 // seedRegistry builds a registry exercising every shape Save/Load must
 // round-trip:
 //
-//	Providers: claude (HasProjects+HasDeepResearch), chatgpt (neither)
+//	Vendors: claude (HasProjects+HasDeepResearch), chatgpt (neither)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob
 //	Projects:  Alpha (description+instructions), Beta (blank), Orphan (unattached)
 //	Accounts:  alice/claude — not paused, assigned Alpha+Beta
@@ -58,8 +58,8 @@ func seedRegistry(t *testing.T) *model.Registry {
 	t.Helper()
 	reg := model.NewRegistry()
 
-	must(t, reg.AddProvider(model.NewProvider("claude", true, true)))
-	must(t, reg.AddProvider(model.NewProvider("chatgpt", false, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, true)))
+	must(t, reg.AddVendor(model.NewVendor("chatgpt", false, false)))
 
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
@@ -68,17 +68,17 @@ func seedRegistry(t *testing.T) *model.Registry {
 	must(t, reg.AddProject(model.NewProject("Beta", "", "")))
 	must(t, reg.AddProject(model.NewProject("Orphan", "", "")))
 
-	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Beta")))
 	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Alpha")))
 
-	bobChatgpt, err := reg.AddAccount(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+	bobChatgpt, err := reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 	must(t, err)
 	must(t, reg.PauseAccount(bobChatgpt, time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)))
 	// PauseAccount replaces the registry's Account via Copy-on-Write; the
 	// pointer held above is now stale and must be re-read before further use.
-	bobChatgpt = reg.Account(reg.User("bob@example.com"), reg.Provider("chatgpt"))
+	bobChatgpt = reg.Account(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
 
 	_, err = reg.AddSession(aliceClaude, reg.Project("Alpha"), "Architecture review", []model.Prompt{
 		model.NewPrompt("continue", false),
@@ -101,7 +101,7 @@ func TestLoad_FileNotExist_ReturnsEmptyRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error for a missing file: %v", err)
 	}
-	if len(reg.Providers()) != 0 {
+	if len(reg.Vendors()) != 0 {
 		t.Error("expected an empty registry for a missing file")
 	}
 }
@@ -153,7 +153,7 @@ func TestLoad_ParseErrors(t *testing.T) {
 		},
 		{
 			name:    "wrong top-level field type",
-			content: `{"providers": "not-an-array"}`,
+			content: `{"vendors": "not-an-array"}`,
 			check: func(t *testing.T, err error) {
 				t.Helper()
 				if _, ok := errors.AsType[*json.UnmarshalTypeError](err); !ok {
@@ -190,17 +190,17 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		wantErrSubstrs []string
 	}{
 		{
-			name:      "provider empty name",
-			json:      `{"providers": [{"name": "", "has_projects": false, "has_deep_research": false}]}`,
+			name:      "vendor empty name",
+			json:      `{"vendors": [{"name": "", "has_projects": false, "has_deep_research": false}]}`,
 			wantErrIs: []error{model.ErrNameRequired},
 		},
 		{
-			name: "duplicate provider",
-			json: `{"providers": [
+			name: "duplicate vendor",
+			json: `{"vendors": [
 				{"name": "claude", "has_projects": true, "has_deep_research": false},
 				{"name": "claude", "has_projects": false, "has_deep_research": false}
 			]}`,
-			wantErrIs: []error{model.ErrProviderExists},
+			wantErrIs: []error{model.ErrVendorExists},
 		},
 		{
 			name:      "user empty email",
@@ -231,29 +231,29 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 			wantErrIs: []error{model.ErrProjectExists},
 		},
 		{
-			name: "account references unknown provider",
+			name: "account references unknown vendor",
 			json: `{
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
-				"accounts": [{"user_email": "alice@example.com", "provider_name": "ghost"}]
+				"accounts": [{"user_email": "alice@example.com", "vendor_name": "ghost"}]
 			}`,
-			wantErrIs: []error{model.ErrProviderNil},
+			wantErrIs: []error{model.ErrVendorNil},
 		},
 		{
 			name: "account references unknown user",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
-				"accounts": [{"user_email": "ghost@example.com", "provider_name": "claude"}]
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"accounts": [{"user_email": "ghost@example.com", "vendor_name": "claude"}]
 			}`,
 			wantErrIs: []error{model.ErrUserNil},
 		},
 		{
 			name: "duplicate account",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
 				"accounts": [
-					{"user_email": "alice@example.com", "provider_name": "claude"},
-					{"user_email": "alice@example.com", "provider_name": "claude"}
+					{"user_email": "alice@example.com", "vendor_name": "claude"},
+					{"user_email": "alice@example.com", "vendor_name": "claude"}
 				]
 			}`,
 			wantErrIs: []error{model.ErrAccountExists},
@@ -261,25 +261,25 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		{
 			name: "account references unknown project",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
 				"accounts": [{
 					"user_email": "alice@example.com",
-					"provider_name": "claude",
+					"vendor_name": "claude",
 					"projects": ["Ghost"]
 				}]
 			}`,
 			wantErrIs: []error{model.ErrProjectNil},
 		},
 		{
-			name: "account project on provider without project support",
+			name: "account project on vendor without project support",
 			json: `{
-				"providers": [{"name": "chatgpt", "has_projects": false, "has_deep_research": false}],
+				"vendors": [{"name": "chatgpt", "has_projects": false, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
 				"projects": [{"name": "Alpha"}],
 				"accounts": [{
 					"user_email": "alice@example.com",
-					"provider_name": "chatgpt",
+					"vendor_name": "chatgpt",
 					"projects": ["Alpha"]
 				}]
 			}`,
@@ -288,12 +288,12 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		{
 			name: "account project listed twice",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
 				"projects": [{"name": "Alpha"}],
 				"accounts": [{
 					"user_email": "alice@example.com",
-					"provider_name": "claude",
+					"vendor_name": "claude",
 					"projects": ["Alpha", "Alpha"]
 				}]
 			}`,
@@ -302,21 +302,21 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		{
 			name: "session references unknown account",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
-				"sessions": [{"user_email": "alice@example.com", "provider_name": "claude"}]
+				"sessions": [{"user_email": "alice@example.com", "vendor_name": "claude"}]
 			}`,
 			wantErrSubstrs: []string{"account", "not found"},
 		},
 		{
 			name: "session references unknown project",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
-				"accounts": [{"user_email": "alice@example.com", "provider_name": "claude"}],
+				"accounts": [{"user_email": "alice@example.com", "vendor_name": "claude"}],
 				"sessions": [{
 					"user_email": "alice@example.com",
-					"provider_name": "claude",
+					"vendor_name": "claude",
 					"project_name": "Ghost"
 				}]
 			}`,
@@ -325,13 +325,13 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		{
 			name: "session project not assigned to account",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
 				"projects": [{"name": "Alpha"}],
-				"accounts": [{"user_email": "alice@example.com", "provider_name": "claude"}],
+				"accounts": [{"user_email": "alice@example.com", "vendor_name": "claude"}],
 				"sessions": [{
 					"user_email": "alice@example.com",
-					"provider_name": "claude",
+					"vendor_name": "claude",
 					"project_name": "Alpha"
 				}]
 			}`,
@@ -340,12 +340,12 @@ func TestLoad_RegistryConstructionErrors(t *testing.T) {
 		{
 			name: "session queue has an invalid prompt",
 			json: `{
-				"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+				"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 				"users": [{"email": "alice@example.com", "name": "Alice"}],
-				"accounts": [{"user_email": "alice@example.com", "provider_name": "claude"}],
+				"accounts": [{"user_email": "alice@example.com", "vendor_name": "claude"}],
 				"sessions": [{
 					"user_email": "alice@example.com",
-					"provider_name": "claude",
+					"vendor_name": "claude",
 					"queue": [{"text": "", "spawns_session": false}]
 				}]
 			}`,
@@ -381,7 +381,7 @@ func TestLoad_EmptyJSONObject_ReturnsEmptyRegistry(t *testing.T) {
 	path := writeTempFile(t, "{}")
 	reg, err := storejson.New(path).Load()
 	must(t, err)
-	if len(reg.Providers()) != 0 || len(reg.Users()) != 0 || len(reg.Projects()) != 0 ||
+	if len(reg.Vendors()) != 0 || len(reg.Users()) != 0 || len(reg.Projects()) != 0 ||
 		len(reg.Accounts()) != 0 || len(reg.Sessions()) != 0 {
 		t.Error("expected a fully empty registry from '{}'")
 	}
@@ -392,18 +392,18 @@ func TestLoad_AccountPauseUntilZero_Skipped(t *testing.T) {
 	// A present-but-zero pause_until must not be applied: PauseAccount is
 	// only called when the timestamp is both non-nil and non-zero.
 	path := writeTempFile(t, `{
-		"providers": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
+		"vendors": [{"name": "claude", "has_projects": true, "has_deep_research": false}],
 		"users": [{"email": "alice@example.com", "name": "Alice"}],
 		"accounts": [{
 			"user_email": "alice@example.com",
-			"provider_name": "claude",
+			"vendor_name": "claude",
 			"pause_until": "0001-01-01T00:00:00Z"
 		}]
 	}`)
 	reg, err := storejson.New(path).Load()
 	must(t, err)
 
-	acc := reg.Account(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 	if acc == nil {
 		t.Fatal("account not found")
 	}
@@ -522,9 +522,9 @@ func TestSave_RenameFails_RemovesTempFile(t *testing.T) {
 func TestSave_MarshalFails(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	// time.Time.MarshalJSON fails for years outside [0, 9999]. Every other
 	// DTO field is a plain string, bool, or slice of those, so this is the
@@ -540,26 +540,26 @@ func TestSave_MarshalFails(t *testing.T) {
 
 // ── Round-trip ────────────────────────────────────────────────────────────────
 
-func TestRoundTrip_Providers(t *testing.T) {
+func TestRoundTrip_Vendors(t *testing.T) {
 	t.Parallel()
 	st, _ := newStore(t)
 	must(t, st.Save(seedRegistry(t)))
 	loaded, err := st.Load()
 	must(t, err)
 
-	if got := len(loaded.Providers()); got != 2 {
-		t.Fatalf("providers: got %d, want 2", got)
+	if got := len(loaded.Vendors()); got != 2 {
+		t.Fatalf("vendors: got %d, want 2", got)
 	}
-	claude := loaded.Provider("claude")
+	claude := loaded.Vendor("claude")
 	if claude == nil {
-		t.Fatal("provider claude not found")
+		t.Fatal("vendor claude not found")
 	}
 	if !claude.HasProjects() || !claude.HasDeepResearch() {
 		t.Error("claude capabilities not preserved")
 	}
-	chatgpt := loaded.Provider("chatgpt")
+	chatgpt := loaded.Vendor("chatgpt")
 	if chatgpt == nil {
-		t.Fatal("provider chatgpt not found")
+		t.Fatal("vendor chatgpt not found")
 	}
 	if chatgpt.HasProjects() || chatgpt.HasDeepResearch() {
 		t.Error("chatgpt capabilities should both be false")
@@ -614,7 +614,7 @@ func TestRoundTrip_Accounts(t *testing.T) {
 	loaded, err := st.Load()
 	must(t, err)
 
-	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
+	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Vendor("claude"))
 	if aliceClaude == nil {
 		t.Fatal("account alice/claude not found")
 	}
@@ -634,7 +634,7 @@ func TestRoundTrip_Accounts(t *testing.T) {
 		t.Errorf("alice/claude projects = %v, want [Alpha Beta]", names)
 	}
 
-	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Provider("chatgpt"))
+	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Vendor("chatgpt"))
 	if bobChatgpt == nil {
 		t.Fatal("account bob/chatgpt not found")
 	}
@@ -652,10 +652,10 @@ func TestRoundTrip_Accounts(t *testing.T) {
 func TestRoundTrip_PausedAccountWithProjects(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
 	until := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
@@ -666,7 +666,7 @@ func TestRoundTrip_PausedAccountWithProjects(t *testing.T) {
 	loaded, err := st.Load()
 	must(t, err)
 
-	loadedAcc := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
+	loadedAcc := loaded.Account(loaded.User("alice@example.com"), loaded.Vendor("claude"))
 	if loadedAcc == nil {
 		t.Fatal("account not found")
 	}
@@ -687,7 +687,7 @@ func TestRoundTrip_Sessions(t *testing.T) {
 	loaded, err := st.Load()
 	must(t, err)
 
-	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Provider("claude"))
+	aliceClaude := loaded.Account(loaded.User("alice@example.com"), loaded.Vendor("claude"))
 	sessions, err := loaded.AccountSessions(aliceClaude)
 	must(t, err)
 	if len(sessions) != 1 {
@@ -711,7 +711,7 @@ func TestRoundTrip_Sessions(t *testing.T) {
 		t.Errorf("queue[1] = %+v", queue[1])
 	}
 
-	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Provider("chatgpt"))
+	bobChatgpt := loaded.Account(loaded.User("bob@example.com"), loaded.Vendor("chatgpt"))
 	bobSessions, err := loaded.AccountSessions(bobChatgpt)
 	must(t, err)
 	if len(bobSessions) != 1 {
@@ -730,9 +730,9 @@ func TestRoundTrip_SessionIDsRenumbered(t *testing.T) {
 	// registry whose two remaining sessions are renumbered 1, 2 — not a
 	// reload that preserves gaps from the original numbering.
 	reg := model.NewRegistry()
-	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 
 	first, err := reg.AddSession(acc, nil, "first", nil)
@@ -769,7 +769,7 @@ func TestRoundTrip_EmptyRegistry(t *testing.T) {
 	loaded, err := st.Load()
 	must(t, err)
 
-	if len(loaded.Providers()) != 0 || len(loaded.Users()) != 0 || len(loaded.Projects()) != 0 ||
+	if len(loaded.Vendors()) != 0 || len(loaded.Users()) != 0 || len(loaded.Projects()) != 0 ||
 		len(loaded.Accounts()) != 0 || len(loaded.Sessions()) != 0 {
 		t.Error("expected a fully empty registry after round-tripping an empty one")
 	}
