@@ -98,11 +98,8 @@ func TestStatusBar_SetHints(t *testing.T) {
 	}
 }
 
-// TestStatusBar_CommonHintsConstantsNonEmpty replaces
-// TestStatusBar_AllHintsConstantsNonEmpty: every context has at least one
-// common hint (help/quit at minimum, confirm/cancel, or close), but a
-// context-specific line can legitimately be empty (forms, confirm modal,
-// and help overlay have none), so only the common half is checked.
+// TestStatusBar_CommonHintsConstantsNonEmpty verifies every context has at
+// least one common hint. Context-specific lines may be empty.
 func TestStatusBar_CommonHintsConstantsNonEmpty(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

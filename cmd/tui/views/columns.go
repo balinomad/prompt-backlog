@@ -38,9 +38,19 @@ func formatColumns(rows [][]string) ([]string, int) {
 		}
 	}
 
+	separatorWidth := tview.TaggedStringWidth(columnSeparator)
+	width := 2 * tview.TaggedStringWidth(rowInset)
+	for i, columnWidth := range widths {
+		width += columnWidth
+		if i > 0 {
+			width += separatorWidth
+		}
+	}
+
 	lines := make([]string, len(rows))
 	for rowIndex, row := range rows {
 		var b strings.Builder
+		b.Grow(width)
 		b.WriteString(rowInset)
 		for i := range columns {
 			if i > 0 {
@@ -56,14 +66,6 @@ func formatColumns(rows [][]string) ([]string, int) {
 		lines[rowIndex] = b.String()
 	}
 
-	separatorWidth := tview.TaggedStringWidth(columnSeparator)
-	width := 2
-	for i, columnWidth := range widths {
-		width += columnWidth
-		if i > 0 {
-			width += separatorWidth
-		}
-	}
 	return lines, width
 }
 

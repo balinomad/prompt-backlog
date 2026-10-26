@@ -147,9 +147,6 @@ func triggerSave(t *testing.T, form *tview.Form) {
 
 // newSessionFormTestAccount returns a mock wired with a single account
 // holding one session, for NewSessionForm's edit-mode precondition.
-// Defined locally rather than shared with detail_test.go's
-// newDetailTestApp: that file is still package views until it converts —
-// see the standing cross-file-fixture note in queueeditor_test.go.
 func newSessionFormTestAccount(t *testing.T) (*mockApp, *model.Account, *model.Session) {
 	t.Helper()
 	reg := model.NewRegistry()
@@ -163,11 +160,8 @@ func newSessionFormTestAccount(t *testing.T) (*mockApp, *model.Account, *model.S
 	return app, acc, sess
 }
 
-// sessionSaveFixture returns a mockApp with an account granted "Alpha",
-// holding one session (topic "old topic", no project). Separate from
-// newSessionFormTestAccount because the save() tests below need a
-// granted project that form's callers don't; kept distinct rather than
-// widening an already-passing fixture used elsewhere in this file.
+// sessionSaveFixture returns a mockApp with an account granted "Alpha" and
+// one session, for save() tests.
 func sessionSaveFixture(t *testing.T) (*mockApp, *model.Account, *model.Session) {
 	t.Helper()
 	reg := model.NewRegistry()
@@ -226,11 +220,7 @@ func TestNewSessionForm(t *testing.T) {
 	}
 }
 
-// TestSessionForm_ProjectNames replaces the old direct call to the
-// unexported sessionFormProjectNames: it builds the real form and reads
-// the Project dropdown's options back via dropDownOptions. Expanded from
-// the original single hard-coded scenario into a table — the no-projects
-// and normal-projects cases weren't covered before.
+// TestSessionForm_ProjectNames verifies the Project dropdown options.
 func TestSessionForm_ProjectNames(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -335,9 +325,8 @@ func TestNewSessionForm_ProjectDropdown_BracketNameSurvivesSave(t *testing.T) {
 	}
 }
 
-// TestSessionFormInitial replaces the old direct call to the unexported
-// sessionFormInitial: it builds the real form per case and reads the
-// Topic field and Project dropdown's initial state back.
+// TestSessionFormInitial verifies the form's initial topic and project
+// selection.
 func TestSessionFormInitial(t *testing.T) {
 	t.Parallel()
 
@@ -535,11 +524,8 @@ func TestNewSessionForm_Save_Create(t *testing.T) {
 
 // ── NewProjectForm ────────────────────────────────────────────────────────────
 
-// NewProjectForm no longer takes a session parameter (Project has no
-// structural prerequisites), so the old provider-incompatibility pre-flight
-// rejection — tied to attach-on-create, which no longer exists — has no
-// analog here. project=nil is a valid input meaning "create mode", not a
-// missing precondition, so there is no error-modal path to test.
+// TestNewProjectForm_ReturnsForm verifies create and edit modes both return a
+// form.
 func TestNewProjectForm_ReturnsForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -733,8 +719,6 @@ func TestNewProjectForm_Save_Create(t *testing.T) {
 
 // ── NewProviderForm ───────────────────────────────────────────────────────────
 
-// NewProviderForm's body is unchanged from the prior session; it had no
-// dedicated test coverage before this rewrite.
 func TestNewProviderForm_ReturnsForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -991,10 +975,7 @@ func TestAccountEditForm_AccountButton(t *testing.T) {
 	if app.modal == nil {
 		t.Fatal("expected account details modal to be shown")
 	}
-	if app.hintsSpecific != views.HintsFormSpecific || app.hintsCommon != views.HintsFormCommon {
-		t.Errorf("hints after opening details: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsFormSpecific, views.HintsFormCommon)
-	}
+	assertHints(t, app, views.HintsFormSpecific, views.HintsFormCommon)
 
 	details := formFromCenteredModal(t, app.modal)
 	if got := strings.TrimSpace(details.GetTitle()); got != "Rename User: alice@example.com" {
@@ -1007,10 +988,7 @@ func TestAccountEditForm_AccountButton(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	}
+	assertHints(t, app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	if got := app.svc.User("alice@example.com").Name(); got != "Alice Smith" {
 		t.Errorf("Name() = %q, want %q", got, "Alice Smith")
 	}

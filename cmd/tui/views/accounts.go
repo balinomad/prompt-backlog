@@ -3,7 +3,6 @@ package views
 import (
 	"fmt"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/balinomad/llm-desk/internal/model"
@@ -116,6 +115,8 @@ func (p *AccountsPanel) Refresh() {
 	// full rendered text, including day offsets such as "12:34 -5". Optional
 	// columns are included only when at least one rendered row has a value.
 	now := time.Now()
+	latestProjects := latestSessionProjects(svc.Sessions())
+	grantedProjects := grantedProjectNames(svc, all)
 	rawRows := make([]accountRow, len(all))
 	hasPause := false
 	hasProject := false
@@ -125,7 +126,7 @@ func (p *AccountsPanel) Refresh() {
 			userName = u.Name()
 		}
 		pause := pauseStatusText(a.PauseUntil(), now)
-		project := latestGrantedProject(svc, a)
+		project := latestGrantedProject(latestProjects, grantedProjects, a.Key())
 		hasPause = hasPause || pause != ""
 		hasProject = hasProject || project != ""
 
@@ -191,8 +192,6 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case KeyDelete:
 		return p.handleDelete()
 	default:
-		// Every other special key falls through to dispatchPanelKey and
-		// the rune switch below.
 	}
 
 	if result, ok := dispatchPanelKey(event, p.app, HintsAccountsPanelSpecific, HintsAccountsPanelCommon); ok {
@@ -215,11 +214,7 @@ func (p *AccountsPanel) handleNew() *tcell.EventKey {
 		p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -232,11 +227,7 @@ func (p *AccountsPanel) handleEdit() *tcell.EventKey {
 		p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -254,7 +245,7 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 			if err := p.app.Mutate(func(s *service.Service) error {
 				return s.DeleteAccount(email, provider)
 			}); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(p.app, err)
 			}
 			p.app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 			p.app.HideModal()
@@ -264,50 +255,55 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 			p.app.HideModal()
 		},
 	)
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(p.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
-// latestGrantedProject returns the project name of the account's latest
-// session when that project is still granted to the account, or "" otherwise.
-// Resolution errors degrade to "", matching the detail panel's passive reads.
-func latestGrantedProject(svc *service.Service, a *model.Account) string {
-	sessions, err := svc.AccountSessions(a.UserEmail(), a.ProviderName())
-	if err != nil {
-		return ""
+// latestSessionProjects returns the latest session's project name per account.
+// sessions must be ordered by ID ascending.
+func latestSessionProjects(sessions []*model.Session) map[model.AccountKey]string {
+	latest := make(map[model.AccountKey]string, len(sessions))
+	for _, s := range sessions {
+		latest[s.AccountKey()] = s.ProjectName()
 	}
-	projectName := latestSessionProjectName(sessions)
-	if projectName == "" {
-		return ""
-	}
-	projects, err := svc.AccountProjects(a.UserEmail(), a.ProviderName())
-	if err != nil {
-		return ""
-	}
-	if slices.ContainsFunc(projects, func(p *model.Project) bool {
-		return p.Name() == projectName
-	}) {
-		return projectName
-	}
-	return ""
+	return latest
 }
 
-// pauseStatusText is the single, shared rendering of an account's pause
-// status: "" if until is the zero value (never paused); otherwise
-// formatPauseUntil's text, coloured red while still in the future (not
-// yet available) or green once past (available again). Converts until
-// and now to local time before comparing or formatting: PauseUntil is
-// stored in UTC (see model.ParseTime) so it survives persistence
-// correctly, but the same-day / different-day split and the day count
-// must follow the operator's own calendar, that's what they're actually
-// looking at, not UTC's. Every place pause status is shown calls this,
-// so they cannot drift from each other, or from this rule.
+// latestGrantedProject returns the latest session's project for key when that
+// project is still granted to the account, or "" otherwise.
+func latestGrantedProject(latest map[model.AccountKey]string, granted map[model.AccountKey]map[string]struct{}, key model.AccountKey) string {
+	name := latest[key]
+	if name == "" {
+		return ""
+	}
+	if _, ok := granted[key][name]; !ok {
+		return ""
+	}
+	return name
+}
+
+// grantedProjectNames returns the granted project names per account.
+func grantedProjectNames(svc *service.Service, accounts []*model.Account) map[model.AccountKey]map[string]struct{} {
+	granted := make(map[model.AccountKey]map[string]struct{}, len(accounts))
+	for _, a := range accounts {
+		projects, err := svc.AccountProjects(a.UserEmail(), a.ProviderName())
+		if err != nil {
+			continue
+		}
+		set := make(map[string]struct{}, len(projects))
+		for _, p := range projects {
+			set[p.Name()] = struct{}{}
+		}
+		granted[a.Key()] = set
+	}
+	return granted
+}
+
+// pauseStatusText renders an account's pause status in local time: "" for a
+// zero time, otherwise the formatted pause time coloured red while paused and
+// green once available.
 func pauseStatusText(until, now time.Time) string {
 	if until.IsZero() {
 		return ""
@@ -319,17 +315,9 @@ func pauseStatusText(until, now time.Time) string {
 	return fmt.Sprintf("[red]%s[-]", timeStr)
 }
 
-// formatPauseUntil formats a PauseUntil timestamp for display, relative
-// to now, and reports whether it has already passed. Same-day times show
-// as "HH:MM"; other days as "HH:MM ±N", where N is the number of
-// calendar days between the two dates, not a rounded 24-hour count, so a
-// same-day comparison near midnight, or a day count spanning a DST
-// change, isn't thrown off by either. now is a parameter, not an
-// internal time.Now() call, so the comparison is deterministic — see
-// TestFormatPauseUntil. Callers needing the same-day split and day count
-// to follow the operator's own calendar rather than whatever zone t and
-// now happen to carry must convert to local time first — see
-// pauseStatusText, the one production caller, which does this.
+// formatPauseUntil formats t relative to now and reports whether it has
+// passed. Same-day times render as "HH:MM"; other days add a signed calendar
+// day offset. Callers must pass local times.
 func formatPauseUntil(t, now time.Time) (string, bool) {
 	isPast := t.Before(now)
 	ty, tm, td := t.Date()
@@ -343,15 +331,10 @@ func formatPauseUntil(t, now time.Time) (string, bool) {
 	return fmt.Sprintf("%s %+d", t.Format("15:04"), days), isPast
 }
 
-// sortAccountsByAvailability sorts accounts by PauseUntil ascending: never
-// paused (zero value) or already past always sorts before any future
-// pause, and accounts stay ordered by that same value throughout — not
-// just grouped at the available/paused boundary, which previously left
-// available accounts in whatever order Accounts() happened to hand them
-// instead of by time. Ties (e.g. two never-paused accounts) keep their
-// incoming order via the stable sort.
+// sortAccountsByAvailability orders accounts by PauseUntil ascending, keeping
+// incoming order for ties.
 func sortAccountsByAvailability(accounts []*model.Account) {
-	sort.SliceStable(accounts, func(i, j int) bool {
-		return accounts[i].PauseUntil().Before(accounts[j].PauseUntil())
+	slices.SortStableFunc(accounts, func(a, b *model.Account) int {
+		return a.PauseUntil().Compare(b.PauseUntil())
 	})
 }

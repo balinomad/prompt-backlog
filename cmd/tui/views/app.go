@@ -3,6 +3,7 @@ package views
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/balinomad/llm-desk/internal/service"
 
@@ -14,6 +15,11 @@ import (
 // Callers can distinguish this from a domain/validation error (fn's own
 // error, registry unchanged) via errors.Is(err, ErrSaveFailed).
 var ErrSaveFailed = errors.New("save failed")
+
+// setErrorStatus displays err in the status bar using the shared error style.
+func setErrorStatus(app App, err error) {
+	app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+}
 
 // App is the interface that all views use to interact with the host application.
 // The concrete implementation lives in cmd/tui/app.go.
@@ -65,16 +71,11 @@ type App interface {
 	SwitchToMain()
 
 	// SetStatus displays msg in the status bar. An empty string clears it.
-	// Callers may include tview color tags (e.g. "[red]error[-]").
+	// Callers may include tview colour tags (e.g. "[red]error[-]").
 	SetStatus(msg string)
 
-	// SetHints replaces the keyboard-hint lines in the status bar: specific
-	// is the upper, context-specific line; common is the lower line for
-	// roles that repeat across contexts with the same general meaning
-	// regardless of the exact key (edit, delete, help, quit, focus,
-	// cancel/close). Views call this in their focus handler. Use the
-	// pre-defined Hints*Specific/Hints*Common constant pairs from
-	// statusbar.go.
+	// SetHints replaces the keyboard-hint lines in the status bar. Use the
+	// pre-defined Hints*Specific/Hints*Common pairs from statusbar.go.
 	SetHints(specific, common string)
 
 	// Quit stops the application. Called by the quit confirmation modal after

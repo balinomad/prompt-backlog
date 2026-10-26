@@ -5,11 +5,8 @@ import (
 )
 
 // ── Context hint strings ──────────────────────────────────────────────────────
-// Pre-defined hint lines for each focus context, split in two: Specific is
-// the upper row of item actions for the focused list or modal; Common is the
-// lower row of navigation, escape, help, and quit hints. Views pass both to
-// app.SetHints in their focus handlers. Key names are bold via tview color
-// tags.
+// Pre-defined hint lines for each focus context: Specific is the upper action
+// row; Common is the lower navigation/help/quit row.
 
 var (
 	// Canonical hint fragments. Reuse these so repeated actions keep the

@@ -33,10 +33,7 @@ func TestDetailPanel_FocusFunc_SetsHints(t *testing.T) {
 
 	list.Focus(func(tview.Primitive) {})
 
-	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
-		t.Errorf("hints after focus: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-	}
+	assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 }
 
 // ── SetAccount / Refresh ──────────────────────────────────────────────────────
@@ -202,10 +199,7 @@ func TestDetailPanel_Keys_ShowModal(t *testing.T) {
 					t.Errorf("key %q: expected *tview.List, got %T", tc.name, app.modal)
 				}
 			}
-			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
-				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
-					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
-			}
+			assertHints(t, app, tc.wantSpecific, tc.wantCommon)
 		})
 	}
 }
@@ -405,10 +399,7 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 			wantCount := len(sessionsBefore)
 
 			list.GetInputCapture()(specialKey(views.KeyDelete))
-			confirmModal, ok := app.modal.(*tview.Modal)
-			if !ok {
-				t.Fatalf("expected *tview.Modal, got %T", app.modal)
-			}
+			confirmModal := confirmModalFrom(t, app.modal)
 			capture := confirmModal.GetInputCapture()
 			if capture == nil {
 				t.Fatal("expected non-nil input capture")
@@ -418,10 +409,7 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 			if app.modal != nil {
 				t.Error("expected modal to be hidden after cancelling")
 			}
-			if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
-				t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
-					app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-			}
+			assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 			sessionsAfter, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
 			must(t, err)
 			if len(sessionsAfter) != wantCount {
@@ -431,11 +419,8 @@ func TestDetailPanel_DeleteSession_Cancel(t *testing.T) {
 	}
 }
 
-// TestDetailPanel_Toggle_Continue also subsumes the old, unexported
-// toggleContinuePrompt's direct-call table: the three cases below are the
-// same three transformations (empty->append, pending->remove,
-// non-continue-tail->append), verified through the committed session
-// queue instead of the pure function's return value.
+// TestDetailPanel_Toggle_Continue covers the three queue transformations
+// through the committed session queue.
 func TestDetailPanel_Toggle_Continue(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -550,10 +535,7 @@ func TestDetailPanel_NewSession_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-	}
+	assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
 	must(t, err)
 	var found bool
@@ -587,10 +569,7 @@ func TestDetailPanel_EditSession_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-	}
+	assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 	sessions, err := app.svc.AccountSessions(acc.UserEmail(), acc.ProviderName())
 	must(t, err)
 	if sessions[0].Topic() != "Renamed topic" {
@@ -622,26 +601,13 @@ func TestDetailPanel_Queue_CloseReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after closing the queue editor")
 	}
-	if app.hintsSpecific != views.HintsDetailPanelSpecific || app.hintsCommon != views.HintsDetailPanelCommon {
-		t.Errorf("hints after close: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
-	}
+	assertHints(t, app, views.HintsDetailPanelSpecific, views.HintsDetailPanelCommon)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// TestDetailPanel_SessionRowText replaces the old direct calls to the
-// unexported sessionItemText and isContinuePending: it builds a real
-// session per case through a registry, sets it on a DetailPanel, and
-// reads the rendered row back via the sessions list's exported
-// GetItemText. Folds in the old isContinuePending cases (marker
-// presence) alongside the old sessionItemText cases (topic, project,
-// queue count, escaping) — both concerns render into the same row, and
-// building a session per case already covers what either would need
-// separately. TestTruncate has no equivalent here: sessionItemText pads
-// its result into a fixed-width column before this test ever sees it, so
-// the exact rune-boundary case isn't recoverable from the rendered
-// string — dropped rather than tested imprecisely.
+// TestDetailPanel_SessionRowText verifies the rendered session row: topic,
+// project, queue count, escaping, and the pending marker.
 func TestDetailPanel_SessionRowText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

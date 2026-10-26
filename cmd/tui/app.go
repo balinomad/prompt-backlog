@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -20,11 +21,10 @@ import (
 const AppName = "llm-desk"
 
 // pauseStatusRefreshInterval is how often the accounts list re-evaluates
-// each account's pause-time display and colour against the current time,
-// independent of any user-triggered mutation. Without this, an account's
-// red/green status stays frozen at whatever was true when the list was
-// last rebuilt.
+// pause-time status so an account's colour flips without a mutation.
 const pauseStatusRefreshInterval = time.Minute
+
+const numericKeypadMode = "\x1b>"
 
 const (
 	// statusBarHeight is the fixed outer height reserved below the content.
@@ -72,11 +72,8 @@ func New(svc *service.Service) (*App, error) {
 	return a, nil
 }
 
-// Run starts the tview event loop. It blocks until the application stops.
-// A background ticker re-evaluates the accounts list's pause-time status
-// every pauseStatusRefreshInterval, so a paused account's colour flips to
-// available without the operator having to trigger a mutation first; see
-// pauseStatusRefreshInterval's doc comment.
+// Run starts the tview event loop and blocks until the application stops. A
+// background ticker refreshes pause-time status.
 func (a *App) Run() error {
 	ticker := time.NewTicker(pauseStatusRefreshInterval)
 	done := make(chan struct{})
@@ -98,7 +95,7 @@ func (a *App) Run() error {
 			if !ok {
 				return
 			}
-			if _, err := tty.Write([]byte("\x1b>")); err != nil {
+			if _, err := tty.Write([]byte(numericKeypadMode)); err != nil {
 				a.statusBar.SetMessage(fmt.Sprintf("[red]numeric keypad: %v[-]", err))
 			}
 		})
@@ -161,25 +158,10 @@ func (a *App) Mutate(fn func(*service.Service) error) error {
 
 // ShowModal displays p as a centred transparent overlay. The currently focused
 // primitive is saved so HideModal can restore it.
-// Returns an error if p is nil, including a non-nil interface wrapping a nil
-// pointer of type *tview.Modal, *tview.Flex, or *tview.List, which a plain
-// p == nil check would miss.
+// Returns an error if p is nil, including a non-nil interface wrapping a typed
+// nil pointer.
 func (a *App) ShowModal(p tview.Primitive) error {
-	// Closed set of the concrete types passed to ShowModal. Keep one type per
-	// case: a multi-type case leaves v as tview.Primitive, so v == nil would
-	// miss a typed nil.
-	var isNil bool
-	switch v := p.(type) {
-	case nil:
-		isNil = true
-	case *tview.Modal:
-		isNil = v == nil
-	case *tview.Flex:
-		isNil = v == nil
-	case *tview.List:
-		isNil = v == nil
-	}
-	if isNil {
+	if isNilPrimitive(p) {
 		return fmt.Errorf("show modal: primitive %w", apperr.ErrNil)
 	}
 
@@ -187,6 +169,21 @@ func (a *App) ShowModal(p tview.Primitive) error {
 	a.pages.AddPage("modal", p, true, true)
 	a.tv.SetFocus(p)
 	return nil
+}
+
+// isNilPrimitive reports whether p is nil, including a non-nil interface
+// wrapping a typed nil pointer.
+func isNilPrimitive(p tview.Primitive) bool {
+	if p == nil {
+		return true
+	}
+	v := reflect.ValueOf(p)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // HideModal removes the modal overlay and restores focus to the primitive
@@ -206,9 +203,7 @@ func (a *App) SetFocus(p tview.Primitive) {
 
 // SwitchToProviders refreshes and shows the providers management screen.
 func (a *App) SwitchToProviders() {
-	a.providers.Refresh()
-	a.pages.SwitchToPage("providers")
-	a.tv.SetFocus(a.providers)
+	a.switchTo("providers", a.providers.Refresh, a.providers)
 }
 
 // SwitchToMain shows the main accounts, sessions, and account-info screen
@@ -220,9 +215,13 @@ func (a *App) SwitchToMain() {
 
 // SwitchToProjects refreshes and shows the projects management screen.
 func (a *App) SwitchToProjects() {
-	a.projects.Refresh()
-	a.pages.SwitchToPage("projects")
-	a.tv.SetFocus(a.projects)
+	a.switchTo("projects", a.projects.Refresh, a.projects)
+}
+
+func (a *App) switchTo(page string, refresh func(), focus tview.Primitive) {
+	refresh()
+	a.pages.SwitchToPage(page)
+	a.tv.SetFocus(focus)
 }
 
 // SetStatus displays msg in the right section of the status bar.

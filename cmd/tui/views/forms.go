@@ -20,6 +20,10 @@ const (
 	formPauseWidth = 20
 	// formMaxWidth caps dynamic width at the former fixed modal width.
 	formMaxWidth = 64
+	// formChromeHeight is the border plus default vertical padding.
+	formChromeHeight = 4
+	// formButtonPadding is the horizontal padding around a button label.
+	formButtonPadding = 5
 )
 
 // newForm returns a bordered form with a spaced title.
@@ -62,7 +66,7 @@ func (l *centeredFormLabel) GetFieldWidth() int {
 // border, and the form's default vertical padding. Each item contributes its
 // field height plus the default one-row padding.
 func formHeight(form *tview.Form) int {
-	height := 4 // Border and default vertical padding.
+	height := formChromeHeight
 	for i := range form.GetFormItemCount() {
 		itemHeight := form.GetFormItem(i).GetFieldHeight()
 		if itemHeight <= 0 {
@@ -90,7 +94,7 @@ func formWidth(form *tview.Form) int {
 
 	buttonsWidth := 0
 	for i := range form.GetButtonCount() {
-		buttonsWidth += tview.TaggedStringWidth(form.GetButton(i).GetLabel()) + 4 + 1
+		buttonsWidth += tview.TaggedStringWidth(form.GetButton(i).GetLabel()) + formButtonPadding
 	}
 	if buttonsWidth > 0 {
 		buttonsWidth--
@@ -102,6 +106,17 @@ func formWidth(form *tview.Form) int {
 // formModal centers form at its content width and height.
 func formModal(form *tview.Form) tview.Primitive {
 	return centeredModal(form, min(formWidth(form), formMaxWidth), formHeight(form))
+}
+
+// finishForm adds the shared Save/Cancel controls and returns the centred
+// modal wrapper.
+func finishForm(form *tview.Form, save, onClose func()) tview.Primitive {
+	form.AddButton("Save", save)
+	form.AddButton("Cancel", onClose)
+	form.SetButtonsAlign(tview.AlignCenter)
+	form.SetCancelFunc(onClose)
+	addCtrlS(form, save)
+	return formModal(form)
 }
 
 // addCtrlS adds Ctrl+S as an additional save trigger to a form.
@@ -118,7 +133,7 @@ func addCtrlS(form *tview.Form, save func()) {
 
 // escapeAll returns a copy of names with each entry passed through
 // tview.Escape, for display in list-like widgets (dropdown options, list
-// items) without free text being read as a color or region tag. Callers
+// items) without free text being read as a colour or region tag. Callers
 // that also read a selection back must index into the original,
 // unescaped slice — never re-parse the string a DropDown returns, since
 // it reflects the escaped copy, not the source value.
@@ -133,12 +148,8 @@ func escapeAll(names []string) []string {
 // ── Session form ──────────────────────────────────────────────────────────────
 
 // NewSessionForm returns a form for creating or editing a session under
-// account. Account is a structural prerequisite of Session — AddSession
-// requires a live account — so the form always receives one directly
-// rather than resolving it itself; the caller (DetailPanel) already holds
-// it, and it is never created here. When session is nil a new session is
-// created; otherwise the session is edited. Queue editing is out of scope
-// for this form — see NewQueueEditor.
+// account. When session is nil a new session is created; otherwise it is
+// edited. Queue editing is handled by NewQueueEditor.
 func NewSessionForm(app App, account *model.Account, session *model.Session, onClose func()) tview.Primitive {
 	if account == nil {
 		return errorModal("No account selected.", onClose)
@@ -185,16 +196,16 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 
 		if isEdit {
 			id := session.ID()
-			// Sanctioned multi-call batch: this edit touches two fields on
-			// the same aggregate, committed as one save (Service.Save's
-			// docstring permits this explicitly).
+			// Update the project first: if it fails, the topic remains
+			// unchanged. The topic update cannot fail after a successful
+			// project update in the single-threaded service.
 			if err := app.Mutate(func(s *service.Service) error {
-				if err := s.UpdateSessionTopic(email, provider, id, topicVal); err != nil {
+				if err := s.UpdateSessionProject(email, provider, id, projectName); err != nil {
 					return err
 				}
-				return s.UpdateSessionProject(email, provider, id, projectName)
+				return s.UpdateSessionTopic(email, provider, id, topicVal)
 			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 		} else {
@@ -204,20 +215,14 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 				_, err := s.StartSession(email, "", provider, projectName, topicVal, nil)
 				return err
 			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 		}
 		onClose()
 	}
 
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return formModal(form)
+	return finishForm(form, save, onClose)
 }
 
 // sessionFormProjectNames returns NewSessionForm's Project dropdown
@@ -261,12 +266,9 @@ func sessionFormInitial(session *model.Session, projectNames []string) (string, 
 
 // ── Project form ──────────────────────────────────────────────────────────────
 
-// NewProjectForm returns a form for creating or editing a project. Project
-// has no structural prerequisites, so the form touches no other
-// aggregate: no account or session parameter, and creation never grants
-// the project to anything — granting is a separate action, see
-// NewGrantForm. When project is nil a new project is created; otherwise
-// the project is edited.
+// NewProjectForm returns a form for creating or editing a project. When
+// project is nil a new project is created; otherwise it is edited. Granting
+// is a separate action, see NewGrantForm.
 func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primitive {
 	isEdit := project != nil
 
@@ -309,7 +311,7 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 			if err := app.Mutate(func(s *service.Service) error {
 				return s.UpdateProject(name, descVal, instrVal)
 			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 		} else {
@@ -321,26 +323,20 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 			nameVal := strings.TrimSpace(nameField.GetText())
 
 			if err := app.Service().ValidateProject(nameVal, descVal, instrVal); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 			if err := app.Mutate(func(s *service.Service) error {
 				return s.AddProject(nameVal, descVal, instrVal)
 			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 		}
 		onClose()
 	}
 
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return formModal(form)
+	return finishForm(form, save, onClose)
 }
 
 // ── Provider form ─────────────────────────────────────────────────────────────
@@ -397,7 +393,7 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 			if err := app.Mutate(func(s *service.Service) error {
 				return s.UpdateProvider(name, hasProjects, hasDeepResearch)
 			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 		} else {
@@ -409,41 +405,29 @@ func NewProviderForm(app App, provider *model.Provider, onClose func()) tview.Pr
 			nameVal := strings.TrimSpace(nameField.GetText())
 
 			if err := app.Service().ValidateProvider(nameVal, hasProjects, hasDeepResearch); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 			if err := app.Mutate(func(s *service.Service) error {
 				return s.AddProvider(nameVal, hasProjects, hasDeepResearch)
 			}); err != nil {
-				app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(app, err)
 				return
 			}
 		}
 		onClose()
 	}
 
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return formModal(form)
+	return finishForm(form, save, onClose)
 
 }
 
 // ── Account form ──────────────────────────────────────────────────────────────
 
-// NewAccountForm returns a form for creating or editing an account. User is
-// a structural prerequisite of Account — AddAccount requires a live user —
-// so create mode resolves or creates the user on demand via
-// Service.CreateAccount, the strict-account counterpart to StartSession's
-// on-demand path. Edit mode changes only the account's own mutable field
-// (pause state); the Account… button opens the existing user form for the
-// underlying user's name. Provider is a required precondition but is never
-// created implicitly: if none exist, an error modal is returned instead of
-// an empty dropdown. When account is nil a new account is created;
-// otherwise it is edited.
+// NewAccountForm returns a form for creating or editing an account. Create
+// mode resolves or creates the user on demand. Edit mode changes the pause
+// state; the Account… button opens the user rename form. Providers must
+// already exist.
 func NewAccountForm(app App, account *model.Account, onClose func()) tview.Primitive {
 	if account != nil {
 		return accountEditForm(app, account, onClose)
@@ -476,10 +460,8 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 
 	pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
 	if !ok {
-		// We just added the field, so this should theoretically never happen.
 		return errorModal("Internal error: failed to initialize form fields.", onClose)
 	}
-	pauseField.SetPlaceholder(model.TimeFormat + "  (leave empty to clear)")
 	pauseField.SetPlaceholder(model.FormatTime(time.Now()) + "  (leave empty to clear)")
 	pauseField.SetPlaceholderStyle(tcell.StyleDefault.
 		Background(tview.Styles.ContrastBackgroundColor).
@@ -507,7 +489,7 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 		if err := app.Mutate(func(s *service.Service) error {
 			return s.PauseAccount(email, provider, until)
 		}); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			setErrorStatus(app, err)
 			return
 		}
 		onClose()
@@ -519,7 +501,7 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 		app.HideModal()
 		modal := NewUserForm(app, account, onClose)
 		if err := app.ShowModal(modal); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			setErrorStatus(app, err)
 			app.SetHints(HintsAccountsPanelSpecific, HintsAccountsPanelCommon)
 			return
 		}
@@ -532,10 +514,9 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 	return formModal(form)
 }
 
-// accountCreateForm builds the create-mode account form. Provider
-// non-emptiness is the caller's (NewAccountForm's) responsibility, not
-// checked here. Save reads the selected user from existingUsers, not
-// the (disabled) field text, to avoid display/save drift.
+// accountCreateForm builds the create-mode account form. The caller ensures
+// at least one provider exists. Save reads the selected user from
+// existingUsers, not the disabled field text.
 func accountCreateForm(app App, onClose func()) tview.Primitive {
 	providers := app.Service().Providers() // already sorted by name; non-empty, checked by caller
 	providerNames := make([]string, len(providers))
@@ -608,34 +589,26 @@ func accountCreateForm(app App, onClose func()) tview.Primitive {
 		}
 
 		if err := app.Service().ValidateAccount(emailVal, providerVal); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			setErrorStatus(app, err)
 			return
 		}
 		if err := app.Mutate(func(s *service.Service) error {
 			_, err := s.CreateAccount(emailVal, nameVal, providerVal)
 			return err
 		}); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			setErrorStatus(app, err)
 			return
 		}
 		onClose()
 	}
 
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return formModal(form)
+	return finishForm(form, save, onClose)
 }
 
 // ── User form ─────────────────────────────────────────────────────────────────
 
-// NewUserForm returns a form for renaming the user backing account. Email
-// is User's immutable natural key; only Name is editable. This is User's
-// own edit path — see NewAccountForm's doc comment for why accountEditForm
-// does not touch it.
+// NewUserForm returns a form for renaming the user backing account. Email is
+// immutable; only Name is editable.
 func NewUserForm(app App, account *model.Account, onClose func()) tview.Primitive {
 	if account == nil {
 		return errorModal("No account selected.", onClose)
@@ -668,30 +641,20 @@ func NewUserForm(app App, account *model.Account, onClose func()) tview.Primitiv
 		if err := app.Mutate(func(s *service.Service) error {
 			return s.UpdateUser(email, nameVal)
 		}); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			setErrorStatus(app, err)
 			return
 		}
 		onClose()
 	}
 
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return formModal(form)
+	return finishForm(form, save, onClose)
 }
 
 // ── Grant form ───────────────────────────────────────────────────────────────
 
-// NewGrantForm returns a form for granting project's access to an account.
-// The picker lists only accounts whose provider supports projects and that do
-// not already have access. This is not an entity-creation form: both project
-// and account already exist; it manages the many-to-many link between them,
-// which is why it legitimately references both aggregates by name
-// (AddProjectToAccount is itself keyed on both sides of an existing pair,
-// unlike a create-form composing an on-demand prerequisite).
+// NewGrantForm returns a form for granting project access to an account. The
+// picker lists accounts whose provider supports projects and that do not
+// already have access.
 func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primitive {
 	if project == nil {
 		return errorModal("No project selected.", onClose)
@@ -699,7 +662,7 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 
 	accounts, err := grantCandidates(app.Service(), project)
 	if err != nil {
-		return errorModal(fmt.Sprintf("Could not load project accounts: %v", err), onClose)
+		return errorModal(fmt.Sprintf("Could not load accounts: %v", err), onClose)
 	}
 	if len(accounts) == 0 {
 		return errorModal("No eligible accounts are available to grant.\nAccounts must support projects and not already have access.", onClose)
@@ -733,19 +696,13 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 		if err := app.Mutate(func(s *service.Service) error {
 			return s.GrantProject(email, acctProvider, name)
 		}); err != nil {
-			app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+			setErrorStatus(app, err)
 			return
 		}
 		onClose()
 	}
 
-	form.AddButton("Save", save)
-	form.AddButton("Cancel", onClose)
-	form.SetButtonsAlign(tview.AlignCenter)
-	form.SetCancelFunc(onClose)
-	addCtrlS(form, save)
-
-	return formModal(form)
+	return finishForm(form, save, onClose)
 }
 
 // grantCandidates returns the accounts eligible for a new grant to project:
@@ -754,7 +711,7 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 func grantCandidates(svc *service.Service, project *model.Project) ([]*model.Account, error) {
 	granted, err := svc.ProjectAccounts(project.Name())
 	if err != nil {
-		return nil, fmt.Errorf("load project accounts: %w", err)
+		return nil, fmt.Errorf("project accounts: %w", err)
 	}
 	grantedKeys := make(map[model.AccountKey]struct{}, len(granted))
 	for _, acc := range granted {

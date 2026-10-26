@@ -12,6 +12,8 @@ import (
 	"github.com/balinomad/llm-desk/internal/store/json"
 )
 
+const jsonExt = ".json"
+
 func main() {
 	var dataPath string
 	flag.StringVar(&dataPath, "data", "", "path to the data `file` (.json)")
@@ -26,26 +28,28 @@ func main() {
 
 	s, err := openStore(dataPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
-		os.Exit(1)
+		fatal(err)
 	}
 
 	svc, err := service.New(s)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
-		os.Exit(1)
+		fatal(err)
 	}
 
 	app, err := New(svc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
-		os.Exit(1)
+		fatal(err)
 	}
 
 	if err := app.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
-		os.Exit(1)
+		fatal(err)
 	}
+}
+
+// fatal reports err and terminates the process.
+func fatal(err error) {
+	fmt.Fprintf(os.Stderr, "%s: %v\n", AppName, err)
+	os.Exit(1)
 }
 
 // openStore returns a Store implementation for the given data file path.
@@ -54,7 +58,7 @@ func main() {
 func openStore(path string) (store.Store, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
-	case ".json":
+	case jsonExt:
 		return json.New(path), nil
 	default:
 		return nil, fmt.Errorf("unsupported data file format %q", ext)

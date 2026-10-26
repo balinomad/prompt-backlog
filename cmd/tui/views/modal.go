@@ -1,7 +1,6 @@
 package views
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -9,6 +8,16 @@ import (
 )
 
 // ── Confirm modal ─────────────────────────────────────────────────────────────
+
+// showModal displays modal and sets the matching hint lines. A ShowModal
+// failure is reported in the status bar.
+func showModal(app App, modal tview.Primitive, specific, common string) {
+	if err := app.ShowModal(modal); err != nil {
+		setErrorStatus(app, err)
+		return
+	}
+	app.SetHints(specific, common)
+}
 
 // NewConfirmModal returns a centered confirmation dialog with Cancel and
 // Confirm buttons. Cancel is focused by default to prevent accidental
@@ -57,11 +66,7 @@ func confirmQuit(app App, returnSpecific, returnCommon string) {
 			app.HideModal()
 		},
 	)
-	if err := app.ShowModal(modal); err != nil {
-		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return
-	}
-	app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 }
 
 // ── Help overlay ──────────────────────────────────────────────────────────────
@@ -111,11 +116,7 @@ func showHelp(app App, returnSpecific, returnCommon string) {
 		app.SetHints(returnSpecific, returnCommon)
 		app.HideModal()
 	}
-	if err := app.ShowModal(NewHelpOverlay(onClose)); err != nil {
-		app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return
-	}
-	app.SetHints(HintsHelpOverlaySpecific, HintsHelpOverlayCommon)
+	showModal(app, NewHelpOverlay(onClose), HintsHelpOverlaySpecific, HintsHelpOverlayCommon)
 }
 
 // errorModal returns a simple message modal for conditions where a form

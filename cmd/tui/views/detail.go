@@ -11,8 +11,13 @@ import (
 	"github.com/rivo/tview"
 )
 
-// projectColumnWidth caps project names in the sessions list and account rows.
-const projectColumnWidth = 14
+// Column widths for the sessions list.
+const (
+	projectColumnWidth = 14
+	topicColumnWidth   = 26
+	topicFieldWidth    = 28
+	projectFieldWidth  = 16
+)
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
@@ -125,8 +130,6 @@ func (p *DetailPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	case KeyDelete:
 		return p.handleDelete()
 	default:
-		// Every other special key falls through to dispatchPanelKey and
-		// the rune switch below.
 	}
 
 	if result, ok := dispatchPanelKey(event, p.app, HintsDetailPanelSpecific, HintsDetailPanelCommon); ok {
@@ -150,11 +153,7 @@ func (p *DetailPanel) handleNew() *tcell.EventKey {
 		p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -167,11 +166,7 @@ func (p *DetailPanel) handleEdit() *tcell.EventKey {
 		p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -193,7 +188,7 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 			if err := p.app.Mutate(func(svc *service.Service) error {
 				return svc.EndSession(email, provider, id)
 			}); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(p.app, err)
 			}
 			p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 			p.app.HideModal()
@@ -203,11 +198,7 @@ func (p *DetailPanel) handleDelete() *tcell.EventKey {
 			p.app.HideModal()
 		},
 	)
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(p.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -220,11 +211,7 @@ func (p *DetailPanel) handleQueue() *tcell.EventKey {
 		p.app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsQueueEditorSpecific, HintsQueueEditorCommon)
+	showModal(p.app, modal, HintsQueueEditorSpecific, HintsQueueEditorCommon)
 	return nil
 }
 
@@ -240,7 +227,7 @@ func (p *DetailPanel) handleToggle() *tcell.EventKey {
 	if err := p.app.Mutate(func(svc *service.Service) error {
 		return svc.UpdateSessionPrompts(email, provider, id, queue)
 	}); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		setErrorStatus(p.app, err)
 	}
 	return nil
 }
@@ -405,14 +392,13 @@ func fitInfoHeight(required, available, minOtherHeight int) int {
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
 // sessionItemText formats a session row for the list: topic, project, and
-// queue length. A pending trailing "continue" prompt — the queue-based
-// equivalent of the old mid-answer flag — is highlighted in yellow.
+// queue length. A pending trailing "continue" prompt is highlighted in yellow.
 func sessionItemText(s *model.Session) string {
-	topic := tview.Escape(truncate(s.Topic(), 26))
+	topic := tview.Escape(truncateWidth(s.Topic(), topicColumnWidth))
 	if topic == "" {
 		topic = dimText("(untitled)")
 	}
-	proj := tview.Escape(truncate(s.ProjectName(), projectColumnWidth))
+	proj := tview.Escape(truncateWidth(s.ProjectName(), projectColumnWidth))
 	if proj == "" {
 		proj = dimText("—")
 	}
@@ -421,39 +407,30 @@ func sessionItemText(s *model.Session) string {
 	if isContinuePending(queue) {
 		info = fmt.Sprintf("[yellow]%s ↻[-]", info)
 	}
-	return insetListRow(fmt.Sprintf("%-28s  %-16s  %s", topic, proj, info))
+	return insetListRow(padWidth(topic, topicFieldWidth) + "  " + padWidth(proj, projectFieldWidth) + "  " + info)
 }
 
-// isContinuePending reports whether queue's final entry is the "continue"
-// convenience prompt toggled by KeyToggle.
+// continuePrompt is the canonical trailing prompt toggled by KeyToggle.
+var continuePrompt = model.NewPrompt("continue", false)
+
+// isContinuePending reports whether queue's final entry is continuePrompt.
 func isContinuePending(queue []model.Prompt) bool {
 	if len(queue) == 0 {
 		return false
 	}
-	return queue[len(queue)-1] == model.NewPrompt("continue", false)
+	return queue[len(queue)-1] == continuePrompt
 }
 
-// toggleContinuePrompt returns queue with a trailing "continue" prompt
-// appended, or removed if already present. Prompt is comparable via == —
-// see model.TestPrompt_Comparable — so equality here is exact-field, not
-// pointer, comparison.
+// toggleContinuePrompt returns queue with continuePrompt appended, or removed
+// if already present.
 func toggleContinuePrompt(queue []model.Prompt) []model.Prompt {
 	if isContinuePending(queue) {
 		return queue[:len(queue)-1]
 	}
-	return append(queue, model.NewPrompt("continue", false))
+	return append(queue, continuePrompt)
 }
 
-// truncate shortens s to maxRunes, appending "…" when truncated.
-func truncate(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	return string(runes[:maxRunes-1]) + "…"
-}
-
-// dimText wraps s in tview's dim color tag.
+// dimText wraps s in tview's dim colour tag.
 func dimText(s string) string {
 	return "[::d]" + s + "[-::-]"
 }

@@ -14,21 +14,18 @@ import (
 
 // ProjectsPanel is a full-screen view for managing projects: creating,
 // editing, deleting, and granting/revoking account access. The operator
-// navigates to it with 'p' and returns to the main view with 'Esc' or 'p'.
-//
-// This screen is the resolution of the TODO.md question about project
-// visibility: all projects are listed here, and the right pane shows the
-// selected project's grants, rather than projects being reachable only
-// through a session's own project list as before.
+// navigates to it with 'p' and returns to the main view with Esc.
 type ProjectsPanel struct {
 	*tview.Flex
-	list        *tview.List
-	accountList *tview.List
-	infoView    *tview.TextView
-	app         App
-	projects    []*model.Project // mirrors list order; rebuilt on Refresh
-	accounts    []*model.Account // mirrors accountList order; granted accounts for selected project
-	refreshing  bool
+	list          *tview.List
+	accountList   *tview.List
+	infoView      *tview.TextView
+	app           App
+	projects      []*model.Project // mirrors list order; rebuilt on Refresh
+	accounts      []*model.Account // mirrors accountList order; granted accounts for selected project
+	providerWidth int
+	nameWidth     int
+	refreshing    bool
 }
 
 // NewProjectsPanel constructs the projects management screen.
@@ -88,6 +85,7 @@ func NewProjectsPanel(app App) *ProjectsPanel {
 func (p *ProjectsPanel) Refresh() {
 	svc := p.app.Service()
 	all := svc.Projects() // already sorted by name
+	p.providerWidth, p.nameWidth = projectAccountWidths(svc)
 
 	var prevName string
 	if proj := p.selectedProject(); proj != nil {
@@ -183,7 +181,7 @@ func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelectio
 		}
 	}
 	sortProjectAccounts(p.app.Service(), accounts)
-	providerWidth, nameWidth := projectAccountWidths(p.app.Service())
+	providerWidth, nameWidth := p.providerWidth, p.nameWidth
 
 	rows := make([][]string, len(accounts))
 	for i, acc := range accounts {
@@ -264,8 +262,6 @@ func (p *ProjectsPanel) handleProjectKey(event *tcell.EventKey) *tcell.EventKey 
 	case KeyDelete:
 		return p.handleDelete()
 	default:
-		// Every other special key falls through to dispatchPanelKey and
-		// the rune switch below.
 	}
 
 	if result, ok := dispatchPanelKey(event, p.app, HintsProjectsPanelSpecific, HintsProjectsPanelCommon); ok {
@@ -290,8 +286,6 @@ func (p *ProjectsPanel) handleAccountKey(event *tcell.EventKey) *tcell.EventKey 
 	case KeyInsert:
 		return p.handleGrant(HintsProjectAccountsSpecific, HintsProjectAccountsCommon)
 	default:
-		// Every other special key falls through to dispatchPanelKey and
-		// the rune switch below.
 	}
 
 	if result, ok := dispatchPanelKey(event, p.app, HintsProjectAccountsSpecific, HintsProjectAccountsCommon); ok {
@@ -306,11 +300,7 @@ func (p *ProjectsPanel) handleNew() *tcell.EventKey {
 		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -323,11 +313,7 @@ func (p *ProjectsPanel) handleEdit() *tcell.EventKey {
 		p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -343,7 +329,7 @@ func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
 			if err := p.app.Mutate(func(s *service.Service) error {
 				return s.DeleteProject(name)
 			}); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(p.app, err)
 			}
 			p.app.SetHints(HintsProjectsPanelSpecific, HintsProjectsPanelCommon)
 			p.app.HideModal()
@@ -353,11 +339,7 @@ func (p *ProjectsPanel) handleDelete() *tcell.EventKey {
 			p.app.HideModal()
 		},
 	)
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(p.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -370,11 +352,7 @@ func (p *ProjectsPanel) handleGrant(specific, common string) *tcell.EventKey {
 		p.app.SetHints(specific, common)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -396,7 +374,7 @@ func (p *ProjectsPanel) handleRevokeSelected() *tcell.EventKey {
 			if err := p.app.Mutate(func(s *service.Service) error {
 				return s.RevokeProject(email, provider, name)
 			}); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(p.app, err)
 			}
 			p.app.SetHints(HintsProjectAccountsSpecific, HintsProjectAccountsCommon)
 			p.app.HideModal()
@@ -406,11 +384,7 @@ func (p *ProjectsPanel) handleRevokeSelected() *tcell.EventKey {
 			p.app.HideModal()
 		},
 	)
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(p.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -461,14 +435,23 @@ func projectAccountWidths(svc *service.Service) (int, int) {
 // user name, using a case-insensitive comparison. Equal pairs keep their
 // incoming order.
 func sortProjectAccounts(svc *service.Service, accounts []*model.Account) {
+	type key struct {
+		provider string
+		user     string
+	}
+	keys := make(map[model.AccountKey]key, len(accounts))
+	for _, acc := range accounts {
+		keys[acc.Key()] = key{
+			provider: strings.ToLower(acc.ProviderName()),
+			user:     strings.ToLower(projectAccountUserName(svc, acc)),
+		}
+	}
 	slices.SortStableFunc(accounts, func(a, b *model.Account) int {
-		if c := strings.Compare(strings.ToLower(a.ProviderName()), strings.ToLower(b.ProviderName())); c != 0 {
+		ka, kb := keys[a.Key()], keys[b.Key()]
+		if c := strings.Compare(ka.provider, kb.provider); c != 0 {
 			return c
 		}
-		return strings.Compare(
-			strings.ToLower(projectAccountUserName(svc, a)),
-			strings.ToLower(projectAccountUserName(svc, b)),
-		)
+		return strings.Compare(ka.user, kb.user)
 	})
 }
 

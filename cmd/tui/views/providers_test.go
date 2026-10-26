@@ -178,10 +178,7 @@ func TestProvidersPanel_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", tc.name)
 			}
-			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
-				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
-					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
-			}
+			assertHints(t, app, tc.wantSpecific, tc.wantCommon)
 		})
 	}
 }
@@ -213,7 +210,7 @@ func TestProvidersPanel_EmptyList_NoModal(t *testing.T) {
 
 // TestProvidersPanel_New_SaveReturnsToPanel closes the loop that
 // TestProvidersPanel_Keys_ShowModal leaves open: that test only checks
-// that pressing 'n' opens a modal with the right hints, not that
+// that pressing Ins opens a modal with the right hints, not that
 // completing the form hands control back to the panel correctly.
 func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
@@ -231,10 +228,7 @@ func TestProvidersPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsProvidersPanelSpecific || app.hintsCommon != views.HintsProvidersPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
-	}
+	assertHints(t, app, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
 	if app.svc.Provider("gemini") == nil {
 		t.Error("provider not created")
 	}
@@ -259,10 +253,7 @@ func TestProvidersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsProvidersPanelSpecific || app.hintsCommon != views.HintsProvidersPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
-	}
+	assertHints(t, app, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
 	if got := app.svc.Provider("chatgpt"); !got.HasProjects() {
 		t.Error("HasProjects() = false, want true")
 	}
@@ -283,30 +274,22 @@ func TestProvidersPanel_Delete_Cancel(t *testing.T) {
 
 	list.GetInputCapture()(specialKey(views.KeyDelete))
 
-	confirmModal, ok := app.modal.(*tview.Modal)
-	if !ok {
-		t.Fatalf("expected *tview.Modal, got %T", app.modal)
-	}
+	confirmModal := confirmModalFrom(t, app.modal)
 	confirmModal.GetInputCapture()(escKey())
 
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hintsSpecific != views.HintsProvidersPanelSpecific || app.hintsCommon != views.HintsProvidersPanelCommon {
-		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
-	}
+	assertHints(t, app, views.HintsProvidersPanelSpecific, views.HintsProvidersPanelCommon)
 	if got := len(app.svc.Providers()); got != before {
 		t.Errorf("provider count changed after cancel: got %d, want %d (unchanged)", got, before)
 	}
 }
 
-// TestProviderItemText replaces the old direct calls to the unexported
-// providerItemText: seeds a single provider through a real registry,
-// refreshes, and reads the rendered row back via the list's exported
-// GetItemText. A provider with no capabilities renders as its name after
-// trimming the row inset; any capability adds a second column.
-func TestProviderItemText(t *testing.T) {
+// TestProvidersPanel_RowText verifies the rendered provider row. A provider
+// with no capabilities renders as its name; any capability adds a second
+// column.
+func TestProvidersPanel_RowText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name            string
@@ -344,7 +327,7 @@ func TestProviderItemText(t *testing.T) {
 	}
 }
 
-func TestProviderItemText_EscapesName(t *testing.T) {
+func TestProvidersPanel_RowText_EscapesName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude[red]", true, false)))
@@ -359,13 +342,8 @@ func TestProviderItemText_EscapesName(t *testing.T) {
 	}
 }
 
-// TestProvidersPanel_InfoPanel_CapabilityDisplay replaces TestBoolTag,
-// which called the unexported boolTag directly and only checked for a
-// non-empty result. This checks the actual rendered Projects/Deep
-// research lines in the info panel show "yes" or "no" per the
-// provider's capabilities — a more precise check than the original's
-// non-emptiness assertion, and the only kind reachable now that boolTag
-// itself isn't callable directly.
+// TestProvidersPanel_InfoPanel_CapabilityDisplay verifies the info panel
+// renders yes or no for each capability.
 func TestProvidersPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

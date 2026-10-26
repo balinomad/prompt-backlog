@@ -202,18 +202,13 @@ func TestQueueEditor_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal to be shown", tc.name)
 			}
-			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
-				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
-					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
-			}
+			assertHints(t, app, tc.wantSpecific, tc.wantCommon)
 		})
 	}
 }
 
-// TestQueueEditor_EmptyQueue_NoModal builds its own minimal fixture rather
-// than reusing newDetailTestApp (detail_test.go, not yet converted — see
-// the standing note on cross-file dependencies during this conversion).
-// Only a single account with one empty-queue session is needed here.
+// TestQueueEditor_EmptyQueue_NoModal builds its own minimal fixture because
+// only a single account with one empty-queue session is needed here.
 func TestQueueEditor_EmptyQueue_NoModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -384,11 +379,8 @@ func TestQueueEditor_Reorder_CommitFailure(t *testing.T) {
 
 // ── New / edit prompt: opens the form ──────────────────────────────────────────
 
-// TestQueueEditor_NewAndEditPrompt_OpensForm replaces the old direct call
-// to the unexported newPromptForm: it drives the same two code paths
-// (KeyInsert, KeyEdit) through the queue editor's own reachable key capture
-// and checks the resulting modal is a centred form (*tview.Flex), not
-// e.g. an error modal.
+// TestQueueEditor_NewAndEditPrompt_OpensForm verifies both keys open a
+// centred prompt form.
 func TestQueueEditor_NewAndEditPrompt_OpensForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -559,10 +551,8 @@ func TestQueueEditor_PromptSave_Failure(t *testing.T) {
 
 // ── promptItemText ──────────────────────────────────────────────────────────────
 
-// TestPromptItemText builds a real session per case and reads the rendered
-// row back via the list's exported GetItemText, rather than calling the
-// unexported promptItemText directly.
-func TestPromptItemText(t *testing.T) {
+// TestQueueEditor_RowText verifies the rendered prompt row.
+func TestQueueEditor_RowText(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name         string
@@ -627,10 +617,7 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 		if _, ok := app.modal.(*tview.List); !ok {
 			t.Fatalf("expected Esc on help to reopen the queue editor (*tview.List), got %T", app.modal)
 		}
-		if app.hintsSpecific != views.HintsQueueEditorSpecific || app.hintsCommon != views.HintsQueueEditorCommon {
-			t.Errorf("hints after reopen: got (%q, %q), want (%q, %q)",
-				app.hintsSpecific, app.hintsCommon, views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon)
-		}
+		assertHints(t, app, views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon)
 	})
 
 	t.Run("quit", func(t *testing.T) {
@@ -643,19 +630,13 @@ func TestQueueEditor_HelpAndQuit_CancelReopensEditor(t *testing.T) {
 		}
 		list.GetInputCapture()(runeKey(views.KeyQuit))
 
-		confirmModal, ok := app.modal.(*tview.Modal)
-		if !ok {
-			t.Fatalf("expected *tview.Modal, got %T", app.modal)
-		}
+		confirmModal := confirmModalFrom(t, app.modal)
 		confirmModal.GetInputCapture()(escKey())
 
 		if _, ok := app.modal.(*tview.List); !ok {
 			t.Fatalf("expected cancelling quit to reopen the queue editor (*tview.List), got %T", app.modal)
 		}
-		if app.hintsSpecific != views.HintsQueueEditorSpecific || app.hintsCommon != views.HintsQueueEditorCommon {
-			t.Errorf("hints after reopen: got (%q, %q), want (%q, %q)",
-				app.hintsSpecific, app.hintsCommon, views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon)
-		}
+		assertHints(t, app, views.HintsQueueEditorSpecific, views.HintsQueueEditorCommon)
 		if app.quitted {
 			t.Error("cancelling quit must not actually quit")
 		}

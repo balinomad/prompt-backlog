@@ -102,10 +102,26 @@ func (m *mockApp) SetHints(specific, common string) {
 func (m *mockApp) Quit()           { m.quitted = true }
 func (m *mockApp) AppName() string { return "llm-desk" }
 
+// assertHints fails when app's current hints differ from the expected pair.
+func assertHints(t *testing.T, app *mockApp, wantSpecific, wantCommon string) {
+	t.Helper()
+	if app.hintsSpecific != wantSpecific || app.hintsCommon != wantCommon {
+		t.Errorf("hints = (%q, %q), want (%q, %q)", app.hintsSpecific, app.hintsCommon, wantSpecific, wantCommon)
+	}
+}
+
+// confirmModalFrom returns the *tview.Modal in p, failing the test otherwise.
+func confirmModalFrom(t *testing.T, p tview.Primitive) *tview.Modal {
+	t.Helper()
+	modal, ok := p.(*tview.Modal)
+	if !ok {
+		t.Fatalf("expected *tview.Modal, got %T", p)
+	}
+	return modal
+}
+
 // newMockApp returns a mock wired with a fully populated registry.
-// Deliberately excludes Sessions: their shape is being redesigned (account-
-// scoped, multiple per account) — adding placeholder session data now would
-// just be guessed and redone when sessions.go/detail.go are rewritten.
+// The fixture excludes sessions; tests that need them build their own.
 //
 //	Providers: "claude" (HasProjects=true), "chatgpt" (HasProjects=false)
 //	Users:     alice@example.com / Alice, bob@example.com / Bob

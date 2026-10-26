@@ -69,6 +69,8 @@ type hint struct {
 	desc  string
 }
 
+const hintLabelColumn = 18
+
 // String renders the hint as inline tview markup.
 func (h hint) String() string {
 	return "[::b]" + h.label + "[-::-] " + h.desc
@@ -78,8 +80,7 @@ func (h hint) String() string {
 // fixed column, then the description. Uses rune length, not byte
 // length, since some labels contain multi-byte characters.
 func (h hint) helpLine() string {
-	const labelColumn = 18
-	pad := max(labelColumn-len([]rune(h.label)), 1)
+	pad := max(hintLabelColumn-len([]rune(h.label)), 1)
 	return "  [::b]" + h.label + "[-::-]" + strings.Repeat(" ", pad) + h.desc
 }
 
@@ -131,7 +132,7 @@ func dispatchPanelKey(event *tcell.EventKey, app App, specific, common string) (
 
 // wirePanelFocus registers list's focus and blur callbacks: onFocus runs
 // first (e.g. status-bar hints), then the border turns yellow while list
-// has focus, reverting to the current default border color on blur.
+// has focus, reverting to the current default border colour on blur.
 // Shared by every focusable list, including both lists in ProjectsPanel.
 // Modals opened via App.ShowModal are out of scope here.
 func wirePanelFocus(list *tview.List, onFocus func()) {

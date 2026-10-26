@@ -268,14 +268,8 @@ func TestProjectsPanel_Revoke_Cancel(t *testing.T) {
 	}
 	capture(specialKey(views.KeyDelete))
 
-	confirmModal, ok := app.modal.(*tview.Modal)
-	if !ok {
-		t.Fatalf("expected *tview.Modal, got %T", app.modal)
-	}
-	if app.hintsSpecific != views.HintsConfirmModalSpecific || app.hintsCommon != views.HintsConfirmModalCommon {
-		t.Errorf("hints after Del: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon)
-	}
+	confirmModal := confirmModalFrom(t, app.modal)
+	assertHints(t, app, views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon)
 
 	confirmCapture := confirmModal.GetInputCapture()
 	if confirmCapture == nil {
@@ -286,10 +280,7 @@ func TestProjectsPanel_Revoke_Cancel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hintsSpecific != views.HintsProjectAccountsSpecific || app.hintsCommon != views.HintsProjectAccountsCommon {
-		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon)
-	}
+	assertHints(t, app, views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon)
 
 	projects, err := app.svc.AccountProjects("alice@example.com", "claude")
 	must(t, err)
@@ -407,10 +398,7 @@ func TestProjectsPanel_ProjectKeys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", tc.name)
 			}
-			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
-				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
-					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
-			}
+			assertHints(t, app, tc.wantSpecific, tc.wantCommon)
 		})
 	}
 }
@@ -443,10 +431,7 @@ func TestProjectsPanel_AccountKeys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal", tc.name)
 			}
-			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
-				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
-					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
-			}
+			assertHints(t, app, tc.wantSpecific, tc.wantCommon)
 		})
 	}
 }
@@ -510,10 +495,7 @@ func TestProjectsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
-	}
+	assertHints(t, app, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	if app.svc.Project("Gamma") == nil {
 		t.Error("project not created")
 	}
@@ -542,10 +524,7 @@ func TestProjectsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
-	}
+	assertHints(t, app, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	if got := app.svc.Project("Alpha").Description(); got != "new desc" {
 		t.Errorf("Description() = %q, want %q", got, "new desc")
 	}
@@ -570,10 +549,7 @@ func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 	}
 	capture(specialKey(views.KeyDelete))
 
-	confirmModal, ok := app.modal.(*tview.Modal)
-	if !ok {
-		t.Fatalf("expected *tview.Modal, got %T", app.modal)
-	}
+	confirmModal := confirmModalFrom(t, app.modal)
 	confirmCapture := confirmModal.GetInputCapture()
 	if confirmCapture == nil {
 		t.Fatal("expected non-nil input capture")
@@ -583,10 +559,7 @@ func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
-		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
-	}
+	assertHints(t, app, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 	if got := len(app.svc.Projects()); got != before {
 		t.Errorf("project count changed after cancel: got %d, want %d (unchanged)", got, before)
 	}
@@ -620,10 +593,7 @@ func TestProjectsPanel_GrantFromAccounts_SaveReturnsToAccountHints(t *testing.T)
 	setDropDown(t, form, "Account", 0) // only eligible candidate: bob|claude
 	triggerSave(t, form)
 
-	if app.hintsSpecific != views.HintsProjectAccountsSpecific || app.hintsCommon != views.HintsProjectAccountsCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon)
-	}
+	assertHints(t, app, views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon)
 	projects, err := app.svc.AccountProjects("bob@example.com", "claude")
 	must(t, err)
 	var found bool
@@ -644,21 +614,15 @@ func TestProjectsPanel_FocusFuncs_SetHints(t *testing.T) {
 	projectList, accountList, _ := projectsPanelParts(t, p)
 
 	projectList.Focus(func(tview.Primitive) {})
-	if app.hintsSpecific != views.HintsProjectsPanelSpecific || app.hintsCommon != views.HintsProjectsPanelCommon {
-		t.Errorf("project focus hints: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
-	}
+	assertHints(t, app, views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 
 	accountList.Focus(func(tview.Primitive) {})
-	if app.hintsSpecific != views.HintsProjectAccountsSpecific || app.hintsCommon != views.HintsProjectAccountsCommon {
-		t.Errorf("account focus hints: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon)
-	}
+	assertHints(t, app, views.HintsProjectAccountsSpecific, views.HintsProjectAccountsCommon)
 }
 
-// TestProjectItemText verifies a project row is its name with the shared
+// TestProjectsPanel_RowText verifies a project row is its name with the shared
 // one-cell inset, including when the project has no granted accounts.
-func TestProjectItemText(t *testing.T) {
+func TestProjectsPanel_RowText(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
@@ -695,7 +659,7 @@ func TestProjectsPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
 	}
 }
 
-func TestProjectItemText_EscapesName(t *testing.T) {
+func TestProjectsPanel_RowText_EscapesName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))

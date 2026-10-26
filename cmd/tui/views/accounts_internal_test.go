@@ -6,18 +6,11 @@ import (
 )
 
 // TestFormatPauseUntil is the one deliberate white-box exception in this
-// otherwise black-box (package views_test) suite: formatPauseUntil takes
-// now as an explicit parameter specifically to keep the same-day /
-// different-day comparison deterministic — see its doc comment.
-// formatPauseUntil is called via pauseStatusText from the Accounts list,
-// which uses real time.Now(), so testing this indirectly would reintroduce
-// exactly the midnight-boundary flakiness the parameter exists to prevent.
+// otherwise black-box suite: formatPauseUntil takes now as a parameter so the
+// same-day and different-day comparison stays deterministic.
 func TestFormatPauseUntil(t *testing.T) {
 	t.Parallel()
-	// A fixed reference instant, not time.Now(): now that formatPauseUntil
-	// takes it as a parameter, hardcoding it here removes any dependency
-	// on wall-clock timing — see formatPauseUntil's doc comment for the
-	// flake this replaces.
+	// A fixed reference instant keeps the test independent of wall-clock time.
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	sameDay := time.Date(2026, 8, 27, 14, 30, 0, 0, time.UTC)
 	nextDay := time.Date(2026, 8, 28, 9, 0, 0, 0, time.UTC)

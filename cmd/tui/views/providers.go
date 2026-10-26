@@ -15,8 +15,7 @@ import (
 const providerListNameWidthCap = 24
 
 // ProvidersPanel is a full-screen view for managing providers.
-// The operator navigates to it with 'r' and returns to the main view with
-// 'Esc' or 'r'.
+// The operator navigates to it with 'r' and returns to the main view with Esc.
 type ProvidersPanel struct {
 	*tview.Flex
 	list       *tview.List
@@ -161,7 +160,7 @@ func (p *ProvidersPanel) renderInfo(prov *model.Provider) {
 func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case KeyCancel:
-		// Esc and 'r' both return to the main screen.
+		// Esc returns to the main screen.
 		p.app.SwitchToMain()
 		return nil
 	case KeyInsert:
@@ -175,8 +174,6 @@ func (p *ProvidersPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		// focus into the list.
 		return nil
 	default:
-		// Every other special key falls through to dispatchPanelKey and
-		// the rune switch below.
 	}
 
 	if result, ok := dispatchPanelKey(event, p.app, HintsProvidersPanelSpecific, HintsProvidersPanelCommon); ok {
@@ -191,11 +188,7 @@ func (p *ProvidersPanel) handleNew() *tcell.EventKey {
 		p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -208,11 +201,7 @@ func (p *ProvidersPanel) handleEdit() *tcell.EventKey {
 		p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 		p.app.HideModal()
 	})
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(p.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -228,7 +217,7 @@ func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
 			if err := p.app.Mutate(func(s *service.Service) error {
 				return s.DeleteProvider(name)
 			}); err != nil {
-				p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+				setErrorStatus(p.app, err)
 			}
 			p.app.SetHints(HintsProvidersPanelSpecific, HintsProvidersPanelCommon)
 			p.app.HideModal()
@@ -238,11 +227,7 @@ func (p *ProvidersPanel) handleDelete() *tcell.EventKey {
 			p.app.HideModal()
 		},
 	)
-	if err := p.app.ShowModal(modal); err != nil {
-		p.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	p.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(p.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -266,5 +251,5 @@ func boolTag(v bool) string {
 	if v {
 		return "[green]yes[-]"
 	}
-	return "[::d]no[-::-]"
+	return dimText("no")
 }

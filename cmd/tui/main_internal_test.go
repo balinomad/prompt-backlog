@@ -18,6 +18,13 @@ type layoutStore struct{ reg *model.Registry }
 func (s layoutStore) Load() (*model.Registry, error) { return s.reg, nil }
 func (s layoutStore) Save(*model.Registry) error     { return nil }
 
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+}
+
 func TestOpenStore(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -55,21 +62,15 @@ func TestOpenStore(t *testing.T) {
 func TestNew_SizesAccountsPanelToWidestRow(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-	}
-	must(reg.AddProvider(model.NewProvider("claude", true, false)))
-	must(reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
-	must(err)
+	must(t, err)
 	proj := model.NewProject("abcdefghijklmnopqrst", "", "")
-	must(reg.AddProject(proj))
-	must(reg.AddProjectToAccount(acc, proj))
+	must(t, reg.AddProject(proj))
+	must(t, reg.AddProjectToAccount(acc, proj))
 	_, err = reg.AddSession(acc, proj, "", nil)
-	must(err)
+	must(t, err)
 
 	svc, err := service.New(layoutStore{reg: reg})
 	if err != nil {
@@ -100,7 +101,7 @@ func TestNew_SizesAccountsPanelToWidestRow(t *testing.T) {
 	}
 
 	initialWidth := width
-	must(reg.PauseAccount(acc, time.Now().AddDate(0, 0, -5)))
+	must(t, reg.PauseAccount(acc, time.Now().AddDate(0, 0, -5)))
 	app.refreshAccounts()
 	app.mainFlex.Draw(screen)
 
@@ -123,29 +124,23 @@ func TestNew_SizesAccountsPanelToWidestRow(t *testing.T) {
 func TestNew_AccountInfoFullWidthAndWrapHeight(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-	}
-	must(reg.AddProvider(model.NewProvider("claude", true, false)))
-	must(reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddProvider(model.NewProvider("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider("claude"))
-	must(err)
+	must(t, err)
 	proj := model.NewProject(strings.Repeat("long-project-", 12), "", "")
-	must(reg.AddProject(proj))
-	must(reg.AddProjectToAccount(acc, proj))
+	must(t, reg.AddProject(proj))
+	must(t, reg.AddProjectToAccount(acc, proj))
 	_, err = reg.AddSession(acc, proj, "", nil)
-	must(err)
+	must(t, err)
 
 	svc, err := service.New(layoutStore{reg: reg})
-	must(err)
+	must(t, err)
 	app, err := New(svc)
-	must(err)
+	must(t, err)
 
 	screen := tcell.NewSimulationScreen("UTF-8")
-	must(screen.Init())
+	must(t, screen.Init())
 	t.Cleanup(screen.Fini)
 
 	app.resizeAccountInfo(80, 24)
@@ -187,28 +182,22 @@ func TestNew_AccountInfoFullWidthAndWrapHeight(t *testing.T) {
 func TestNew_DetailPanelsFitContent(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
-	must := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-	}
 	providerName := strings.Repeat("provider-", 12)
-	must(reg.AddProvider(model.NewProvider(providerName, true, false)))
-	must(reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	must(t, reg.AddProvider(model.NewProvider(providerName, true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Provider(providerName))
-	must(err)
+	must(t, err)
 	proj := model.NewProject("Alpha", strings.Repeat("description ", 12), "instructions")
-	must(reg.AddProject(proj))
-	must(reg.AddProjectToAccount(acc, proj))
+	must(t, reg.AddProject(proj))
+	must(t, reg.AddProjectToAccount(acc, proj))
 
 	svc, err := service.New(layoutStore{reg: reg})
-	must(err)
+	must(t, err)
 	app, err := New(svc)
-	must(err)
+	must(t, err)
 
 	screen := tcell.NewSimulationScreen("UTF-8")
-	must(screen.Init())
+	must(t, screen.Init())
 	t.Cleanup(screen.Fini)
 	screen.SetSize(80, 24)
 

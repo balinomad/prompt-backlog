@@ -31,28 +31,10 @@ type queueEditor struct {
 
 // NewQueueEditor returns a view for managing a session's prompt queue:
 // listing, adding, editing, deleting, and reordering prompts. Every action
-// commits immediately via Service.UpdateSessionPrompts — there is no
-// separate save step for the editor as a whole — matching the
-// per-action-commit convention already used elsewhere in this package
-// (e.g. DetailPanel's KeyToggle handler).
-//
-// The session is re-fetched fresh from the Service on every (re)construction
-// of this view rather than trusting the passed-in pointer's own field
-// values: UpdateSessionPrompts replaces the session via Copy-on-Write, so
-// the caller's pointer goes stale the instant any action commits.
-//
-// Every sub-action (add, edit, delete) transitions through
-// App.ShowModal/HideModal rather than an internal tview.Pages page switch.
-// App's modal system is proven correct for moving keyboard focus — see
-// ShowModal's implementation and TestApp_ShowModal_Success — whereas a
-// hand-rolled internal page switch inside one returned primitive has no
-// such guarantee available to verify in this codebase, and getting focus
-// routing wrong would silently swallow keystrokes rather than fail loudly.
-// Every transition pairs a HideModal immediately before the next ShowModal,
-// so App's single prevFocus slot always re-anchors to the true pre-editor
-// focus (e.g. DetailPanel's session list) instead of accumulating a chain
-// of intermediate modals, which would restore focus to the wrong place
-// when the operator finally closes the editor.
+// commits immediately via Service.UpdateSessionPrompts. The session is
+// re-fetched on every (re)construction because updates replace it via
+// Copy-on-Write. Sub-actions use App.ShowModal/HideModal so focus returns
+// to the editor when they close.
 func NewQueueEditor(app App, account *model.Account, session *model.Session, onClose func()) tview.Primitive {
 	if account == nil || session == nil {
 		return errorModal("No session selected.", onClose)
@@ -92,30 +74,20 @@ func (qe *queueEditor) rebuildList() {
 	}
 }
 
-// reopen returns to a freshly (re)constructed queue editor, re-fetching
-// the session so a just-committed change is reflected. See NewQueueEditor's
-// doc comment for why this goes through HideModal+ShowModal rather than an
-// in-place refresh.
+// reopen returns to a freshly constructed queue editor.
 func (qe *queueEditor) reopen() {
 	qe.app.HideModal()
-	if err := qe.app.ShowModal(NewQueueEditor(qe.app, qe.account, qe.session, qe.onClose)); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return
-	}
-	qe.app.SetHints(HintsQueueEditorSpecific, HintsQueueEditorCommon)
+	showModal(qe.app, NewQueueEditor(qe.app, qe.account, qe.session, qe.onClose), HintsQueueEditorSpecific, HintsQueueEditorCommon)
 }
 
-// commit persists newQueue and reports success. Callers that cannot
-// introduce a new validation failure by construction — delete removes an
-// already-valid entry; reorder only permutes already-valid entries — may
-// ignore the result, since there is nothing for the operator to fix.
-// Callers that accept new free-text input (add/edit) must check it, to
-// keep the form open for a retry on failure.
+// commit persists newQueue and reports success. Callers that cannot introduce
+// a new validation failure may ignore the result; callers that accept new
+// free-text input must check it.
 func (qe *queueEditor) commit(newQueue []model.Prompt) bool {
 	if err := qe.app.Mutate(func(s *service.Service) error {
 		return s.UpdateSessionPrompts(qe.email, qe.provider, qe.id, newQueue)
 	}); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+		setErrorStatus(qe.app, err)
 		return false
 	}
 	return true
@@ -147,8 +119,6 @@ func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		}
 		return qe.handleMoveDown()
 	default:
-		// Every other special key falls through to the rune-only guard
-		// and switch below.
 	}
 	if event.Key() != tcell.KeyRune {
 		return event
@@ -166,11 +136,7 @@ func (qe *queueEditor) handleKey(event *tcell.EventKey) *tcell.EventKey {
 func (qe *queueEditor) handleNew() *tcell.EventKey {
 	modal := newPromptForm(qe.app, qe.queue, -1, qe.commit, qe.reopen)
 	qe.app.HideModal()
-	if err := qe.app.ShowModal(modal); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	qe.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(qe.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -181,11 +147,7 @@ func (qe *queueEditor) handleEdit() *tcell.EventKey {
 	}
 	modal := newPromptForm(qe.app, qe.queue, idx, qe.commit, qe.reopen)
 	qe.app.HideModal()
-	if err := qe.app.ShowModal(modal); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	qe.app.SetHints(HintsFormSpecific, HintsFormCommon)
+	showModal(qe.app, modal, HintsFormSpecific, HintsFormCommon)
 	return nil
 }
 
@@ -204,11 +166,7 @@ func (qe *queueEditor) handleDelete() *tcell.EventKey {
 		qe.reopen,
 	)
 	qe.app.HideModal()
-	if err := qe.app.ShowModal(modal); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	qe.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(qe.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
@@ -242,27 +200,15 @@ func (qe *queueEditor) handleMoveDown() *tcell.EventKey {
 	return nil
 }
 
-// handleHelp opens the keyboard reference overlay. Not routed through the
-// shared showHelp helper: this view is itself shown via App.ShowModal, so
-// a second ShowModal call here would replace it on the "modal" page
-// (Pages.AddPage replaces a same-named page), and showHelp's own close
-// behaviour (a bare HideModal) would land on whatever was behind the
-// editor, not the editor itself. qe.reopen reconstructs a fresh queue
-// editor instead — the same pattern handleDelete already uses for its own
-// nested confirm dialog.
+// handleHelp opens the keyboard reference overlay and reopens the editor when
+// the overlay closes.
 func (qe *queueEditor) handleHelp() *tcell.EventKey {
 	qe.app.HideModal()
-	if err := qe.app.ShowModal(NewHelpOverlay(qe.reopen)); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	qe.app.SetHints(HintsHelpOverlaySpecific, HintsHelpOverlayCommon)
+	showModal(qe.app, NewHelpOverlay(qe.reopen), HintsHelpOverlaySpecific, HintsHelpOverlayCommon)
 	return nil
 }
 
-// handleQuit opens the quit confirmation, built directly on
-// NewConfirmModal rather than the shared confirmQuit helper for the same
-// reason as handleHelp: onCancel must reopen the editor, not just hide it.
+// handleQuit opens the quit confirmation and reopens the editor on cancel.
 func (qe *queueEditor) handleQuit() *tcell.EventKey {
 	modal := NewConfirmModal(
 		"Quit "+qe.app.AppName()+"?",
@@ -270,20 +216,13 @@ func (qe *queueEditor) handleQuit() *tcell.EventKey {
 		qe.reopen,
 	)
 	qe.app.HideModal()
-	if err := qe.app.ShowModal(modal); err != nil {
-		qe.app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
-		return nil
-	}
-	qe.app.SetHints(HintsConfirmModalSpecific, HintsConfirmModalCommon)
+	showModal(qe.app, modal, HintsConfirmModalSpecific, HintsConfirmModalCommon)
 	return nil
 }
 
 // newPromptForm returns a small form for adding (idx == -1) or editing
-// (idx >= 0) a single prompt in queue. commit persists the resulting
-// queue; onDone is called after a successful commit and also on
-// Cancel/Esc without committing — this form never returns to itself, it
-// always hands control back to the queue list via onDone, matching
-// NewQueueEditor's ShowModal/HideModal transition pattern.
+// (idx >= 0) a single prompt in queue. commit persists the resulting queue;
+// onDone is called after a successful commit and on cancel.
 func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.Prompt) bool, onDone func()) tview.Primitive {
 	isNew := idx < 0
 

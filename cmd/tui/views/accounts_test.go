@@ -210,10 +210,7 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 			if app.modal == nil {
 				t.Errorf("key %q: expected modal to be shown", tc.name)
 			}
-			if app.hintsSpecific != tc.wantSpecific || app.hintsCommon != tc.wantCommon {
-				t.Errorf("key %q: hints got (%q, %q), want (%q, %q)",
-					tc.name, app.hintsSpecific, app.hintsCommon, tc.wantSpecific, tc.wantCommon)
-			}
+			assertHints(t, app, tc.wantSpecific, tc.wantCommon)
 		})
 	}
 }
@@ -267,12 +264,9 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 
 // ── sortAccountsByAvailability ────────────────────────────────────────────────
 
-// TestAccountItemText_EscapesProviderAndUserName builds an account with
-// bracketed provider/user-name through a real registry, refreshes, and
-// reads the rendered row back via the embedded *tview.List's exported
-// GetItemText. Renamed from EscapesEmailAndProvider: email is no longer
-// part of the rendered row.
-func TestAccountItemText_EscapesProviderAndUserName(t *testing.T) {
+// TestAccountsPanel_RowText_EscapesProviderAndUserName verifies provider and user
+// names are escaped in the rendered row.
+func TestAccountsPanel_RowText_EscapesProviderAndUserName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("claude]blue", false, false)))
@@ -293,10 +287,10 @@ func TestAccountItemText_EscapesProviderAndUserName(t *testing.T) {
 	}
 }
 
-// TestAccountItemText_DynamicColumnWidths verifies column widths are
+// TestAccountsPanel_RowText_DynamicColumnWidths verifies column widths are
 // computed per batch from the longest rendered value, with the shared
 // separator and padding on every cell.
-func TestAccountItemText_DynamicColumnWidths(t *testing.T) {
+func TestAccountsPanel_RowText_DynamicColumnWidths(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddProvider(model.NewProvider("ab", false, false)))
@@ -323,11 +317,11 @@ func TestAccountItemText_DynamicColumnWidths(t *testing.T) {
 	}
 }
 
-// TestAccountItemText_ColumnWidthCap verifies a single unusually long
+// TestAccountsPanel_RowText_ColumnWidthCap verifies a single unusually long
 // provider name is truncated and does not widen the shared column beyond
 // the cap, so a short provider elsewhere in the same batch stays tightly
 // padded instead of inheriting a huge gap.
-func TestAccountItemText_ColumnWidthCap(t *testing.T) {
+func TestAccountsPanel_RowText_ColumnWidthCap(t *testing.T) {
 	t.Parallel()
 	const longProvider = "abcdefghijklmnopqrst" // 20 runes, over the 12 cap
 	reg := model.NewRegistry()
@@ -561,13 +555,7 @@ func TestAccountsPanel_RequiredWidth_UpdatesWithContent(t *testing.T) {
 	}
 }
 
-// TestSortAccountsByAvailability replaces the old direct call to the
-// unexported sortAccountsByAvailability: two accounts share one registry
-// (firstAcc pinned to farFuture; secondAcc varies by case), and each case
-// checks which one Refresh() places first via GetItemText — the same
-// three pairwise comparisons the original table exercised (unpaused,
-// past, and near-future all sort ahead of a far-future pause), just
-// identified by name instead of by comparing time.Time values directly.
+// TestSortAccountsByAvailability verifies account ordering through Refresh.
 func TestSortAccountsByAvailability(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -656,7 +644,7 @@ func TestAccountsPanel_NonRuneKey_PassesThrough(t *testing.T) {
 
 // TestAccountsPanel_New_SaveReturnsToPanel closes the loop that
 // TestAccountsPanel_Keys_ShowModal leaves open: that test only checks
-// that pressing 'n' opens a modal with the right hints, not that
+// that pressing Ins opens a modal with the right hints, not that
 // completing the form hands control back to the panel correctly. The
 // onClose closure passed to NewAccountForm (SetHints + HideModal) is
 // otherwise never actually invoked by any existing test.
@@ -677,10 +665,7 @@ func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	}
+	assertHints(t, app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	if _, err := app.svc.Account("carol@example.com", "chatgpt"); err != nil {
 		t.Errorf("account not created: %v", err)
 	}
@@ -705,10 +690,7 @@ func TestAccountsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after a successful save")
 	}
-	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
-		t.Errorf("hints after save: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	}
+	assertHints(t, app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 }
 
 // TestAccountsPanel_Delete_Cancel is the accounts.go counterpart to
@@ -727,19 +709,13 @@ func TestAccountsPanel_Delete_Cancel(t *testing.T) {
 	capture := p.GetInputCapture()
 	capture(specialKey(views.KeyDelete))
 
-	confirmModal, ok := app.modal.(*tview.Modal)
-	if !ok {
-		t.Fatalf("expected *tview.Modal, got %T", app.modal)
-	}
+	confirmModal := confirmModalFrom(t, app.modal)
 	confirmModal.GetInputCapture()(escKey())
 
 	if app.modal != nil {
 		t.Error("expected modal to be hidden after cancelling")
 	}
-	if app.hintsSpecific != views.HintsAccountsPanelSpecific || app.hintsCommon != views.HintsAccountsPanelCommon {
-		t.Errorf("hints after cancel: got (%q, %q), want (%q, %q)",
-			app.hintsSpecific, app.hintsCommon, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
-	}
+	assertHints(t, app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 	if got := len(app.svc.Accounts()); got != before {
 		t.Errorf("account count changed after cancel: got %d, want %d (unchanged)", got, before)
 	}
