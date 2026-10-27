@@ -11,11 +11,11 @@ applies to wrapped lines.
 
 ┌ llm-desk ───────────────────────────────────────────────────────────────┐
 │                                                                         │
-│  ┌ Accounts ──────────────────┐  ┌ Sessions ─────────────────────────┐  │
+│  ┌ Accounts 1/3 ──────────────┐  ┌ Sessions 1/2 ─────────────────────┐  │
 │  │▶ claude   │ Alice │        │  │▶ Architecture   Alpha   pending: 1│  │
 │  │  chatgpt  │ Bob   │ 18:00  │  │  (untitled)     —       pending: 0│  │
 │  │  claude   │ Carol │ 09:15  │  └───────────────────────────────────┘  │
-│  │           │       │        │                                        │
+│  │           │       │        │                                         │
 │  └────────────────────────────┘                                         │
 │  ┌ Account Details ──────────────────────────────────────────────────┐  │
 │  │ User     Alice (alice@example.com)                                │  │
@@ -56,7 +56,7 @@ Notices are yellow; errors are red and wrap to at most three rows.
 
 ┌ Vendors screen ────────────────────────────────────────────────────┐
 │                                                                    │
-│  ┌ Vendors ─────────────────────────────────────────────────────┐  │
+│  ┌ Vendors 1/2 ─────────────────────────────────────────────────┐  │
 │  │▶ claude   │ projects, deep-research                          │  │
 │  │  chatgpt  │                                                  │  │
 │  └──────────────────────────────────────────────────────────────┘  │
@@ -78,7 +78,7 @@ Vendor Details panel below grows with wrapped text.
 
 ┌ Users screen ──────────────────────────────────────────────────────┐
 │                                                                    │
-│  ┌ Users ───────────────────────────────────────────────────────┐  │
+│  ┌ Users 1/2 ───────────────────────────────────────────────────┐  │
 │  │▶ Alice │ alice@example.com                                   │  │
 │  │  Bob   │ bob@example.com                                     │  │
 │  └──────────────────────────────────────────────────────────────┘  │
@@ -98,10 +98,10 @@ Details panel below grows with wrapped text.
 
 ┌ Projects screen ───────────────────────────────────────────────────┐
 │                                                                    │
-│  ┌ Projects ───────────────────┐  ┌ Project Accounts ───────────┐  │
-│  │▶ Alpha                      │  │▶ claude │ Alice            │  │
-│  │  Beta                       │  │  claude │ Bob              │  │
-│  │  Orphan                     │  │  qwen   │ Carol            │  │
+│  ┌ Projects 1/3 ───────────────┐  ┌ Project Accounts 1/3 ───────┐  │
+│  │▶ Alpha                      │  │▶ claude │ Alice             │  │
+│  │  Beta                       │  │  claude │ Bob               │  │
+│  │  Orphan                     │  │  qwen   │ Carol             │  │
 │  └─────────────────────────────┘  └─────────────────────────────┘  │
 │                                                                    │
 │  ┌ Project Details ─────────────────────────────────────────────┐  │
@@ -124,7 +124,7 @@ panel below grows with wrapped description or instructions.
 
 ── Messages editor (modal, opened from session detail) ──────────────────────
 
-┌ Messages: session #1 ────────────────────────────────────┐
+┌ Messages: session #1 1/3 ─────────────────────────────────┐
 │▶ first                                                    │
 │  second   → new session                                   │
 │  third                                                    │

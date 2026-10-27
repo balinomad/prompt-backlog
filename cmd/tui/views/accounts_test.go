@@ -486,7 +486,7 @@ func TestAccountsPanel_RequiredWidth_UsesRenderedRowsOnly(t *testing.T) {
 	if want := " p │ U "; row != want {
 		t.Errorf("row = %q, want %q", row, want)
 	}
-	want := max(tview.TaggedStringWidth(row)+2, len(" Accounts ")+2)
+	want := max(tview.TaggedStringWidth(row)+2, len(" Accounts 0/0 ")+2)
 	if got := p.RequiredWidth(); got != want {
 		t.Errorf("RequiredWidth() = %d, want %d", got, want)
 	}

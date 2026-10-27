@@ -18,15 +18,16 @@ import (
 // each case is scored for cyclomatic complexity on its own rather than
 // folded into NewQueueEditor.
 type queueEditor struct {
-	app     App
-	account *model.Account
-	session *model.Session
-	onClose func()
-	email   string
-	vendor  string
-	id      uint64
-	queue   []model.Prompt
-	list    *tview.List
+	app       App
+	account   *model.Account
+	session   *model.Session
+	onClose   func()
+	email     string
+	vendor    string
+	id        uint64
+	queue     []model.Prompt
+	list      *tview.List
+	titleBase string
 }
 
 // NewQueueEditor returns a view for managing a session's prompt queue:
@@ -47,19 +48,23 @@ func NewQueueEditor(app App, account *model.Account, session *model.Session, onC
 	}
 
 	qe := &queueEditor{
-		app:     app,
-		account: account,
-		session: session,
-		onClose: onClose,
-		email:   account.UserEmail(),
-		vendor:  account.VendorName(),
-		id:      id,
-		queue:   live.Queue(),
+		app:       app,
+		account:   account,
+		session:   session,
+		onClose:   onClose,
+		email:     account.UserEmail(),
+		vendor:    account.VendorName(),
+		id:        id,
+		queue:     live.Queue(),
+		titleBase: fmt.Sprintf(" Messages: session #%d ", id),
 	}
 
 	qe.list = tview.NewList().ShowSecondaryText(false)
 	qe.list.SetBorder(true)
-	qe.list.SetTitle(fmt.Sprintf(" Messages: session #%d ", id))
+	setListTitle(qe.list, qe.titleBase, 0, 0)
+	qe.list.SetChangedFunc(func(index int, _, _ string, _ rune) {
+		setListTitle(qe.list, qe.titleBase, index, len(qe.queue))
+	})
 	qe.rebuildList()
 	qe.list.SetInputCapture(qe.handleKey)
 
@@ -72,6 +77,7 @@ func (qe *queueEditor) rebuildList() {
 	for _, p := range qe.queue {
 		qe.list.AddItem(promptItemText(p), "", 0, nil)
 	}
+	setListTitle(qe.list, qe.titleBase, qe.list.GetCurrentItem(), len(qe.queue))
 }
 
 // reopen returns to a freshly constructed queue editor.

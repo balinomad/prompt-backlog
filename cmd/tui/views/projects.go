@@ -12,6 +12,11 @@ import (
 	"github.com/rivo/tview"
 )
 
+const (
+	projectsListTitle        = " Projects "
+	projectAccountsListTitle = " Project Accounts "
+)
+
 // ProjectsPanel is a full-screen view for managing projects: creating,
 // editing, deleting, and granting/revoking account access. The operator
 // navigates to it with 'p' and returns to the main view with Esc.
@@ -32,11 +37,11 @@ type ProjectsPanel struct {
 func NewProjectsPanel(app App) *ProjectsPanel {
 	list := tview.NewList().ShowSecondaryText(false)
 	list.SetBorder(true)
-	list.SetTitle(" Projects ")
+	setListTitle(list, projectsListTitle, 0, 0)
 
 	accountList := tview.NewList().ShowSecondaryText(false)
 	accountList.SetBorder(true)
-	accountList.SetTitle(" Project Accounts ")
+	setListTitle(accountList, projectAccountsListTitle, 0, 0)
 
 	info := newInfoView("Project Details")
 
@@ -58,6 +63,7 @@ func NewProjectsPanel(app App) *ProjectsPanel {
 	}
 
 	list.SetChangedFunc(func(index int, _, _ string, _ rune) {
+		setListTitle(list, projectsListTitle, index, len(p.projects))
 		if p.refreshing {
 			return
 		}
@@ -66,6 +72,10 @@ func NewProjectsPanel(app App) *ProjectsPanel {
 		proj := p.projectAt(index)
 		p.refreshAccountList(proj, false)
 		p.renderInfo(proj)
+	})
+
+	accountList.SetChangedFunc(func(index int, _, _ string, _ rune) {
+		setListTitle(accountList, projectAccountsListTitle, index, len(p.accounts))
 	})
 
 	wirePanelFocus(list, func() {
@@ -112,6 +122,8 @@ func (p *ProjectsPanel) Refresh() {
 		p.list.SetCurrentItem(0)
 	}
 	p.refreshing = false
+
+	setListTitle(p.list, projectsListTitle, p.list.GetCurrentItem(), len(p.projects))
 
 	proj := p.selectedProject()
 	p.refreshAccountList(proj, true)
@@ -212,6 +224,8 @@ func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelectio
 		prevIdx = min(max(prevIdx, 0), len(p.accounts)-1)
 		p.accountList.SetCurrentItem(prevIdx)
 	}
+
+	setListTitle(p.accountList, projectAccountsListTitle, p.accountList.GetCurrentItem(), len(p.accounts))
 }
 
 // renderInfo populates the detail panel for the selected project.

@@ -12,8 +12,10 @@ import (
 	"github.com/rivo/tview"
 )
 
+const accountsListTitle = " Accounts "
+
 // minAccountsPanelWidth is wide enough to show the list title and border.
-const minAccountsPanelWidth = len(" Accounts ") + 2
+const minAccountsPanelWidth = len(accountsListTitle+"0/0 ") + 2
 
 // vendorColumnWidthCap and nameColumnWidthCap bound the account columns so
 // a single unusually long value cannot push later columns off screen.
@@ -47,7 +49,7 @@ type AccountsPanel struct {
 func NewAccountsPanel(app App) *AccountsPanel {
 	list := tview.NewList().ShowSecondaryText(false)
 	list.SetBorder(true)
-	list.SetTitle(" Accounts ")
+	setListTitle(list, accountsListTitle, 0, 0)
 
 	p := &AccountsPanel{
 		List: list,
@@ -56,6 +58,7 @@ func NewAccountsPanel(app App) *AccountsPanel {
 
 	// Navigation changes: notify the detail panel unless we are mid-refresh.
 	list.SetChangedFunc(func(index int, _, _ string, _ rune) {
+		setListTitle(list, accountsListTitle, index, len(p.accounts))
 		if p.refreshing {
 			return
 		}
@@ -180,6 +183,8 @@ func (p *AccountsPanel) Refresh() {
 	if p.onSelect != nil {
 		p.onSelect(p.Selected())
 	}
+
+	setListTitle(p.List, accountsListTitle, p.GetCurrentItem(), len(p.accounts))
 }
 
 // handleKey processes keyboard input for this panel.

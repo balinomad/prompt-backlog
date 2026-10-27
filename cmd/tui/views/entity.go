@@ -40,7 +40,7 @@ type entityScreen[T any] struct {
 func newEntityScreen[T any](app App, spec entityScreenSpec[T]) *entityScreen[T] {
 	list := tview.NewList().ShowSecondaryText(false)
 	list.SetBorder(true)
-	list.SetTitle(spec.listTitle)
+	setListTitle(list, spec.listTitle, 0, 0)
 
 	info := newInfoView(spec.infoTitle)
 
@@ -58,6 +58,7 @@ func newEntityScreen[T any](app App, spec entityScreenSpec[T]) *entityScreen[T] 
 	}
 
 	list.SetChangedFunc(func(index int, _, _ string, _ rune) {
+		setListTitle(list, spec.listTitle, index, len(s.items))
 		if s.refreshing {
 			return
 		}
@@ -107,6 +108,7 @@ func (s *entityScreen[T]) Refresh() {
 		s.list.SetCurrentItem(0)
 	}
 	s.renderInfo(s.selected())
+	setListTitle(s.list, s.spec.listTitle, s.list.GetCurrentItem(), len(s.items))
 }
 
 // RequiredInfoHeight returns the outer height needed to render the current

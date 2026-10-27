@@ -19,6 +19,8 @@ const (
 	projectFieldWidth  = 16
 )
 
+const sessionsListTitle = " Sessions "
+
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
 // DetailPanel occupies the right side of the screen and lists the selected
@@ -37,12 +39,16 @@ type DetailPanel struct {
 func NewDetailPanel(app App) *DetailPanel {
 	list := tview.NewList().ShowSecondaryText(false)
 	list.SetBorder(true)
-	list.SetTitle(" Sessions ")
+	setListTitle(list, sessionsListTitle, 0, 0)
 
 	p := &DetailPanel{
 		List: list,
 		app:  app,
 	}
+
+	list.SetChangedFunc(func(index int, _, _ string, _ rune) {
+		setListTitle(list, sessionsListTitle, index, len(p.sessions))
+	})
 
 	wirePanelFocus(list, func() {
 		app.SetHints(HintsDetailPanelSpecific, HintsDetailPanelCommon)
@@ -127,6 +133,8 @@ func (p *DetailPanel) Refresh() {
 	if !restored && len(p.sessions) > 0 {
 		p.SetCurrentItem(0)
 	}
+
+	setListTitle(p.List, sessionsListTitle, p.GetCurrentItem(), len(p.sessions))
 }
 
 // ── Private: key handling ─────────────────────────────────────────────────────
