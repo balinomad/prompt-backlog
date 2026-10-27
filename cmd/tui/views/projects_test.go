@@ -311,19 +311,16 @@ func TestProjectsPanel_ProjectEsc_SwitchesToMain(t *testing.T) {
 	}
 }
 
-func TestProjectsPanel_AccountEsc_SwitchesToProjectList(t *testing.T) {
+func TestProjectsPanel_AccountEsc_SwitchesToMain(t *testing.T) {
 	t.Parallel()
 	app := newMockApp(t)
 	p := views.NewProjectsPanel(app)
 	p.Refresh()
-	projectList, accountList, _ := projectsPanelParts(t, p)
+	_, accountList, _ := projectsPanelParts(t, p)
 
 	accountList.GetInputCapture()(escKey())
-	if app.switchedTo != "" {
-		t.Errorf("expected no screen switch, got %q", app.switchedTo)
-	}
-	if app.focused != projectList {
-		t.Errorf("expected focus on project list, got %T", app.focused)
+	if app.switchedTo != "main" {
+		t.Errorf("expected switchedTo=main, got %q", app.switchedTo)
 	}
 }
 

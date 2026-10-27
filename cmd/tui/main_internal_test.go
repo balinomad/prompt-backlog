@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
 
@@ -23,6 +25,249 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("setup: %v", err)
+	}
+}
+
+// newLayoutApp returns an App backed by an in-memory registry with one vendor
+// so the first-run vendor redirect does not fire.
+func newLayoutApp(t *testing.T) *App {
+	t.Helper()
+	reg := model.NewRegistry()
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+	svc, err := service.New(layoutStore{reg: reg})
+	must(t, err)
+	app, err := New(svc)
+	must(t, err)
+	return app
+}
+
+func TestApp_HandleGlobalKeys_SwitchScreens(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		startPage string
+		key       rune
+		wantPage  string
+	}{
+		{
+			name:      "main to vendors",
+			startPage: "main",
+			key:       views.KeyVendors,
+			wantPage:  "vendors",
+		},
+		{
+			name:      "main to projects",
+			startPage: "main",
+			key:       views.KeyProjects,
+			wantPage:  "projects",
+		},
+		{
+			name:      "main to users",
+			startPage: "main",
+			key:       views.KeyUsers,
+			wantPage:  "users",
+		},
+		{
+			name:      "vendors to projects",
+			startPage: "vendors",
+			key:       views.KeyProjects,
+			wantPage:  "projects",
+		},
+		{
+			name:      "projects to users",
+			startPage: "projects",
+			key:       views.KeyUsers,
+			wantPage:  "users",
+		},
+		{
+			name:      "users to vendors",
+			startPage: "users",
+			key:       views.KeyVendors,
+			wantPage:  "vendors",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := newLayoutApp(t)
+			app.pages.SwitchToPage(tc.startPage)
+			event := tcell.NewEventKey(tcell.KeyRune, tc.key, tcell.ModNone)
+			if got := app.handleGlobalKeys(event); got != nil {
+				t.Errorf("handleGlobalKeys() = %v, want nil", got)
+			}
+			got, _ := app.pages.GetFrontPage()
+			if got != tc.wantPage {
+				t.Errorf("front page = %q, want %q", got, tc.wantPage)
+			}
+		})
+	}
+}
+
+func TestApp_HandleGlobalKeys_IgnoresModal(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	if err := app.ShowModal(tview.NewBox()); err != nil {
+		t.Fatalf("ShowModal: %v", err)
+	}
+	t.Cleanup(app.HideModal)
+
+	event := tcell.NewEventKey(tcell.KeyRune, views.KeyUsers, tcell.ModNone)
+	if got := app.handleGlobalKeys(event); got != event {
+		t.Errorf("handleGlobalKeys() = %v, want original event", got)
+	}
+	got, _ := app.pages.GetFrontPage()
+	if got != "modal" {
+		t.Errorf("front page = %q, want modal", got)
+	}
+}
+
+func TestApp_HandleGlobalKeys_TooSmall(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.tooSmall = true
+
+	event := tcell.NewEventKey(tcell.KeyRune, views.KeyUsers, tcell.ModNone)
+	if got := app.handleGlobalKeys(event); got != nil {
+		t.Errorf("handleGlobalKeys() = %v for a too-small terminal, want nil", got)
+	}
+	if got, _ := app.pages.GetFrontPage(); got != "main" {
+		t.Errorf("front page = %q, want main", got)
+	}
+
+	ctrlC := tcell.NewEventKey(tcell.KeyCtrlC, 0, tcell.ModNone)
+	if got := app.handleGlobalKeys(ctrlC); got != ctrlC {
+		t.Errorf("handleGlobalKeys(Ctrl-C) = %v, want the original event", got)
+	}
+}
+
+func TestApp_HandleGlobalMouse_TooSmall(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	event := tcell.NewEventMouse(1, 1, tcell.ButtonPrimary, tcell.ModNone)
+
+	app.tooSmall = true
+	if gotEvent, gotAction := app.handleGlobalMouse(event, tview.MouseLeftClick); gotEvent != nil || gotAction != tview.MouseLeftClick {
+		t.Errorf("handleGlobalMouse() = (%v, %v), want (nil, %v)", gotEvent, gotAction, tview.MouseLeftClick)
+	}
+
+	app.tooSmall = false
+	if gotEvent, gotAction := app.handleGlobalMouse(event, tview.MouseLeftClick); gotEvent != event || gotAction != tview.MouseLeftClick {
+		t.Errorf("handleGlobalMouse() = (%v, %v), want (%v, %v)", gotEvent, gotAction, event, tview.MouseLeftClick)
+	}
+}
+
+func TestTerminalTooSmall(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		width  int
+		height int
+		want   bool
+	}{
+		{
+			name:   "minimum size",
+			width:  minTerminalWidth,
+			height: minTerminalHeight,
+			want:   false,
+		},
+		{
+			name:   "wider",
+			width:  minTerminalWidth + 1,
+			height: minTerminalHeight,
+			want:   false,
+		},
+		{
+			name:   "taller",
+			width:  minTerminalWidth,
+			height: minTerminalHeight + 1,
+			want:   false,
+		},
+		{
+			name:   "too narrow",
+			width:  minTerminalWidth - 1,
+			height: minTerminalHeight,
+			want:   true,
+		},
+		{
+			name:   "too short",
+			width:  minTerminalWidth,
+			height: minTerminalHeight - 1,
+			want:   true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := terminalTooSmall(tc.width, tc.height); got != tc.want {
+				t.Errorf("terminalTooSmall(%d, %d) = %v, want %v", tc.width, tc.height, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDrawTerminalTooSmall(t *testing.T) {
+	t.Parallel()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	t.Cleanup(screen.Fini)
+
+	const width, height = 40, 12
+	screen.SetSize(width, height)
+	drawTerminalTooSmall(screen, width, height)
+	screen.Show()
+
+	cells, gotWidth, gotHeight := screen.GetContents()
+	if gotWidth != width || gotHeight != height {
+		t.Fatalf("screen size = %dx%d, want %dx%d", gotWidth, gotHeight, width, height)
+	}
+	var text strings.Builder
+	for _, cell := range cells {
+		if len(cell.Bytes) == 0 {
+			text.WriteByte(' ')
+			continue
+		}
+		text.Write(cell.Bytes)
+	}
+	for _, want := range []string{
+		"Terminal too small",
+		fmt.Sprintf("Minimum: %dx%d", minTerminalWidth, minTerminalHeight),
+		"Current: 40x12",
+		"Resize to continue.",
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("screen text does not contain %q: %q", want, text.String())
+		}
+	}
+	if _, _, visible := screen.GetCursor(); visible {
+		t.Error("cursor should be hidden")
+	}
+}
+
+func TestApp_BeforeDraw_TerminalSize(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	t.Cleanup(screen.Fini)
+
+	screen.SetSize(minTerminalWidth-1, minTerminalHeight)
+	if !app.beforeDraw(screen) {
+		t.Error("beforeDraw() = false for a too-small terminal, want true")
+	}
+	if !app.tooSmall {
+		t.Error("tooSmall = false after a too-small draw, want true")
+	}
+
+	screen.SetSize(minTerminalWidth, minTerminalHeight)
+	if app.beforeDraw(screen) {
+		t.Error("beforeDraw() = true for a supported terminal, want false")
+	}
+	if app.tooSmall {
+		t.Error("tooSmall = true after a supported draw, want false")
 	}
 }
 
@@ -191,7 +436,7 @@ func TestNew_AccountInfoFullWidthAndWrapHeight(t *testing.T) {
 	must(t, screen.Init())
 	t.Cleanup(screen.Fini)
 
-	app.resizeAccountInfo(80, 24)
+	app.resizeAccountInfo(80, 24, statusBarHeight)
 	app.mainFlex.SetRect(0, 0, 80, 24-statusBarHeight)
 	app.mainFlex.Draw(screen)
 
@@ -211,7 +456,7 @@ func TestNew_AccountInfoFullWidthAndWrapHeight(t *testing.T) {
 		t.Errorf("main top height = %d, want at least %d", topHeight, minMainTopHeight)
 	}
 
-	app.resizeAccountInfo(80, statusBarHeight+minMainTopHeight)
+	app.resizeAccountInfo(80, statusBarHeight+minMainTopHeight, statusBarHeight)
 	app.mainFlex.SetRect(0, 0, 80, minMainTopHeight)
 	app.mainFlex.Draw(screen)
 
@@ -250,7 +495,7 @@ func TestNew_DetailPanelsFitContent(t *testing.T) {
 	t.Cleanup(screen.Fini)
 	screen.SetSize(80, 24)
 
-	app.resizeDetailPanels(80, 24)
+	app.resizeDetailPanels(80, 24, statusBarHeight)
 
 	app.vendors.SetRect(0, 0, 80, 24-statusBarHeight)
 	app.vendors.Draw(screen)

@@ -76,7 +76,7 @@ func TestFormWidth(t *testing.T) {
 				form.AddInputField("Pause until", "", formPauseWidth, nil, nil)
 				return form
 			},
-			want: 36,
+			want: 33,
 		},
 		{
 			name: "buttons",

@@ -276,7 +276,7 @@ func (p *ProjectsPanel) handleProjectKey(event *tcell.EventKey) *tcell.EventKey 
 func (p *ProjectsPanel) handleAccountKey(event *tcell.EventKey) *tcell.EventKey {
 	switch event.Key() {
 	case KeyCancel:
-		p.app.SetFocus(p.list)
+		p.app.SwitchToMain()
 		return nil
 	case KeyFocusNext, KeyFocusPrev:
 		p.app.SetFocus(p.list)

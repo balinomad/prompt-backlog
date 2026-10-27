@@ -23,8 +23,8 @@ applies to wrapped lines.
 │  │ Projects Alpha, Beta                                              │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
-│  Enter pause  Ins add  Del delete                                       │
-│  Tab sessions  v vendors  p projects  u users  ? help  q quit    saved ✓│
+│  Tab sessions · Enter pause · Ins add · Del delete                      │
+│  v vendors · p projects · u users · ? help · q quit              saved ✓│
 └─────────────────────────────────────────────────────────────────────────┘
 
 Accounts (left) lists every (user, vendor) pair as aligned columns:
@@ -47,6 +47,11 @@ wrapped project text. The Account Details, Vendor Details, and Project
 Details panels size their label columns from their own longest labels and
 grow with their wrapped content.
 
+Status messages: an inline status such as "saved ✓" is right-aligned. At
+the minimum width it is separated from the common hints by two spaces. The
+first-run notice and errors use a separate area below the common hints.
+Notices are yellow; errors are red and wrap to at most three rows.
+
 ── Vendors screen ─────────────────────────────────────────────────────────
 
 ┌ Vendors screen ────────────────────────────────────────────────────┐
@@ -60,8 +65,8 @@ grow with their wrapped content.
 │  │ Projects      yes                                            │  │
 │  │ Deep research yes                                            │  │
 │  └──────────────────────────────────────────────────────────────┘  │
-│  Enter edit  Ins add  Del delete                                   │
-│  Esc back  ? help  q quit                                          │
+│  Enter edit · Ins add · Del delete                                 │
+│  Esc accounts · v vendors · p projects · u users · ? help · q quit │
 └────────────────────────────────────────────────────────────────────┘
 
 Vendor names and capabilities are padded columns separated by " │ ",
@@ -81,8 +86,8 @@ Vendor Details panel below grows with wrapped text.
 │  │ Name  Alice                                                  │  │
 │  │ Email alice@example.com                                      │  │
 │  └──────────────────────────────────────────────────────────────┘  │
-│  Enter edit  Ins add  Del delete                                   │
-│  Esc back  ? help  q quit                                          │
+│  Enter edit · Ins add · Del delete                                 │
+│  Esc accounts · v vendors · p projects · u users · ? help · q quit │
 └────────────────────────────────────────────────────────────────────┘
 
 User rows show the display name and email as padded columns separated by
@@ -105,8 +110,8 @@ Details panel below grows with wrapped text.
 │  │ Instructions Use Go interfaces                               │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
-│  Enter edit  Ins add  Del delete                                   │
-│  Tab accounts  Esc back  ? help  q quit                            │
+│  Tab project accounts · Enter edit · Ins add · Del delete          │
+│  Esc accounts · v vendors · p projects · u users · ? help · q quit │
 └────────────────────────────────────────────────────────────────────┘
 
 The right pane lists only the accounts granted the selected project,
@@ -114,19 +119,18 @@ ordered by vendor and then user name. Vendor and user cells use the
 same " │ " separator and padding as the main accounts list, with the same
 single leading space. Insert adds another account to the project; Del
 deletes the selected account from it after confirmation. Tab switches
-panes. Esc from the account list returns to the project list; Esc from
-the project list returns to the main screen. The Project Details panel
-below grows with wrapped description or instructions.
+panes. Esc from either list returns to the main screen. The Project Details
+panel below grows with wrapped description or instructions.
 
 ── Messages editor (modal, opened from session detail) ──────────────────────
 
-┌ Messages: session #1 ─────────────────────────────────┐
-│▶ first                                                │
-│  second   → new session                               │
-│  third                                                │
-│Enter edit  Ins add  Del delete  Ctrl+↑ up  Ctrl+↓ down│
-│Esc close  ? help  q quit                              │
-└───────────────────────────────────────────────────────┘
+┌ Messages: session #1 ────────────────────────────────────┐
+│▶ first                                                    │
+│  second   → new session                                   │
+│  third                                                    │
+│Enter edit · Ins add · Del delete · Ctrl+↑ up · Ctrl+↓ down│
+│Esc close · ? help · q quit                                │
+└───────────────────────────────────────────────────────────┘
 
 Message rows use the same single leading space as the other lists. Every
 action here (add, edit, delete, reorder) commits immediately; there is no

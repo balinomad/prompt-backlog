@@ -21,15 +21,24 @@ import (
 // CLI output.
 const AppName = "llm-desk"
 
+const savedStatusMessage = "[green]saved ✓[-]"
+
 // pauseStatusRefreshInterval is how often the accounts list re-evaluates
 // pause-time status so an account's colour flips without a mutation.
 const pauseStatusRefreshInterval = time.Minute
 
 const numericKeypadMode = "\x1b>"
 
+// minTerminalHeight is the smallest supported terminal height.
+const minTerminalHeight = 24
+
+// minTerminalWidth is the smallest supported terminal width. It covers the
+// longest hint line or the longest common hint plus an inline status message.
+var minTerminalWidth = max(80, views.MinimumWidth(tview.TaggedStringWidth(savedStatusMessage)))
+
 const (
-	// statusBarHeight is the fixed outer height reserved below the content.
-	statusBarHeight = 2
+	// statusBarHeight is the base outer height reserved below the content.
+	statusBarHeight = views.StatusBarBaseHeight
 	// minMainTopHeight keeps the Accounts and Sessions panels visible when
 	// the terminal is short and the Account panel needs more rows.
 	minMainTopHeight = 3
@@ -45,9 +54,11 @@ type App struct {
 	tv        *tview.Application
 	svc       *service.Service
 	pages     *tview.Pages
+	root      *tview.Flex
 	mainFlex  *tview.Flex
 	mainTop   *tview.Flex
 	prevFocus tview.Primitive // saved by ShowModal, restored by HideModal
+	tooSmall  bool
 
 	statusBar   *views.StatusBar
 	accounts    *views.AccountsPanel
@@ -98,7 +109,7 @@ func (a *App) Run(ctx context.Context) error {
 				return
 			}
 			if _, err := tty.Write([]byte(numericKeypadMode)); err != nil {
-				a.statusBar.SetMessage(fmt.Sprintf("[red]numeric keypad: %v[-]", err))
+				a.SetError(fmt.Sprintf("numeric keypad: %v", err))
 			}
 		})
 		// Stop here as well in case ctx was cancelled before Run created the
@@ -167,7 +178,7 @@ func (a *App) Mutate(fn func(*service.Service) error) error {
 	if saveErr != nil {
 		return fmt.Errorf("%w: %w", views.ErrSaveFailed, saveErr)
 	}
-	a.statusBar.SetMessage("[green]saved ✓[-]")
+	a.SetStatus(savedStatusMessage)
 	return nil
 }
 
@@ -244,11 +255,23 @@ func (a *App) switchTo(page string, refresh func(), focus tview.Primitive) {
 	a.tv.SetFocus(focus)
 }
 
-// SetStatus displays msg in the right section of the status bar.
-// An empty string clears any previous message.
-// Callers may include tview colour tags (e.g. "[red]error[-]").
+// SetStatus displays an inline status message in the status bar. It clears
+// any notice or error. An empty string clears it.
+// Callers may include tview colour tags (e.g. "[green]saved[-]").
 func (a *App) SetStatus(msg string) {
-	a.statusBar.SetMessage(msg)
+	a.statusBar.SetStatus(msg)
+}
+
+// SetNotice displays msg in the separate notice area below the common hints.
+// It clears any inline status and error. An empty string clears it.
+func (a *App) SetNotice(msg string) {
+	a.statusBar.SetNotice(msg)
+}
+
+// SetError displays msg in the separate red error area below the common
+// hints. It clears any inline status and notice. An empty string clears it.
+func (a *App) SetError(msg string) {
+	a.statusBar.SetError(msg)
 }
 
 // SetHints replaces the keyboard-hint lines in the status bar.
@@ -300,18 +323,15 @@ func (a *App) build() {
 		AddPage("users", a.users, true, false)
 
 	// Root layout: content area above, status bar pinned to the bottom.
-	root := tview.NewFlex().
+	a.root = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(a.pages, 0, 1, true).
 		AddItem(a.statusBar, statusBarHeight, 0, false)
 
-	a.tv.SetRoot(root, true).EnableMouse(true)
+	a.tv.SetRoot(a.root, true).EnableMouse(true)
 	a.tv.SetInputCapture(a.handleGlobalKeys)
-	a.tv.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
-		width, height := screen.Size()
-		a.resizeDetailPanels(width, height)
-		return false
-	})
+	a.tv.SetMouseCapture(a.handleGlobalMouse)
+	a.tv.SetBeforeDrawFunc(a.beforeDraw)
 
 	// Initial data load.
 	a.refreshAll()
@@ -321,8 +341,7 @@ func (a *App) build() {
 	// Send the operator to the vendors screen with a helpful prompt.
 	if len(a.svc.Vendors()) == 0 {
 		a.SwitchToVendors()
-		a.statusBar.SetMessage(
-			"No vendors configured — press [::b]Ins[-::-] to add one.")
+		a.SetNotice("No vendors configured. Press Ins to add one.")
 	}
 }
 
@@ -348,8 +367,8 @@ func (a *App) refreshAccounts() {
 
 // resizeDetailPanels sizes every bottom detail panel to the height its
 // current text needs.
-func (a *App) resizeDetailPanels(screenWidth, screenHeight int) {
-	a.resizeAccountInfo(screenWidth, screenHeight)
+func (a *App) resizeDetailPanels(screenWidth, screenHeight, statusHeight int) {
+	a.resizeAccountInfo(screenWidth, screenHeight, statusHeight)
 
 	if a.detail != nil {
 		if _, _, width, _ := a.detail.GetInnerRect(); width > 0 {
@@ -357,7 +376,7 @@ func (a *App) resizeDetailPanels(screenWidth, screenHeight int) {
 		}
 	}
 
-	available := screenHeight - statusBarHeight
+	available := screenHeight - statusHeight
 	if available <= 0 {
 		return
 	}
@@ -376,11 +395,11 @@ func (a *App) resizeDetailPanels(screenWidth, screenHeight int) {
 // current text needs at screenWidth. The top row keeps at least
 // minMainTopHeight rows so Accounts and Sessions remain usable on short
 // terminals.
-func (a *App) resizeAccountInfo(screenWidth, screenHeight int) {
+func (a *App) resizeAccountInfo(screenWidth, screenHeight, statusHeight int) {
 	if a.mainFlex == nil || a.accountInfo == nil {
 		return
 	}
-	available := screenHeight - statusBarHeight
+	available := screenHeight - statusHeight
 	if available <= 0 {
 		return
 	}
@@ -393,22 +412,92 @@ func (a *App) resizeAccountInfo(screenWidth, screenHeight int) {
 	a.mainFlex.ResizeItem(a.accountInfo, infoHeight, 0)
 }
 
-// handleGlobalKeys toggles focus between the accounts and detail panels on
-// Tab/Shift+Tab. It is a no-op whenever the front page isn't "main" —
-// including while a modal is shown, since ShowModal's AddPage("modal", ...)
-// becomes the front page — so it never intercepts a Form's own Tab-based
-// field navigation.
+// beforeDraw replaces the UI with a resize message when the terminal is too
+// small, and otherwise resizes the detail panels.
+func (a *App) beforeDraw(screen tcell.Screen) bool {
+	width, height := screen.Size()
+	if terminalTooSmall(width, height) {
+		a.tooSmall = true
+		drawTerminalTooSmall(screen, width, height)
+		return true
+	}
+	a.tooSmall = false
+	statusHeight := a.statusBar.Layout(width)
+	a.root.ResizeItem(a.statusBar, statusHeight, 0)
+	a.resizeDetailPanels(width, height, statusHeight)
+	return false
+}
+
+func terminalTooSmall(width, height int) bool {
+	return width < minTerminalWidth || height < minTerminalHeight
+}
+
+// drawTerminalTooSmall renders the minimum-size message and hides the cursor.
+func drawTerminalTooSmall(screen tcell.Screen, width, height int) {
+	lines := []string{
+		"Terminal too small",
+		"",
+		fmt.Sprintf("Minimum: %dx%d", minTerminalWidth, minTerminalHeight),
+		fmt.Sprintf("Current: %dx%d", width, height),
+		"Resize to continue.",
+	}
+	startY := max((height-len(lines))/2, 0)
+	for i, line := range lines {
+		tview.Print(screen, line, 0, startY+i, width, tview.AlignCenter, tview.Styles.PrimaryTextColor)
+	}
+	screen.HideCursor()
+}
+
+// handleGlobalKeys handles focus switching on Tab/Shift+Tab and screen
+// switching on the vendor, project, and user keys. Focus switching applies
+// only to the main page; screen switching applies on every page except
+// "modal", so a form or editor keeps its own rune input. All input is blocked
+// while the terminal is too small.
 func (a *App) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() != views.KeyFocusNext && event.Key() != views.KeyFocusPrev {
+	if a.tooSmall {
+		if event.Key() == tcell.KeyCtrlC {
+			return event
+		}
+		return nil
+	}
+
+	if event.Key() == views.KeyFocusNext || event.Key() == views.KeyFocusPrev {
+		if name, _ := a.pages.GetFrontPage(); name != "main" {
+			return event
+		}
+		if a.tv.GetFocus() == a.accounts {
+			a.tv.SetFocus(a.detail)
+		} else {
+			a.tv.SetFocus(a.accounts)
+		}
+		return nil
+	}
+
+	if event.Key() != tcell.KeyRune {
 		return event
 	}
-	if name, _ := a.pages.GetFrontPage(); name != "main" {
+	if name, _ := a.pages.GetFrontPage(); name == "modal" {
 		return event
 	}
-	if a.tv.GetFocus() == a.accounts {
-		a.tv.SetFocus(a.detail)
-	} else {
-		a.tv.SetFocus(a.accounts)
+
+	switch event.Rune() {
+	case views.KeyVendors:
+		a.SwitchToVendors()
+		return nil
+	case views.KeyProjects:
+		a.SwitchToProjects()
+		return nil
+	case views.KeyUsers:
+		a.SwitchToUsers()
+		return nil
 	}
-	return nil
+	return event
+}
+
+// handleGlobalMouse blocks mouse input while the terminal is too small.
+func (a *App) handleGlobalMouse(event *tcell.EventMouse, action tview.MouseAction) (*tcell.EventMouse, tview.MouseAction) {
+	if a.tooSmall {
+		return nil, action
+	}
+	return event, action
 }

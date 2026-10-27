@@ -72,7 +72,10 @@ type hint struct {
 	desc  string
 }
 
-const hintLabelColumn = 18
+const (
+	hintLabelColumn = 18
+	hintSeparator   = " · "
+)
 
 // String renders the hint as inline tview markup.
 func (h hint) String() string {
@@ -90,14 +93,13 @@ func (h hint) helpLine() string {
 // hints is a sequence of hints, joined for either display form.
 type hints []hint
 
-// String joins every hint inline, matching the status bar's existing
-// two-space separator.
+// String joins every hint inline with a dim middle-dot separator.
 func (hs hints) String() string {
 	parts := make([]string, len(hs))
 	for i, h := range hs {
 		parts[i] = h.String()
 	}
-	return strings.Join(parts, "  ")
+	return strings.Join(parts, dimText(hintSeparator))
 }
 
 // HelpLines joins every hint as help-overlay reference rows, each
@@ -133,6 +135,9 @@ func dispatchPanelKey(event *tcell.EventKey, app App, specific, common string) (
 
 // ── Focus/border wiring ───────────────────────────────────────────────────────
 
+// accentColor is used for the focused pane border and the notice area.
+const accentColor = tcell.ColorYellow
+
 // wirePanelFocus registers list's focus and blur callbacks: onFocus runs
 // first (e.g. status-bar hints), then the border turns yellow while list
 // has focus, reverting to the current default border colour on blur.
@@ -141,7 +146,7 @@ func dispatchPanelKey(event *tcell.EventKey, app App, specific, common string) (
 func wirePanelFocus(list *tview.List, onFocus func()) {
 	list.SetFocusFunc(func() {
 		onFocus()
-		list.SetBorderColor(tcell.ColorYellow)
+		list.SetBorderColor(accentColor)
 	})
 	list.SetBlurFunc(func() {
 		list.SetBorderColor(tview.Styles.BorderColor)

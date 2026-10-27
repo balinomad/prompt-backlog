@@ -34,19 +34,21 @@
 | `Esc`       | vendors screen                           | return to main screen                       |
 | `Esc`       | users screen                             | return to main screen                       |
 | `Esc`       | projects screen, project list            | return to main screen                       |
-| `Esc`       | projects screen, account list            | return to project list                      |
+| `Esc`       | projects screen, account list            | return to main screen                       |
 | `Esc`       | messages editor                          | close messages editor                       |
 | `Esc`       | help overlay                             | close help overlay                          |
-| `v`         | accounts list                            | switch to vendors screen                    |
-| `p`         | accounts list                            | switch to projects screen                   |
-| `u`         | accounts list                            | switch to users screen                      |
+| `v`         | any screen                               | switch to vendors screen                    |
+| `p`         | any screen                               | switch to projects screen                   |
+| `u`         | any screen                               | switch to users screen                      |
 | `m`         | session detail, selected session         | open messages editor                        |
 | `Ctrl+↑`    | messages editor, selected message        | move message up                             |
 | `Ctrl+↓`    | messages editor, selected message        | move message down                           |
 | `?`         | main, vendors, users, projects, messages | help overlay                                |
 | `q`         | main, vendors, users, projects, messages | quit                                        |
 
-`Tab` and `Shift+Tab` are ignored on the single-pane vendors screen, users screen, and messages editor. The projects screen and account list use `Tab` to switch panes; `Esc` returns from the account list to the project list.
+`Tab` and `Shift+Tab` are ignored on the single-pane vendors screen, users screen, and messages editor. The projects screen and account list use `Tab` to switch panes; `Esc` returns from the account list to the main screen.
+
+The `v`, `p`, and `u` screen-switch keys are ignored while a form, messages editor, help overlay, or confirmation modal has focus.
 
 **Colour semantics** (works in 16-color terminals):
 

@@ -168,9 +168,6 @@ var helpSections = []helpSection{
 		{"Enter", "Pause selected account"},
 		{"Ins", "Add account"},
 		{"Del", "Delete selected account"},
-		{string(KeyVendors), "Vendors screen"},
-		{string(KeyProjects), "Projects screen"},
-		{string(KeyUsers), "Users screen"},
 	}},
 	{"Session detail", hints{
 		{"Enter", "Edit selected session"},
@@ -212,6 +209,9 @@ var helpSections = []helpSection{
 		{"Esc", "Cancel / close"},
 	}},
 	{"Global", hints{
+		{string(KeyVendors), "Vendors screen"},
+		{string(KeyProjects), "Projects screen"},
+		{string(KeyUsers), "Users screen"},
 		{string(KeyHelp), "This help screen"},
 		{string(KeyQuit), "Quit"},
 	}},

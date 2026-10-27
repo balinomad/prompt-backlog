@@ -244,14 +244,14 @@ func newPromptForm(app App, queue []model.Prompt, idx int, commit func([]model.P
 	save := func() {
 		textField, ok := form.GetFormItemByLabel("Text").(*tview.InputField)
 		if !ok {
-			app.SetStatus("[red]internal error: Text field missing[-]")
+			app.SetError("internal error: Text field missing")
 			return
 		}
 		textVal := strings.TrimSpace(textField.GetText())
 
 		spawnCheckbox, ok := form.GetFormItemByLabel("Spawns new session").(*tview.Checkbox)
 		if !ok {
-			app.SetStatus("[red]internal error: Spawns new session checkbox missing[-]")
+			app.SetError("internal error: Spawns new session checkbox missing")
 			return
 		}
 		spawnVal := spawnCheckbox.IsChecked()

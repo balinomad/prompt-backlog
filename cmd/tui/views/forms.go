@@ -17,7 +17,8 @@ import (
 const (
 	formFieldWidth = 40
 	formNameWidth  = 30
-	formPauseWidth = 20
+	// formPauseWidth fits the timestamp plus one cell for the cursor.
+	formPauseWidth = len(model.TimeFormat) + 1
 	// formMaxWidth caps dynamic width at the former fixed modal width.
 	formMaxWidth = 64
 	// formChromeHeight is the border plus default vertical padding.
@@ -174,7 +175,7 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 	save := func() {
 		projectDropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
 		if !ok {
-			app.SetStatus("[red]internal error: Project dropdown missing[-]")
+			app.SetError("internal error: Project dropdown missing")
 			return
 		}
 		// Look up by index into the raw projectNames, not the string
@@ -189,7 +190,7 @@ func NewSessionForm(app App, account *model.Account, session *model.Session, onC
 
 		topicField, ok := form.GetFormItemByLabel("Topic").(*tview.InputField)
 		if !ok {
-			app.SetStatus("[red]internal error: Topic field missing[-]")
+			app.SetError("internal error: Topic field missing")
 			return
 		}
 		topicVal := strings.TrimSpace(topicField.GetText())
@@ -292,14 +293,14 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 	save := func() {
 		descField, ok := form.GetFormItemByLabel("Description").(*tview.TextArea)
 		if !ok {
-			app.SetStatus("[red]internal error: Description field missing[-]")
+			app.SetError("internal error: Description field missing")
 			return
 		}
 		descVal := strings.TrimSpace(descField.GetText())
 
 		instrField, ok := form.GetFormItemByLabel("Instructions").(*tview.TextArea)
 		if !ok {
-			app.SetStatus("[red]internal error: Instructions field missing[-]")
+			app.SetError("internal error: Instructions field missing")
 			return
 		}
 		instrVal := strings.TrimSpace(instrField.GetText())
@@ -315,7 +316,7 @@ func NewProjectForm(app App, project *model.Project, onClose func()) tview.Primi
 		} else {
 			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
 			if !ok {
-				app.SetStatus("[red]internal error: Name field missing[-]")
+				app.SetError("internal error: Name field missing")
 				return
 			}
 			nameVal := strings.TrimSpace(nameField.GetText())
@@ -374,14 +375,14 @@ func NewVendorForm(app App, vendor *model.Vendor, onClose func()) tview.Primitiv
 	save := func() {
 		projectCheckbox, ok := form.GetFormItemByLabel("Supports projects").(*tview.Checkbox)
 		if !ok {
-			app.SetStatus("[red]internal error: project checkbox missing[-]")
+			app.SetError("internal error: project checkbox missing")
 			return
 		}
 		hasProjects := projectCheckbox.IsChecked()
 
 		researchCheckbox, ok := form.GetFormItemByLabel("Supports deep research").(*tview.Checkbox)
 		if !ok {
-			app.SetStatus("[red]internal error: deep research checkbox missing[-]")
+			app.SetError("internal error: deep research checkbox missing")
 			return
 		}
 		hasDeepResearch := researchCheckbox.IsChecked()
@@ -397,7 +398,7 @@ func NewVendorForm(app App, vendor *model.Vendor, onClose func()) tview.Primitiv
 		} else {
 			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
 			if !ok {
-				app.SetStatus("[red]internal error: Name field missing[-]")
+				app.SetError("internal error: Name field missing")
 				return
 			}
 			nameVal := strings.TrimSpace(nameField.GetText())
@@ -467,7 +468,7 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 	save := func() {
 		field, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
 		if !ok {
-			app.SetStatus("[red]internal error: Pause until field missing[-]")
+			app.SetError("internal error: Pause until field missing")
 			return
 		}
 		val := strings.TrimSpace(field.GetText())
@@ -476,7 +477,7 @@ func accountEditForm(app App, account *model.Account, onClose func()) tview.Prim
 		if val != "" {
 			t, err := model.ParseTime(val)
 			if err != nil {
-				app.SetStatus(fmt.Sprintf("[red]pause until: use format %s[-]", model.TimeFormat))
+				app.SetError("pause until: use format " + model.TimeFormat)
 				return
 			}
 			until = t
@@ -554,7 +555,7 @@ func accountVendorIndex(vendors []string, name string) int {
 func openNewUserFlow(app App, form *tview.Form, vendorNames []string, users []*model.User, onClose func()) {
 	vendorDropDown, ok := form.GetFormItemByLabel("Vendor").(*tview.DropDown)
 	if !ok {
-		app.SetStatus("[red]internal error: Vendor dropdown missing[-]")
+		app.SetError("internal error: Vendor dropdown missing")
 		return
 	}
 	vendorIdx, _ := vendorDropDown.GetCurrentOption()
@@ -586,24 +587,24 @@ func openNewUserFlow(app App, form *tview.Form, vendorNames []string, users []*m
 func saveAccountCreate(app App, form *tview.Form, users []*model.User, vendorNames []string, onClose func()) {
 	userDropDown, ok := form.GetFormItemByLabel("User").(*tview.DropDown)
 	if !ok {
-		app.SetStatus("[red]internal error: User dropdown missing[-]")
+		app.SetError("internal error: User dropdown missing")
 		return
 	}
 	userIdx, _ := userDropDown.GetCurrentOption()
 	if userIdx <= 0 {
-		app.SetStatus("[red]select a user before saving[-]")
+		app.SetError("select a user before saving")
 		return
 	}
 	u := users[userIdx-1]
 
 	vendorDropDown, ok := form.GetFormItemByLabel("Vendor").(*tview.DropDown)
 	if !ok {
-		app.SetStatus("[red]internal error: Vendor dropdown missing[-]")
+		app.SetError("internal error: Vendor dropdown missing")
 		return
 	}
 	vendorIdx, _ := vendorDropDown.GetCurrentOption()
 	if vendorIdx < 0 || vendorIdx >= len(vendorNames) {
-		app.SetStatus("[red]internal error: invalid vendor selection[-]")
+		app.SetError("internal error: invalid vendor selection")
 		return
 	}
 
@@ -654,7 +655,7 @@ func NewUserForm(app App, user *model.User, onClose func()) tview.Primitive {
 	save := func() {
 		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
 		if !ok {
-			app.SetStatus("[red]internal error: Name field missing[-]")
+			app.SetError("internal error: Name field missing")
 			return
 		}
 		nameVal := strings.TrimSpace(nameField.GetText())
@@ -717,12 +718,12 @@ func NewGrantForm(app App, project *model.Project, onClose func()) tview.Primiti
 	save := func() {
 		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
 		if !ok {
-			app.SetStatus("[red]internal error: Account dropdown missing[-]")
+			app.SetError("internal error: Account dropdown missing")
 			return
 		}
 		idx, _ := dropDown.GetCurrentOption()
 		if idx < 0 || idx >= len(accounts) {
-			app.SetStatus("[red]internal error: invalid account selection[-]")
+			app.SetError("internal error: invalid account selection")
 			return
 		}
 		email := accounts[idx].UserEmail()

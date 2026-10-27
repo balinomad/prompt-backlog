@@ -198,17 +198,6 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return result
 	}
 
-	switch event.Rune() {
-	case KeyVendors:
-		p.app.SwitchToVendors()
-		return nil
-	case KeyProjects:
-		p.app.SwitchToProjects()
-		return nil
-	case KeyUsers:
-		p.app.SwitchToUsers()
-		return nil
-	}
 	return event
 }
 

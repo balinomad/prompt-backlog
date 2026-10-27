@@ -317,8 +317,10 @@ func TestApp_SetStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	app.SetStatus("[red]error[-]")
-	app.SetStatus("") // Clears any previous message
+	app.SetStatus("[green]saved[-]")
+	app.SetNotice("No vendors configured.")
+	app.SetError("save failed")
+	app.SetStatus("") // Clears the previous message
 }
 
 func TestApp_SetHints(t *testing.T) {

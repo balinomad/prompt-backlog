@@ -15,6 +15,7 @@
 
 - Go 1.26 or later
 - A terminal emulator with UTF-8 support
+- A terminal size of at least 80x24 characters
 
 ## Installation
 

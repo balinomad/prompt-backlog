@@ -65,6 +65,8 @@ type mockApp struct {
 	focused       tview.Primitive
 	switchedTo    string // "main" | "vendors" | "projects" | "users"
 	status        string
+	notice        string
+	errorStatus   string
 	hintsSpecific string
 	hintsCommon   string
 	quitted       bool
@@ -95,7 +97,21 @@ func (m *mockApp) SwitchToMain()              { m.switchedTo = "main" }
 func (m *mockApp) SwitchToVendors()           { m.switchedTo = "vendors" }
 func (m *mockApp) SwitchToProjects()          { m.switchedTo = "projects" }
 func (m *mockApp) SwitchToUsers()             { m.switchedTo = "users" }
-func (m *mockApp) SetStatus(msg string)       { m.status = msg }
+func (m *mockApp) SetStatus(msg string) {
+	m.status = msg
+	m.notice = ""
+	m.errorStatus = ""
+}
+func (m *mockApp) SetNotice(msg string) {
+	m.status = msg
+	m.notice = msg
+	m.errorStatus = ""
+}
+func (m *mockApp) SetError(msg string) {
+	m.status = msg
+	m.notice = ""
+	m.errorStatus = msg
+}
 func (m *mockApp) SetHints(specific, common string) {
 	m.hintsSpecific = specific
 	m.hintsCommon = common

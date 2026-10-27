@@ -154,32 +154,23 @@ func TestAccountsPanel_Refresh_ClearsDetailPanelsOnLastAccountDeleted(t *testing
 
 // ── keyboard handlers ─────────────────────────────────────────────────────────
 
-func TestAccountsPanel_Keys_SwitchScreens(t *testing.T) {
+func TestAccountsPanel_Keys_NoHiddenAliases(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name       string
-		key        rune
-		wantSwitch string
-	}{
-		{"vendors", views.KeyVendors, "vendors"},
-		{"projects", views.KeyProjects, "projects"},
-		{"users", views.KeyUsers, "users"},
+	app := newMockApp(t)
+	p := views.NewAccountsPanel(app)
+	p.Refresh()
+	capture := p.GetInputCapture()
+	if capture == nil {
+		t.Fatal("expected non-nil input capture")
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app := newMockApp(t)
-			p := views.NewAccountsPanel(app)
-			p.Refresh()
-			capture := p.GetInputCapture()
-			if capture == nil {
-				t.Fatal("expected non-nil input capture")
-			}
-			capture(runeKey(tc.key))
-			if app.switchedTo != tc.wantSwitch {
-				t.Errorf("got switchedTo=%q, want %q", app.switchedTo, tc.wantSwitch)
-			}
-		})
+	for _, key := range []rune{views.KeyVendors, views.KeyProjects, views.KeyUsers} {
+		event := runeKey(key)
+		if got := capture(event); got != event {
+			t.Errorf("rune %q must pass through unchanged", key)
+		}
+		if app.switchedTo != "" {
+			t.Errorf("rune %q must not switch screens, got %q", key, app.switchedTo)
+		}
 	}
 }
 

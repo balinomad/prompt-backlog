@@ -3,7 +3,6 @@ package views
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/balinomad/llm-desk/internal/service"
 
@@ -16,9 +15,9 @@ import (
 // error, registry unchanged) via errors.Is(err, ErrSaveFailed).
 var ErrSaveFailed = errors.New("save failed")
 
-// setErrorStatus displays err in the status bar using the shared error style.
+// setErrorStatus displays err in the separate error area.
 func setErrorStatus(app App, err error) {
-	app.SetStatus(fmt.Sprintf("[red]%v[-]", err))
+	app.SetError(err.Error())
 }
 
 // App is the interface that all views use to interact with the host application.
@@ -73,9 +72,18 @@ type App interface {
 	// SwitchToMain switches the display back to the accounts + detail screen.
 	SwitchToMain()
 
-	// SetStatus displays msg in the status bar. An empty string clears it.
-	// Callers may include tview colour tags (e.g. "[red]error[-]").
+	// SetStatus displays an inline status message in the status bar. It clears
+	// any notice or error. An empty string clears it.
+	// Callers may include tview colour tags (e.g. "[green]saved[-]").
 	SetStatus(msg string)
+
+	// SetNotice displays msg in the separate notice area below the common
+	// hints. It clears any inline status and error. An empty string clears it.
+	SetNotice(msg string)
+
+	// SetError displays msg in the separate red error area below the common
+	// hints. It clears any inline status and notice. An empty string clears it.
+	SetError(msg string)
 
 	// SetHints replaces the keyboard-hint lines in the status bar. Use the
 	// pre-defined Hints*Specific/Hints*Common pairs from statusbar.go.
