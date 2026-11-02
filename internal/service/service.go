@@ -209,6 +209,9 @@ func (s *Service) DeleteUser(email string) error {
 // Project returns the project with the given name, or nil if not found.
 func (s *Service) Project(name string) *model.Project { return s.reg.Project(name) }
 
+// ProjectByID returns the project with the given ID, or nil if not found.
+func (s *Service) ProjectByID(id uint64) *model.Project { return s.reg.ProjectByID(id) }
+
 // Projects returns all projects sorted by name.
 func (s *Service) Projects() []*model.Project { return s.reg.Projects() }
 
@@ -249,6 +252,20 @@ func (s *Service) UpdateProject(name, description, instructions string) error {
 		return err
 	}
 	return s.reg.UpdateProject(current, model.NewProject(name, description, instructions))
+}
+
+// RenameProject changes a project's name while preserving its ID and all
+// references. Returns the renamed project.
+func (s *Service) RenameProject(oldName, newName string) (*model.Project, error) {
+	current, err := s.resolveProject("rename", oldName)
+	if err != nil {
+		return nil, err
+	}
+	renamed, err := s.reg.RenameProject(current, newName)
+	if err != nil {
+		return nil, fmt.Errorf("rename project: %w", err)
+	}
+	return renamed, nil
 }
 
 // DeleteProject removes a project and cleans up all links.
@@ -368,13 +385,13 @@ func (s *Service) Session(id uint64) *model.Session { return s.reg.Session(id) }
 // Sessions returns all sessions sorted by ID.
 func (s *Service) Sessions() []*model.Session { return s.reg.Sessions() }
 
-// UpdateSessionTopic updates the high-level topic of a session.
-func (s *Service) UpdateSessionTopic(userEmail, vendorName string, id uint64, topic string) error {
+// UpdateSessionName updates the name of a session.
+func (s *Service) UpdateSessionName(userEmail, vendorName string, id uint64, name string) error {
 	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
-		return fmt.Errorf("update session topic: %w", err)
+		return fmt.Errorf("update session name: %w", err)
 	}
-	return s.reg.UpdateSessionTopic(sess, topic)
+	return s.reg.UpdateSessionName(sess, name)
 }
 
 // UpdateSessionProject reassigns a session to a different project.
@@ -393,6 +410,146 @@ func (s *Service) UpdateSessionProject(userEmail, vendorName string, id uint64, 
 	}
 
 	return s.reg.UpdateSessionProject(sess, p)
+}
+
+// UpdateSessionURL updates a session's conversation URL.
+func (s *Service) UpdateSessionURL(userEmail, vendorName string, id uint64, url string) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
+	if err != nil {
+		return fmt.Errorf("update session url: %w", err)
+	}
+	return s.reg.UpdateSessionURL(sess, url)
+}
+
+// UpdateSessionFinish updates a session's finish flag.
+func (s *Service) UpdateSessionFinish(userEmail, vendorName string, id uint64, finish bool) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
+	if err != nil {
+		return fmt.Errorf("update session finish: %w", err)
+	}
+	return s.reg.UpdateSessionFinish(sess, finish)
+}
+
+// LatestSession returns the account's latest session, or false when the
+// account has no session with a non-zero updated-at.
+func (s *Service) LatestSession(userEmail, vendorName string) (*model.Session, bool, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
+	if err != nil {
+		return nil, false, fmt.Errorf("latest session: %w", err)
+	}
+	sess, ok, err := s.reg.LatestSession(acc)
+	if err != nil {
+		return nil, false, fmt.Errorf("latest session: %w", err)
+	}
+	return sess, ok, nil
+}
+
+// AccountSessionsActivityOrder returns the account's sessions in activity
+// order: updated-at descending, then ID descending.
+func (s *Service) AccountSessionsActivityOrder(userEmail, vendorName string) ([]*model.Session, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
+	if err != nil {
+		return nil, fmt.Errorf("account sessions activity order: %w", err)
+	}
+	return s.reg.AccountSessionsActivityOrder(acc)
+}
+
+// ── Note ──────────────────────────────────────────────────────────────────────
+
+// Note returns the note with the given ID, or nil if not found.
+func (s *Service) Note(id uint64) *model.Note { return s.reg.Note(id) }
+
+// Notes returns all notes sorted by ID.
+func (s *Service) Notes() []*model.Note { return s.reg.Notes() }
+
+// VisibleNotes returns the notes visible for the account for the given filter.
+func (s *Service) VisibleNotes(userEmail, vendorName string, filter model.ProjectFilter) ([]*model.Note, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
+	if err != nil {
+		return nil, fmt.Errorf("visible notes: %w", err)
+	}
+	return s.reg.VisibleNotes(acc, filter)
+}
+
+// ProjectNotes returns every note assigned to the named project.
+func (s *Service) ProjectNotes(projectName string) ([]*model.Note, error) {
+	p, err := s.resolveProject("resolve", projectName)
+	if err != nil {
+		return nil, fmt.Errorf("project notes: %w", err)
+	}
+	return s.reg.ProjectNotes(p)
+}
+
+// AddNote creates a note. An empty project name means no project. An empty
+// user email together with an empty vendor name means no account; exactly one
+// empty is an error wrapping ErrKeyRequired.
+func (s *Service) AddNote(text, projectName, userEmail, vendorName string) (*model.Note, error) {
+	project, acc, err := s.resolveNoteRefs(projectName, userEmail, vendorName)
+	if err != nil {
+		return nil, fmt.Errorf("add note: %w", err)
+	}
+	n, err := s.reg.AddNote(text, project, acc)
+	if err != nil {
+		return nil, fmt.Errorf("add note: %w", err)
+	}
+	return n, nil
+}
+
+// UpdateNote updates a note. Project and account arguments have the same
+// meaning as for AddNote.
+func (s *Service) UpdateNote(id uint64, text, projectName, userEmail, vendorName string) error {
+	note := s.reg.Note(id)
+	if note == nil {
+		return fmt.Errorf("update note %d: %w", id, model.ErrNoteNotFound)
+	}
+	project, acc, err := s.resolveNoteRefs(projectName, userEmail, vendorName)
+	if err != nil {
+		return fmt.Errorf("update note: %w", err)
+	}
+	if err := s.reg.UpdateNote(note, text, project, acc); err != nil {
+		return fmt.Errorf("update note: %w", err)
+	}
+	return nil
+}
+
+// DeleteNote removes a note by ID.
+func (s *Service) DeleteNote(id uint64) error {
+	note := s.reg.Note(id)
+	if note == nil {
+		return fmt.Errorf("delete note %d: %w", id, model.ErrNoteNotFound)
+	}
+	if err := s.reg.DeleteNote(note); err != nil {
+		return fmt.Errorf("delete note: %w", err)
+	}
+	return nil
+}
+
+// resolveNoteRefs resolves the optional project and account inputs shared by
+// AddNote and UpdateNote.
+func (s *Service) resolveNoteRefs(projectName, userEmail, vendorName string) (*model.Project, *model.Account, error) {
+	var project *model.Project
+	if projectName != "" {
+		p, err := s.resolveProject("resolve", projectName)
+		if err != nil {
+			return nil, nil, err
+		}
+		project = p
+	}
+
+	emailEmpty := model.NormalizeEmail(userEmail) == ""
+	vendorEmpty := model.NormalizeText(vendorName) == ""
+	switch {
+	case emailEmpty && vendorEmpty:
+		return project, nil, nil
+	case emailEmpty || vendorEmpty:
+		return nil, nil, fmt.Errorf("note account %w", model.ErrKeyRequired)
+	default:
+		acc, err := s.resolveAccount(userEmail, vendorName)
+		if err != nil {
+			return nil, nil, err
+		}
+		return project, acc, nil
+	}
 }
 
 // UpdateSessionPrompts overwrites the pending prompt queue for a session.
@@ -416,6 +573,38 @@ func (s *Service) EndSession(userEmail, vendorName string, id uint64) error {
 
 // ── Workflows (cross-aggregate) ────────────────────────────────────────────────
 
+// StartSessionAtomic resolves the account, optional existing project and
+// optional note, then performs the atomic start in the registry. noteID 0
+// means no note. At most one of projectName and newProjectName may be set.
+func (s *Service) StartSessionAtomic(userEmail, vendorName, projectName, newProjectName, name, promptText string, noteID uint64) (*model.Session, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
+	if err != nil {
+		return nil, fmt.Errorf("start session: %w", err)
+	}
+
+	var project *model.Project
+	if projectName != "" {
+		project, err = s.resolveProject("resolve", projectName)
+		if err != nil {
+			return nil, fmt.Errorf("start session: %w", err)
+		}
+	}
+
+	var note *model.Note
+	if noteID != 0 {
+		note = s.reg.Note(noteID)
+		if note == nil {
+			return nil, fmt.Errorf("start session: note %d: %w", noteID, model.ErrNoteNotFound)
+		}
+	}
+
+	sess, err := s.reg.StartSessionAtomic(acc, project, newProjectName, name, promptText, note)
+	if err != nil {
+		return nil, fmt.Errorf("start session: %w", err)
+	}
+	return sess, nil
+}
+
 // ensureAccount returns the account for u and p, creating it on demand.
 func (s *Service) ensureAccount(u *model.User, p *model.Vendor) (*model.Account, error) {
 	if acc := s.reg.Account(u, p); acc != nil {
@@ -427,7 +616,7 @@ func (s *Service) ensureAccount(u *model.User, p *model.Vendor) (*model.Account,
 // StartSession is the entry point for the "new session" action. The user must
 // already exist; the account is created on demand. projectName is optional and
 // must already be granted to the account.
-func (s *Service) StartSession(userEmail, vendorName, projectName, topic string, queue []model.Prompt) (*model.Session, error) {
+func (s *Service) StartSession(userEmail, vendorName, projectName, name string, queue []model.Prompt) (*model.Session, error) {
 	p, err := s.resolveVendor("resolve", vendorName)
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
@@ -451,5 +640,5 @@ func (s *Service) StartSession(userEmail, vendorName, projectName, topic string,
 		return nil, fmt.Errorf("start session: %w", err)
 	}
 
-	return s.reg.AddSession(acc, proj, topic, queue)
+	return s.reg.AddSession(acc, proj, name, queue)
 }

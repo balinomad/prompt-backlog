@@ -67,7 +67,7 @@ func newService(t *testing.T) *service.Service {
 //	Accounts:  alice@example.com|claude (granted Alpha + Beta)
 //	           bob@example.com|chatgpt  (no projects granted)
 //	Sessions:
-//	  ID 1: alice@example.com|claude, project=Alpha, topic="Architecture review"
+//	  ID 1: alice@example.com|claude, project=Alpha, name="Architecture review"
 //	  ID 2: bob@example.com|chatgpt, no project
 //
 // The fixture supports every resolveAccount/resolveSession edge case without
@@ -1192,9 +1192,9 @@ func TestService_Sessions(t *testing.T) {
 	}
 }
 
-// TestService_UpdateSessionTopic covers resolveSession branches and the
+// TestService_UpdateSessionName covers resolveSession branches and the
 // cross-account guard.
-func TestService_UpdateSessionTopic(t *testing.T) {
+func TestService_UpdateSessionName(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -1202,11 +1202,11 @@ func TestService_UpdateSessionTopic(t *testing.T) {
 		email        string
 		vendor       string
 		id           uint64
-		topic        string
+		sessionName  string
 		wantErr      error
 		wantErrIsNot error
 	}{
-		{"success", "alice@example.com", "claude", 1, "New Topic", nil, nil},
+		{"success", "alice@example.com", "claude", 1, "New Name", nil, nil},
 		{"user not found", "ghost@example.com", "claude", 1, "x", model.ErrUserNotFound, nil},
 		{"vendor not found", "alice@example.com", "ghost", 1, "x", model.ErrVendorNotFound, nil},
 		{"account not found", "alice@example.com", "chatgpt", 1, "x", model.ErrAccountNotFound, nil},
@@ -1217,11 +1217,11 @@ func TestService_UpdateSessionTopic(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.UpdateSessionTopic(tc.email, tc.vendor, tc.id, tc.topic)
+			err := svc.UpdateSessionName(tc.email, tc.vendor, tc.id, tc.sessionName)
 			if tc.wantErr == nil {
 				must(t, err)
-				if got := svc.Session(tc.id).Topic(); got != tc.topic {
-					t.Errorf("got %q, want %q", got, tc.topic)
+				if got := svc.Session(tc.id).Name(); got != tc.sessionName {
+					t.Errorf("got %q, want %q", got, tc.sessionName)
 				}
 				return
 			}
@@ -1300,8 +1300,8 @@ func TestService_UpdateSessionPrompts(t *testing.T) {
 		wantErr      error
 		wantErrIsNot error
 	}{
-		{"success", "alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("step one", false), model.NewPrompt("step two", true)}, nil, nil},
-		{"invalid prompt", "alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("", false)}, model.ErrTextRequired, nil},
+		{"success", "alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("step one"), model.NewPrompt("step two")}, nil, nil},
+		{"invalid prompt", "alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("")}, model.ErrTextRequired, nil},
 		{"user not found", "ghost@example.com", "claude", 1, nil, model.ErrUserNotFound, nil},
 		{"vendor not found", "alice@example.com", "ghost", 1, nil, model.ErrVendorNotFound, nil},
 		{"account not found", "alice@example.com", "chatgpt", 1, nil, model.ErrAccountNotFound, nil},
@@ -1389,7 +1389,7 @@ func TestService_StartSession(t *testing.T) {
 		svc := newService(t)
 		must(t, svc.AddVendor("claude", true, false))
 		must(t, svc.AddUser("alice@example.com", "Alice"))
-		sess, err := svc.StartSession("alice@example.com", "claude", "", "Topic", nil)
+		sess, err := svc.StartSession("alice@example.com", "claude", "", "Name", nil)
 		must(t, err)
 		if sess.ProjectName() != "" {
 			t.Errorf("got project %q, want empty", sess.ProjectName())
@@ -1420,8 +1420,8 @@ func TestService_StartSession(t *testing.T) {
 	t.Run("with project and queue", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
-		queue := []model.Prompt{model.NewPrompt("continue", false)}
-		sess, err := svc.StartSession("alice@example.com", "claude", "Alpha", "Topic", queue)
+		queue := []model.Prompt{model.NewPrompt("continue")}
+		sess, err := svc.StartSession("alice@example.com", "claude", "Alpha", "Name", queue)
 		must(t, err)
 		if sess.ProjectName() != "Alpha" {
 			t.Errorf("got project %q, want Alpha", sess.ProjectName())
@@ -1440,30 +1440,659 @@ func TestService_StartSession(t *testing.T) {
 	})
 
 	errorCases := []struct {
-		name    string
-		email   string
-		vendor  string
-		project string
-		topic   string
-		queue   []model.Prompt
-		wantErr error
+		name        string
+		email       string
+		vendor      string
+		project     string
+		sessionName string
+		queue       []model.Prompt
+		wantErr     error
 	}{
 		{"user not found", "ghost@example.com", "claude", "", "", nil, model.ErrUserNotFound},
 		{"vendor not found", "alice@example.com", "ghost", "", "", nil, model.ErrVendorNotFound},
 		{"project not found", "alice@example.com", "claude", "Ghost", "", nil, model.ErrProjectNotFound},
 		{
 			"invalid message in queue", "alice@example.com", "claude", "", "",
-			[]model.Prompt{model.NewPrompt("ok", false), model.NewPrompt("", false)},
+			[]model.Prompt{model.NewPrompt("ok"), model.NewPrompt("")},
 			model.ErrTextRequired,
 		},
 	}
 	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := seedService(t).StartSession(tc.email, tc.vendor, tc.project, tc.topic, tc.queue)
+			_, err := seedService(t).StartSession(tc.email, tc.vendor, tc.project, tc.sessionName, tc.queue)
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestService_UpdateSessionURL(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		email        string
+		vendor       string
+		id           uint64
+		url          string
+		wantErr      error
+		wantErrIsNot error
+	}{
+		{"success", "alice@example.com", "claude", 1, " https://example.com/chat/1 ", nil, nil},
+		{"user not found", "ghost@example.com", "claude", 1, "x", model.ErrUserNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, "x", model.ErrVendorNotFound, nil},
+		{"account not found", "alice@example.com", "chatgpt", 1, "x", model.ErrAccountNotFound, nil},
+		{"session not found", "alice@example.com", "claude", 9999, "x", model.ErrSessionNotFound, nil},
+		{"cross-account session", "alice@example.com", "claude", 2, "x", apperr.ErrNotFound, model.ErrSessionNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := seedService(t)
+			err := svc.UpdateSessionURL(tc.email, tc.vendor, tc.id, tc.url)
+			if tc.wantErr == nil {
+				must(t, err)
+				if got := svc.Session(tc.id).URL(); got != "https://example.com/chat/1" {
+					t.Errorf("URL() = %q, want trimmed URL", got)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
+			}
+			if tc.wantErrIsNot != nil && errors.Is(err, tc.wantErrIsNot) {
+				t.Errorf("got errors.Is(_, %v) = true, want false", tc.wantErrIsNot)
+			}
+		})
+	}
+}
+
+func TestService_UpdateSessionFinish(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		email        string
+		vendor       string
+		id           uint64
+		finish       bool
+		wantErr      error
+		wantErrIsNot error
+	}{
+		{"success", "alice@example.com", "claude", 1, true, nil, nil},
+		{"user not found", "ghost@example.com", "claude", 1, true, model.ErrUserNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, true, model.ErrVendorNotFound, nil},
+		{"account not found", "alice@example.com", "chatgpt", 1, true, model.ErrAccountNotFound, nil},
+		{"session not found", "alice@example.com", "claude", 9999, true, model.ErrSessionNotFound, nil},
+		{"cross-account session", "alice@example.com", "claude", 2, true, apperr.ErrNotFound, model.ErrSessionNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			svc := seedService(t)
+			err := svc.UpdateSessionFinish(tc.email, tc.vendor, tc.id, tc.finish)
+			if tc.wantErr == nil {
+				must(t, err)
+				if !svc.Session(tc.id).Finish() {
+					t.Error("Finish() = false, want true")
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
+			}
+			if tc.wantErrIsNot != nil && errors.Is(err, tc.wantErrIsNot) {
+				t.Errorf("got errors.Is(_, %v) = true, want false", tc.wantErrIsNot)
+			}
+		})
+	}
+}
+
+func TestService_LatestSession(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns the touched session", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		must(t, svc.UpdateSessionPrompts("alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("next")}))
+
+		sess, ok, err := svc.LatestSession("alice@example.com", "claude")
+		must(t, err)
+		if !ok || sess.ID() != 1 {
+			t.Errorf("LatestSession() = %v, %v; want session 1, true", sess, ok)
+		}
+	})
+
+	t.Run("no touched session", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		sess, ok, err := svc.LatestSession("bob@example.com", "chatgpt")
+		must(t, err)
+		if ok || sess != nil {
+			t.Errorf("LatestSession() = %v, %v; want nil, false", sess, ok)
+		}
+	})
+
+	t.Run("account not found", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := seedService(t).LatestSession("alice@example.com", "chatgpt")
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
+		}
+	})
+
+	t.Run("user not found", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := seedService(t).LatestSession("ghost@example.com", "claude")
+		if !errors.Is(err, model.ErrUserNotFound) {
+			t.Errorf("got %v, want ErrUserNotFound", err)
+		}
+	})
+
+	t.Run("vendor not found", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := seedService(t).LatestSession("alice@example.com", "ghost")
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
+		}
+	})
+}
+
+func TestService_AccountSessionsActivityOrder(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero updated-at sessions are ordered by ID descending", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		got, err := svc.AccountSessionsActivityOrder("alice@example.com", "claude")
+		must(t, err)
+		if len(got) != 1 || got[0].ID() != 1 {
+			t.Errorf("got %v, want session 1", got)
+		}
+
+		got, err = svc.AccountSessionsActivityOrder("bob@example.com", "chatgpt")
+		must(t, err)
+		if len(got) != 1 || got[0].ID() != 2 {
+			t.Errorf("got %v, want session 2", got)
+		}
+	})
+
+	t.Run("touched session comes first", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		_, err := svc.StartSession("alice@example.com", "claude", "", "", nil)
+		must(t, err)
+		must(t, svc.UpdateSessionPrompts("alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("next")}))
+
+		got, err := svc.AccountSessionsActivityOrder("alice@example.com", "claude")
+		must(t, err)
+		if len(got) != 2 || got[0].ID() != 1 {
+			t.Errorf("got %v, want session 1 first", got)
+		}
+	})
+
+	t.Run("user not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).AccountSessionsActivityOrder("ghost@example.com", "claude")
+		if !errors.Is(err, model.ErrUserNotFound) {
+			t.Errorf("got %v, want ErrUserNotFound", err)
+		}
+	})
+
+	t.Run("account not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).AccountSessionsActivityOrder("alice@example.com", "chatgpt")
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
+		}
+	})
+}
+
+//nolint:cyclop // Table-driven test with independent cases; splitting would obscure coverage.
+func TestService_AddNote(t *testing.T) {
+	t.Parallel()
+
+	t.Run("no project and no account", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("  text  ", "", "", "")
+		must(t, err)
+		if n.Text() != "text" || n.ProjectName() != "" {
+			t.Errorf("note = text %q project %q", n.Text(), n.ProjectName())
+		}
+		if _, ok := n.AccountKey(); ok {
+			t.Error("note has an account, want none")
+		}
+	})
+
+	t.Run("project only", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "Alpha", "", "")
+		must(t, err)
+		if n.ProjectName() != "Alpha" {
+			t.Errorf("ProjectName() = %q, want Alpha", n.ProjectName())
+		}
+		if _, ok := n.AccountKey(); ok {
+			t.Error("note has an account, want none")
+		}
+	})
+
+	t.Run("account only", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "", "alice@example.com", "claude")
+		must(t, err)
+		if key, ok := n.AccountKey(); !ok || key.Email != "alice@example.com" {
+			t.Errorf("AccountKey() = %v, %v; want alice, true", key, ok)
+		}
+	})
+
+	t.Run("project and account", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "Alpha", "alice@example.com", "claude")
+		must(t, err)
+		if n.ProjectName() != "Alpha" {
+			t.Errorf("ProjectName() = %q, want Alpha", n.ProjectName())
+		}
+		if key, ok := n.AccountKey(); !ok || key.Email != "alice@example.com" {
+			t.Errorf("AccountKey() = %v, %v; want alice, true", key, ok)
+		}
+	})
+
+	t.Run("empty text", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).AddNote("  ", "", "", "")
+		if !errors.Is(err, model.ErrTextRequired) {
+			t.Errorf("got %v, want ErrTextRequired", err)
+		}
+	})
+
+	t.Run("project not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).AddNote("text", "Ghost", "", "")
+		if !errors.Is(err, model.ErrProjectNotFound) {
+			t.Errorf("got %v, want ErrProjectNotFound", err)
+		}
+	})
+
+	t.Run("account not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).AddNote("text", "", "alice@example.com", "chatgpt")
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
+		}
+	})
+
+	t.Run("exactly one account field empty", func(t *testing.T) {
+		t.Parallel()
+		cases := []struct {
+			name   string
+			email  string
+			vendor string
+		}{
+			{"email empty", "", "claude"},
+			{"vendor empty", "alice@example.com", ""},
+			{"email whitespace", "   ", "claude"},
+			{"vendor whitespace", "alice@example.com", "   "},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				_, err := seedService(t).AddNote("text", "", tc.email, tc.vendor)
+				if !errors.Is(err, model.ErrKeyRequired) {
+					t.Errorf("got %v, want ErrKeyRequired", err)
+				}
+			})
+		}
+	})
+
+	t.Run("whitespace only account fields mean no account", func(t *testing.T) {
+		t.Parallel()
+		n, err := seedService(t).AddNote("text", "", "   ", "   ")
+		must(t, err)
+		if _, ok := n.AccountKey(); ok {
+			t.Error("note has an account, want none")
+		}
+	})
+
+	t.Run("project not granted to account", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).AddNote("text", "Orphan", "alice@example.com", "claude")
+		if err == nil {
+			t.Fatal("got nil, want error")
+		}
+	})
+}
+
+func TestService_UpdateNote(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("old", "", "", "")
+		must(t, err)
+		must(t, svc.UpdateNote(n.ID(), "new", "Alpha", "alice@example.com", "claude"))
+		got := svc.Note(n.ID())
+		if got.Text() != "new" || got.ProjectName() != "Alpha" {
+			t.Errorf("note = text %q project %q", got.Text(), got.ProjectName())
+		}
+		if key, ok := got.AccountKey(); !ok || key.Email != "alice@example.com" {
+			t.Errorf("AccountKey() = %v, %v; want alice, true", key, ok)
+		}
+	})
+
+	t.Run("no-op keeps the same pointer", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("same", "Alpha", "alice@example.com", "claude")
+		must(t, err)
+		must(t, svc.UpdateNote(n.ID(), "  same  ", "Alpha", "alice@example.com", "claude"))
+		if got := svc.Note(n.ID()); got != n {
+			t.Error("expected the same pointer for an unchanged note")
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+		err := seedService(t).UpdateNote(99, "text", "", "", "")
+		if !errors.Is(err, model.ErrNoteNotFound) {
+			t.Errorf("got %v, want ErrNoteNotFound", err)
+		}
+	})
+
+	t.Run("empty text", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "", "", "")
+		must(t, err)
+		err = svc.UpdateNote(n.ID(), "  ", "", "", "")
+		if !errors.Is(err, model.ErrTextRequired) {
+			t.Errorf("got %v, want ErrTextRequired", err)
+		}
+	})
+
+	t.Run("exactly one account field empty", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "", "", "")
+		must(t, err)
+		err = svc.UpdateNote(n.ID(), "text", "", "alice@example.com", "")
+		if !errors.Is(err, model.ErrKeyRequired) {
+			t.Errorf("got %v, want ErrKeyRequired", err)
+		}
+	})
+}
+
+func TestService_DeleteNote(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "", "", "")
+		must(t, err)
+		must(t, svc.DeleteNote(n.ID()))
+		if got := svc.Note(n.ID()); got != nil {
+			t.Errorf("Note(%d) = %v, want nil", n.ID(), got)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
+		err := seedService(t).DeleteNote(99)
+		if !errors.Is(err, model.ErrNoteNotFound) {
+			t.Errorf("got %v, want ErrNoteNotFound", err)
+		}
+	})
+}
+
+func TestService_NoteAndNotes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		if got := svc.Notes(); len(got) != 0 {
+			t.Errorf("Notes() = %v, want empty", got)
+		}
+		if got := svc.Note(1); got != nil {
+			t.Errorf("Note(1) = %v, want nil", got)
+		}
+	})
+
+	t.Run("sorted by ID", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n1, err := svc.AddNote("one", "", "", "")
+		must(t, err)
+		n2, err := svc.AddNote("two", "", "", "")
+		must(t, err)
+		got := svc.Notes()
+		if len(got) != 2 || got[0].ID() != n1.ID() || got[1].ID() != n2.ID() {
+			t.Errorf("Notes() = %v, want IDs %d, %d", got, n1.ID(), n2.ID())
+		}
+		if svc.Note(n1.ID()) != n1 {
+			t.Error("Note() did not return the stored pointer")
+		}
+	})
+}
+
+func TestService_VisibleNotes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("filters and visibility", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		aliceNote, err := svc.AddNote("alice", "", "alice@example.com", "claude")
+		must(t, err)
+		bobNote, err := svc.AddNote("bob", "", "bob@example.com", "chatgpt")
+		must(t, err)
+
+		got, err := svc.VisibleNotes("alice@example.com", "claude", model.AllProjectFilter())
+		must(t, err)
+		if len(got) != 1 || got[0].ID() != aliceNote.ID() {
+			t.Errorf("VisibleNotes(alice) = %v, want alice's note", got)
+		}
+		got, err = svc.VisibleNotes("bob@example.com", "chatgpt", model.AllProjectFilter())
+		must(t, err)
+		if len(got) != 1 || got[0].ID() != bobNote.ID() {
+			t.Errorf("VisibleNotes(bob) = %v, want bob's note", got)
+		}
+	})
+
+	t.Run("account not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).VisibleNotes("alice@example.com", "chatgpt", model.AllProjectFilter())
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
+		}
+	})
+}
+
+func TestService_ProjectNotes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns the project's notes", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("text", "Alpha", "", "")
+		must(t, err)
+		_, err = svc.AddNote("other", "Beta", "", "")
+		must(t, err)
+
+		got, err := svc.ProjectNotes("Alpha")
+		must(t, err)
+		if len(got) != 1 || got[0].ID() != n.ID() {
+			t.Errorf("ProjectNotes(Alpha) = %v, want %d", got, n.ID())
+		}
+	})
+
+	t.Run("project not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).ProjectNotes("Ghost")
+		if !errors.Is(err, model.ErrProjectNotFound) {
+			t.Errorf("got %v, want ErrProjectNotFound", err)
+		}
+	})
+}
+
+//nolint:cyclop // Table-driven test with independent cases; splitting would obscure coverage.
+func TestService_StartSessionAtomic(t *testing.T) {
+	t.Parallel()
+
+	t.Run("blank start", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "", "", "name", "", 0)
+		must(t, err)
+		if sess.ProjectName() != "" || len(sess.Queue()) != 0 {
+			t.Errorf("session = project %q queue %v, want empty", sess.ProjectName(), sess.Queue())
+		}
+	})
+
+	t.Run("existing project and prompt", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "Alpha", "", "name", " hello ", 0)
+		must(t, err)
+		if sess.ProjectName() != "Alpha" {
+			t.Errorf("ProjectName() = %q, want Alpha", sess.ProjectName())
+		}
+		if got := sess.Queue(); len(got) != 1 || got[0].Text() != "hello" {
+			t.Errorf("Queue() = %v, want one trimmed prompt", got)
+		}
+	})
+
+	t.Run("new project", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "", " Gamma ", "name", "hello", 0)
+		must(t, err)
+		if sess.ProjectName() != "Gamma" {
+			t.Errorf("ProjectName() = %q, want Gamma", sess.ProjectName())
+		}
+		if svc.Project("Gamma") == nil {
+			t.Error("new project was not created")
+		}
+	})
+
+	t.Run("from a note", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("note text", "", "alice@example.com", "claude")
+		must(t, err)
+
+		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "", "", "name", "note text", n.ID())
+		must(t, err)
+		if got := sess.Queue(); len(got) != 1 || got[0].Text() != "note text" {
+			t.Errorf("Queue() = %v, want the note text", got)
+		}
+		if svc.Note(n.ID()) != nil {
+			t.Error("note still exists after a successful start")
+		}
+	})
+
+	t.Run("account not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).StartSessionAtomic("alice@example.com", "chatgpt", "", "", "", "", 0)
+		if !errors.Is(err, model.ErrAccountNotFound) {
+			t.Errorf("got %v, want ErrAccountNotFound", err)
+		}
+	})
+
+	t.Run("user not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).StartSessionAtomic("ghost@example.com", "claude", "", "", "", "", 0)
+		if !errors.Is(err, model.ErrUserNotFound) {
+			t.Errorf("got %v, want ErrUserNotFound", err)
+		}
+	})
+
+	t.Run("vendor not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).StartSessionAtomic("alice@example.com", "ghost", "", "", "", "", 0)
+		if !errors.Is(err, model.ErrVendorNotFound) {
+			t.Errorf("got %v, want ErrVendorNotFound", err)
+		}
+	})
+
+	t.Run("project not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).StartSessionAtomic("alice@example.com", "claude", "Ghost", "", "", "", 0)
+		if !errors.Is(err, model.ErrProjectNotFound) {
+			t.Errorf("got %v, want ErrProjectNotFound", err)
+		}
+	})
+
+	t.Run("note not found", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).StartSessionAtomic("alice@example.com", "claude", "", "", "", "text", 99)
+		if !errors.Is(err, model.ErrNoteNotFound) {
+			t.Errorf("got %v, want ErrNoteNotFound", err)
+		}
+	})
+
+	t.Run("note requires prompt text", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("note text", "", "alice@example.com", "claude")
+		must(t, err)
+		_, err = svc.StartSessionAtomic("alice@example.com", "claude", "", "", "", "", n.ID())
+		if err == nil {
+			t.Fatal("got nil, want error")
+		}
+	})
+
+	t.Run("duplicate new project", func(t *testing.T) {
+		t.Parallel()
+		_, err := seedService(t).StartSessionAtomic("alice@example.com", "claude", "", "Alpha", "", "", 0)
+		if err == nil {
+			t.Fatal("got nil, want error")
+		}
+	})
+
+	t.Run("note project mismatch", func(t *testing.T) {
+		t.Parallel()
+		svc := seedService(t)
+		n, err := svc.AddNote("note text", "Alpha", "", "")
+		must(t, err)
+		_, err = svc.StartSessionAtomic("alice@example.com", "claude", "Beta", "", "", "note text", n.ID())
+		if err == nil {
+			t.Fatal("got nil, want error")
+		}
+	})
+}
+
+func TestService_RenameProject(t *testing.T) {
+	t.Parallel()
+	svc := seedService(t)
+	project := svc.Project("Alpha")
+	projectID := project.ID()
+
+	renamed, err := svc.RenameProject("Alpha", "Renamed")
+	must(t, err)
+	if renamed.ID() != projectID || renamed.Name() != "Renamed" {
+		t.Errorf("renamed = id %d name %q, want id %d name Renamed", renamed.ID(), renamed.Name(), projectID)
+	}
+	if svc.Project("Alpha") != nil {
+		t.Error("old name still resolves")
+	}
+	if got := svc.Session(1); got == nil || got.ProjectName() != "Renamed" || got.ProjectID() != projectID {
+		t.Errorf("session after rename = %v", got)
+	}
+
+	if _, err := svc.RenameProject("Alpha", "Other"); !errors.Is(err, model.ErrProjectNotFound) {
+		t.Errorf("rename missing project = %v, want ErrProjectNotFound", err)
+	}
+	if _, err := svc.RenameProject("Renamed", "Beta"); !errors.Is(err, model.ErrProjectExists) {
+		t.Errorf("rename to existing name = %v, want ErrProjectExists", err)
+	}
+	if _, err := svc.RenameProject("Renamed", "  "); !errors.Is(err, model.ErrNameRequired) {
+		t.Errorf("rename to empty name = %v, want ErrNameRequired", err)
 	}
 }

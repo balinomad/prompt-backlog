@@ -469,6 +469,9 @@ func TestNewAccount(t *testing.T) {
 			if got := a.Key(); got != tt.wantKey {
 				t.Errorf("Key() = %+v, want %+v", got, tt.wantKey)
 			}
+			if got := a.ID(); got != 0 {
+				t.Errorf("ID() = %d, want 0 before registry assignment", got)
+			}
 			if got := a.UserEmail(); got != tt.wantEmail {
 				t.Errorf("UserEmail() = %q, want %q", got, tt.wantEmail)
 			}
@@ -492,10 +495,10 @@ func TestNewSession(t *testing.T) {
 		key         model.AccountKey
 		id          uint64
 		inProject   string
-		inTopic     string
+		inName      string
 		inQueue     []model.Prompt
 		wantProject string
-		wantTopic   string
+		wantName    string
 		wantQueue   []string
 	}{
 		{
@@ -503,18 +506,18 @@ func TestNewSession(t *testing.T) {
 			key:         model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			id:          7,
 			inProject:   " Alpha ",
-			inTopic:     " Architecture review ",
-			inQueue:     []model.Prompt{model.NewPrompt("continue", false)},
+			inName:      " Architecture review ",
+			inQueue:     []model.Prompt{model.NewPrompt("continue")},
 			wantProject: "Alpha",
-			wantTopic:   "Architecture review",
+			wantName:    "Architecture review",
 			wantQueue:   []string{"continue"},
 		},
 		{
-			name:        "no project empty topic nil queue",
+			name:        "no project empty name nil queue",
 			key:         model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			id:          1,
 			wantProject: "",
-			wantTopic:   "",
+			wantName:    "",
 			wantQueue:   nil,
 		},
 		{
@@ -522,12 +525,12 @@ func TestNewSession(t *testing.T) {
 			key:  model.AccountKey{Email: "alice@example.com", Vendor: "claude"},
 			id:   1,
 			inQueue: []model.Prompt{
-				model.NewPrompt("first", false),
-				model.NewPrompt("second", true),
-				model.NewPrompt("third", false),
+				model.NewPrompt("first"),
+				model.NewPrompt("second"),
+				model.NewPrompt("third"),
 			},
 			wantProject: "",
-			wantTopic:   "",
+			wantName:    "",
 			wantQueue:   []string{"first", "second", "third"},
 		},
 	}
@@ -535,7 +538,7 @@ func TestNewSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			s := model.NewSession(tt.key, tt.id, tt.inProject, tt.inTopic, tt.inQueue)
+			s := model.NewSession(tt.key, tt.id, tt.inProject, tt.inName, tt.inQueue)
 
 			if got := s.ID(); got != tt.id {
 				t.Errorf("ID() = %d, want %d", got, tt.id)
@@ -546,8 +549,8 @@ func TestNewSession(t *testing.T) {
 			if got := s.ProjectName(); got != tt.wantProject {
 				t.Errorf("ProjectName() = %q, want %q", got, tt.wantProject)
 			}
-			if got := s.Topic(); got != tt.wantTopic {
-				t.Errorf("Topic() = %q, want %q", got, tt.wantTopic)
+			if got := s.Name(); got != tt.wantName {
+				t.Errorf("Name() = %q, want %q", got, tt.wantName)
 			}
 
 			gotQ := s.Queue()
@@ -569,10 +572,10 @@ func TestNewSession_Behavioral(t *testing.T) {
 	t.Run("input queue is defensively cloned", func(t *testing.T) {
 		t.Parallel()
 		key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
-		queue := []model.Prompt{model.NewPrompt("first", false)}
+		queue := []model.Prompt{model.NewPrompt("first")}
 		s := model.NewSession(key, 1, "", "", queue)
 
-		queue[0] = model.NewPrompt("mutated", true)
+		queue[0] = model.NewPrompt("mutated")
 
 		got := s.Queue()
 		if len(got) != 1 || got[0].Text() != "first" {
@@ -583,11 +586,11 @@ func TestNewSession_Behavioral(t *testing.T) {
 	t.Run("returned queue is a defensive copy", func(t *testing.T) {
 		t.Parallel()
 		key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
-		queue := []model.Prompt{model.NewPrompt("first", false)}
+		queue := []model.Prompt{model.NewPrompt("first")}
 		s := model.NewSession(key, 1, "", "", queue)
 
 		got := s.Queue()
-		got[0] = model.NewPrompt("mutated", true)
+		got[0] = model.NewPrompt("mutated")
 
 		again := s.Queue()
 		if len(again) != 1 || again[0].Text() != "first" {
@@ -602,44 +605,33 @@ func TestNewPrompt(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		text      string
-		spawn     bool
-		wantText  string
-		wantSpawn bool
+		name     string
+		text     string
+		wantText string
 	}{
 		{
-			name:      "trimmed",
-			text:      " continue ",
-			spawn:     true,
-			wantText:  "continue",
-			wantSpawn: true,
+			name:     "trimmed",
+			text:     " continue ",
+			wantText: "continue",
 		},
 		{
-			name:      "empty",
-			text:      "   ",
-			spawn:     false,
-			wantText:  "",
-			wantSpawn: false,
+			name:     "empty",
+			text:     "   ",
+			wantText: "",
 		},
 		{
-			name:      "internal whitespace preserved",
-			text:      "  Proceed   to step 2  ",
-			spawn:     false,
-			wantText:  "Proceed   to step 2",
-			wantSpawn: false,
+			name:     "internal whitespace preserved",
+			text:     "  Proceed   to step 2  ",
+			wantText: "Proceed   to step 2",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			p := model.NewPrompt(tt.text, tt.spawn)
+			p := model.NewPrompt(tt.text)
 			if got := p.Text(); got != tt.wantText {
 				t.Errorf("Text() = %q, want %q", got, tt.wantText)
-			}
-			if got := p.SpawnsSession(); got != tt.wantSpawn {
-				t.Errorf("SpawnsSession() = %v, want %v", got, tt.wantSpawn)
 			}
 		})
 	}
@@ -649,17 +641,36 @@ func TestPrompt_Comparable(t *testing.T) {
 	t.Parallel()
 	// Registry.UpdateSessionPrompts relies on Prompt being comparable via ==
 	// (through slices.Equal) to short-circuit no-op updates.
-	a := model.NewPrompt("continue", false)
-	b := model.NewPrompt("continue", false)
-	c := model.NewPrompt("continue", true)
+	a := model.NewPrompt("continue")
+	b := model.NewPrompt("continue")
+	c := model.NewPrompt("different")
 
 	if a != b {
 		t.Error("identical prompts should compare equal")
 	}
 	if a == c {
-		t.Error("prompts differing only in SpawnsSession should not compare equal")
+		t.Error("prompts with different text should not compare equal")
 	}
 	if !slices.Equal([]model.Prompt{a}, []model.Prompt{b}) {
 		t.Error("slices.Equal should treat identical prompt slices as equal")
+	}
+}
+
+func TestNewSession_DefaultRuntimeFields(t *testing.T) {
+	t.Parallel()
+	key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
+	s := model.NewSession(key, 1, "", "", nil)
+
+	if got := s.URL(); got != "" {
+		t.Errorf("URL() = %q, want empty", got)
+	}
+	if got := s.Finish(); got {
+		t.Error("Finish() = true, want false")
+	}
+	if got := s.UpdatedAt(); !got.IsZero() {
+		t.Errorf("UpdatedAt() = %v, want zero", got)
+	}
+	if got := s.AccountID(); got != 0 {
+		t.Errorf("AccountID() = %d, want zero", got)
 	}
 }

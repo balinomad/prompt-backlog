@@ -117,22 +117,32 @@ func (u *User) Name() string { return u.name }
 //
 // Description and Instructions are updated via Registry.UpdateProject using Copy-on-Write.
 type Project struct {
+	id           uint64
 	name         string
 	description  string
 	instructions string
 }
 
-// NewProject constructs a Project with a normalised, immutable name.
-// name is trimmed before storage.
+// NewProject constructs a Project with a normalised name and a zero ID. The
+// registry assigns the ID when the project is added or restored.
 func NewProject(name, description, instructions string) *Project {
+	return newProject(0, name, description, instructions)
+}
+
+// newProject constructs a Project with every field set.
+func newProject(id uint64, name, description, instructions string) *Project {
 	return &Project{
+		id:           id,
 		name:         NormalizeText(name),
 		description:  NormalizeText(description),
 		instructions: NormalizeText(instructions),
 	}
 }
 
-// Name returns the project's immutable name.
+// ID returns the project's surrogate key.
+func (p *Project) ID() uint64 { return p.id }
+
+// Name returns the project's name.
 func (p *Project) Name() string { return p.name }
 
 // Description returns the project's description.
@@ -158,19 +168,30 @@ func (k AccountKey) String() string {
 // Account represents a unique User + Vendor combination.
 // It is the primary owner of sessions and holds its pause state.
 type Account struct {
+	id         uint64
 	key        AccountKey
 	pauseUntil time.Time
 }
 
-// NewAccount constructs an Account using natural keys.
+// NewAccount constructs an Account using natural keys with a zero ID. The
+// registry assigns the ID when the account is added or restored.
 func NewAccount(userEmail, vendorName string) *Account {
+	return newAccount(0, userEmail, vendorName)
+}
+
+// newAccount constructs an Account with every field set.
+func newAccount(id uint64, userEmail, vendorName string) *Account {
 	return &Account{
+		id: id,
 		key: AccountKey{
 			Email:  NormalizeEmail(userEmail),
 			Vendor: NormalizeText(vendorName),
 		},
 	}
 }
+
+// ID returns the account's surrogate key.
+func (a *Account) ID() uint64 { return a.id }
 
 // Key returns the account's immutable composite key.
 func (a *Account) Key() AccountKey { return a.key }
@@ -190,38 +211,71 @@ func (a *Account) PauseUntil() time.Time { return a.pauseUntil }
 // Session holds the runtime state of one active conversation.
 type Session struct {
 	accountKey  AccountKey
+	accountID   uint64
 	id          uint64
+	projectID   uint64
 	projectName string
-	topic       string
+	name        string
+	url         string
+	finish      bool
+	updatedAt   time.Time
 	queue       []Prompt
 }
 
 // NewSession constructs a Session for the given account. id is the
-// ephemeral surrogate key assigned by Registry.AddSession; projectName,
-// topic, and queue are the session's initial mutable state.
-func NewSession(accKey AccountKey, id uint64, projectName, topic string, queue []Prompt) *Session {
+// surrogate key assigned by Registry.AddSession; projectName, name, and
+// queue are the session's initial mutable state. URL and finish start
+// empty, and updated-at starts zero.
+func NewSession(accKey AccountKey, id uint64, projectName, name string, queue []Prompt) *Session {
+	return newSession(accKey, 0, 0, id, projectName, name, "", false, time.Time{}, queue)
+}
+
+// newSession constructs a Session with every field set. The registry uses it
+// for creation and restore.
+func newSession(accKey AccountKey, accountID, projectID, id uint64, projectName, name, url string, finish bool, updatedAt time.Time, queue []Prompt) *Session {
 	return &Session{
 		accountKey:  accKey,
+		accountID:   accountID,
 		id:          id,
+		projectID:   projectID,
 		projectName: NormalizeText(projectName),
-		topic:       NormalizeText(topic),
+		name:        NormalizeText(name),
+		url:         NormalizeText(url),
+		finish:      finish,
+		updatedAt:   updatedAt,
 		queue:       slices.Clone(queue),
 	}
 }
 
-// ID returns the session's ephemeral surrogate key.
+// ID returns the session's surrogate key.
 func (s *Session) ID() uint64 { return s.id }
 
 // AccountKey returns the session's account key.
 func (s *Session) AccountKey() AccountKey { return s.accountKey }
 
+// AccountID returns the session's account surrogate key.
+func (s *Session) AccountID() uint64 { return s.accountID }
+
+// ProjectID returns the session's project surrogate key, or 0 for no project.
+func (s *Session) ProjectID() uint64 { return s.projectID }
+
 // ProjectName returns the name of the project associated with the session, or an empty string.
 func (s *Session) ProjectName() string { return s.projectName }
 
-// Topic returns the session's high-level subject.
-func (s *Session) Topic() string { return s.topic }
+// Name returns the session's name.
+func (s *Session) Name() string { return s.name }
 
-// Queue returns a copy of the pending prompts queued for this session.
+// URL returns the session's conversation URL, or an empty string.
+func (s *Session) URL() string { return s.url }
+
+// Finish reports whether the session is marked finished.
+func (s *Session) Finish() bool { return s.finish }
+
+// UpdatedAt returns the time of the session's last queue change, or the zero
+// time when the session has never had a queue change.
+func (s *Session) UpdatedAt() time.Time { return s.updatedAt }
+
+// Queue returns a copy of the prompts queued for this session.
 func (s *Session) Queue() []Prompt {
 	return slices.Clone(s.queue)
 }
@@ -230,20 +284,128 @@ func (s *Session) Queue() []Prompt {
 
 // Prompt represents a queued action for a session.
 type Prompt struct {
-	text          string // Example: "continue", "Proceed to step 2"
-	spawnsSession bool   // If true, close the current session and spawn a new one
+	text string // Example: "continue", "Proceed to step 2"
 }
 
 // NewPrompt constructs a Prompt.
-func NewPrompt(text string, spawnsSession bool) Prompt {
-	return Prompt{
-		text:          NormalizeText(text),
-		spawnsSession: spawnsSession,
-	}
+func NewPrompt(text string) Prompt {
+	return Prompt{text: NormalizeText(text)}
 }
 
 // Text returns the prompt's action text.
 func (p Prompt) Text() string { return p.text }
 
-// SpawnsSession returns whether the prompt requires a new session.
-func (p Prompt) SpawnsSession() bool { return p.spawnsSession }
+// ── Note ──────────────────────────────────────────────────────────────────────
+
+// Note is a stored future work item. It is never attached to a session.
+//
+// A note is immutable after construction. Every change replaces the registry
+// entry with a modified copy.
+type Note struct {
+	id          uint64
+	text        string
+	projectID   uint64
+	projectName string
+	accountKey  AccountKey
+	hasAccount  bool
+}
+
+// newNote constructs a Note with every field set. The registry uses it for
+// creation and restore.
+func newNote(id uint64, text string, projectID uint64, projectName string, accountKey AccountKey, hasAccount bool) *Note {
+	return &Note{
+		id:          id,
+		text:        NormalizeText(text),
+		projectID:   projectID,
+		projectName: NormalizeText(projectName),
+		accountKey:  accountKey,
+		hasAccount:  hasAccount,
+	}
+}
+
+// NewNote constructs a Note with the given ID and fields. The registry
+// normally assigns IDs; this constructor exists for restore and tests.
+func NewNote(id uint64, text string, projectID uint64, projectName string, accountKey AccountKey, hasAccount bool) *Note {
+	return newNote(id, text, projectID, projectName, accountKey, hasAccount)
+}
+
+// ID returns the note's surrogate key.
+func (n *Note) ID() uint64 { return n.id }
+
+// Text returns the note's text.
+func (n *Note) Text() string { return n.text }
+
+// ProjectID returns the note's project surrogate key, or 0 for no project.
+func (n *Note) ProjectID() uint64 { return n.projectID }
+
+// ProjectName returns the name of the project associated with the note, or an
+// empty string.
+func (n *Note) ProjectName() string { return n.projectName }
+
+// AccountKey returns the note's account key and whether the note has an
+// account.
+func (n *Note) AccountKey() (AccountKey, bool) {
+	return n.accountKey, n.hasAccount
+}
+
+// ProjectFilter selects items by project name. The zero value selects every
+// item.
+type ProjectFilter struct {
+	kind projectFilterKind
+	id   uint64
+}
+
+type projectFilterKind uint8
+
+const (
+	projectFilterAll projectFilterKind = iota
+	projectFilterNone
+	projectFilterNamed
+)
+
+// AllProjectFilter returns a filter that accepts every project name.
+func AllProjectFilter() ProjectFilter {
+	return ProjectFilter{kind: projectFilterAll}
+}
+
+// NoneProjectFilter returns a filter that accepts only an empty project name.
+func NoneProjectFilter() ProjectFilter {
+	return ProjectFilter{kind: projectFilterNone}
+}
+
+// NamedProjectFilter returns a filter that accepts only projectID.
+func NamedProjectFilter(projectID uint64) ProjectFilter {
+	return ProjectFilter{kind: projectFilterNamed, id: projectID}
+}
+
+// Matches reports whether projectID satisfies the filter.
+func (f ProjectFilter) Matches(projectID uint64) bool {
+	switch f.kind {
+	case projectFilterAll:
+		return true
+	case projectFilterNone:
+		return projectID == 0
+	case projectFilterNamed:
+		return projectID == f.id
+	default:
+		return false
+	}
+}
+
+// IsAll reports whether the filter accepts every project name.
+func (f ProjectFilter) IsAll() bool {
+	return f.kind == projectFilterAll
+}
+
+// IsNone reports whether the filter accepts only an empty project name.
+func (f ProjectFilter) IsNone() bool {
+	return f.kind == projectFilterNone
+}
+
+// ProjectID returns the filter's project ID and whether the filter names one.
+func (f ProjectFilter) ProjectID() (uint64, bool) {
+	if f.kind != projectFilterNamed {
+		return 0, false
+	}
+	return f.id, true
+}

@@ -36,6 +36,10 @@ var (
 	ErrSessionStale    = fmt.Errorf("session %w", apperr.ErrStale)
 	ErrSessionNil      = fmt.Errorf("session %w", apperr.ErrNil)
 
+	ErrNoteNotFound = fmt.Errorf("note %w", apperr.ErrNotFound)
+	ErrNoteStale    = fmt.Errorf("note %w", apperr.ErrStale)
+	ErrNoteNil      = fmt.Errorf("note %w", apperr.ErrNil)
+
 	ErrEmailRequired = fmt.Errorf("email %w", apperr.ErrRequired)
 	ErrKeyRequired   = fmt.Errorf("key %w", apperr.ErrRequired)
 	ErrNameRequired  = fmt.Errorf("name %w", apperr.ErrRequired)
@@ -108,6 +112,20 @@ func ValidatePrompt(p Prompt) error {
 		return ErrTextRequired
 	}
 	return nil
+}
+
+// ValidateNote returns an error when the note is invalid.
+func ValidateNote(n *Note) error {
+	switch {
+	case n == nil:
+		return ErrNoteNil
+	case n.text == "":
+		return ErrTextRequired
+	case n.hasAccount && n.accountKey == (AccountKey{}):
+		return ErrKeyRequired
+	default:
+		return nil
+	}
 }
 
 // isValidEmail returns true when s has exactly one "@", a non-empty local part

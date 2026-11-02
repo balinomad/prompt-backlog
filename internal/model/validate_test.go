@@ -289,22 +289,17 @@ func TestValidatePrompt(t *testing.T) {
 		},
 		{
 			name: "whitespace normalized to empty",
-			in:   model.NewPrompt("   ", false),
+			in:   model.NewPrompt("   "),
 			want: model.ErrTextRequired,
 		},
 		{
 			name: "empty text",
-			in:   model.NewPrompt("", true),
+			in:   model.NewPrompt(""),
 			want: model.ErrTextRequired,
 		},
 		{
-			name: "valid no spawn",
-			in:   model.NewPrompt("continue", false),
-			want: nil,
-		},
-		{
-			name: "valid spawn session",
-			in:   model.NewPrompt("continue", true),
+			name: "valid",
+			in:   model.NewPrompt("continue"),
 			want: nil,
 		},
 	}
@@ -363,6 +358,10 @@ func TestErrorCategories(t *testing.T) {
 		{"session stale", model.ErrSessionStale, apperr.ErrStale},
 		{"session nil", model.ErrSessionNil, apperr.ErrNil},
 
+		{"note not found", model.ErrNoteNotFound, apperr.ErrNotFound},
+		{"note stale", model.ErrNoteStale, apperr.ErrStale},
+		{"note nil", model.ErrNoteNil, apperr.ErrNil},
+
 		{"email required", model.ErrEmailRequired, apperr.ErrRequired},
 		{"key required", model.ErrKeyRequired, apperr.ErrRequired},
 		{"name required", model.ErrNameRequired, apperr.ErrRequired},
@@ -374,6 +373,63 @@ func TestErrorCategories(t *testing.T) {
 			t.Parallel()
 			if !errors.Is(tt.specific, tt.category) {
 				t.Errorf("%v does not wrap %v", tt.specific, tt.category)
+			}
+		})
+	}
+}
+
+func TestValidateNote(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   *model.Note
+		want error
+	}{
+		{
+			name: "nil",
+			in:   nil,
+			want: model.ErrNoteNil,
+		},
+		{
+			name: "empty text",
+			in:   model.NewNote(1, "", 0, "", model.AccountKey{}, false),
+			want: model.ErrTextRequired,
+		},
+		{
+			name: "whitespace text",
+			in:   model.NewNote(1, "   ", 0, "", model.AccountKey{}, false),
+			want: model.ErrTextRequired,
+		},
+		{
+			name: "account without key",
+			in:   model.NewNote(1, "text", 0, "", model.AccountKey{}, true),
+			want: model.ErrKeyRequired,
+		},
+		{
+			name: "valid without account",
+			in:   model.NewNote(1, "text", 1, "Alpha", model.AccountKey{}, false),
+			want: nil,
+		},
+		{
+			name: "valid with account",
+			in:   model.NewNote(1, "text", 1, "Alpha", model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true),
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := model.ValidateNote(tt.in)
+			if tt.want == nil {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.want) {
+				t.Errorf("expected %v, got %v", tt.want, err)
 			}
 		})
 	}

@@ -31,11 +31,13 @@ var _ store.Store = (*Store)(nil)
 // source of truth, independent of the Registry's runtime map indexes.
 // time.Time fields serialise as RFC 3339 automatically via encoding/json.
 type registryDTO struct {
+	Version  int          `json:"version"`
 	Vendors  []vendorDTO  `json:"vendors,omitempty"`
 	Users    []userDTO    `json:"users,omitempty"`
 	Projects []projectDTO `json:"projects,omitempty"`
 	Accounts []accountDTO `json:"accounts,omitempty"`
 	Sessions []sessionDTO `json:"sessions,omitempty"`
+	Notes    []noteDTO    `json:"notes,omitempty"`
 }
 
 type vendorDTO struct {
@@ -50,29 +52,41 @@ type userDTO struct {
 }
 
 type projectDTO struct {
+	ID           uint64 `json:"id"`
 	Name         string `json:"name"`
 	Description  string `json:"description,omitempty"`
 	Instructions string `json:"instructions,omitempty"`
 }
 
 type accountDTO struct {
+	ID         uint64     `json:"id"`
 	UserEmail  string     `json:"user_email"`
 	VendorName string     `json:"vendor_name"`
 	PauseUntil *time.Time `json:"pause_until,omitempty"`
-	Projects   []string   `json:"projects,omitempty"`
+	ProjectIDs []uint64   `json:"project_ids,omitempty"`
 }
 
 type sessionDTO struct {
-	UserEmail   string      `json:"user_email"`
-	VendorName  string      `json:"vendor_name"`
-	ProjectName string      `json:"project_name,omitempty"`
-	Topic       string      `json:"topic,omitempty"`
-	Queue       []promptDTO `json:"queue,omitempty"`
+	ID        uint64      `json:"id"`
+	AccountID uint64      `json:"account_id"`
+	ProjectID uint64      `json:"project_id,omitempty"`
+	Name      string      `json:"name,omitempty"`
+	URL       string      `json:"url,omitempty"`
+	Finish    bool        `json:"finish,omitempty"`
+	UpdatedAt *time.Time  `json:"updated_at,omitempty"`
+	Queue     []promptDTO `json:"queue,omitempty"`
 }
 
 type promptDTO struct {
-	Text          string `json:"text"`
-	SpawnsSession bool   `json:"spawns_session"`
+	Text string `json:"text"`
+}
+
+type noteDTO struct {
+	ID         uint64 `json:"id"`
+	Text       string `json:"text"`
+	ProjectID  uint64 `json:"project_id,omitempty"`
+	UserEmail  string `json:"user_email,omitempty"`
+	VendorName string `json:"vendor_name,omitempty"`
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -113,6 +127,9 @@ func (s *Store) Load() (*model.Registry, error) {
 	if err := stdjson.Unmarshal(data, &dto); err != nil {
 		return model.NewRegistry(), fmt.Errorf("store: parse %q: %w", s.path, err)
 	}
+	if dto.Version != 1 {
+		return model.NewRegistry(), fmt.Errorf("store: load %q: unsupported version %d", s.path, dto.Version)
+	}
 
 	return buildRegistry(&dto)
 }
@@ -137,7 +154,7 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 	}
 
 	for _, pdto := range dto.Projects {
-		if err := reg.AddProject(model.NewProject(pdto.Name, pdto.Description, pdto.Instructions)); err != nil {
+		if _, err := reg.RestoreProject(pdto.Name, pdto.Description, pdto.Instructions, pdto.ID); err != nil {
 			return nil, fmt.Errorf("store: load project %q: %w", pdto.Name, err)
 		}
 	}
@@ -146,6 +163,9 @@ func buildRegistry(dto *registryDTO) (*model.Registry, error) {
 		return nil, err
 	}
 	if err := loadSessions(dto, reg); err != nil {
+		return nil, err
+	}
+	if err := loadNotes(dto, reg); err != nil {
 		return nil, err
 	}
 
@@ -160,7 +180,7 @@ func loadAccounts(dto *registryDTO, reg *model.Registry) error {
 	for _, adto := range dto.Accounts {
 		u := reg.User(adto.UserEmail)
 		p := reg.Vendor(adto.VendorName)
-		acc, err := reg.AddAccount(u, p)
+		acc, err := reg.RestoreAccount(u, p, adto.ID)
 		if err != nil {
 			return fmt.Errorf("store: load account %q|%q: %w", adto.UserEmail, adto.VendorName, err)
 		}
@@ -173,34 +193,35 @@ func loadAccounts(dto *registryDTO, reg *model.Registry) error {
 			acc = reg.Account(u, p)
 		}
 
-		for _, pName := range adto.Projects {
-			proj := reg.Project(pName)
+		for _, projectID := range adto.ProjectIDs {
+			proj := reg.ProjectByID(projectID)
+			if proj == nil {
+				return fmt.Errorf("store: assign project id %d to account %q|%q: %w", projectID, adto.UserEmail, adto.VendorName, model.ErrProjectNotFound)
+			}
 			if err := reg.AddProjectToAccount(acc, proj); err != nil {
-				return fmt.Errorf("store: assign project %q to account %q|%q: %w", pName, adto.UserEmail, adto.VendorName, err)
+				return fmt.Errorf("store: assign project %q to account %q|%q: %w", proj.Name(), adto.UserEmail, adto.VendorName, err)
 			}
 		}
 	}
 	return nil
 }
 
-// loadSessions resolves and appends Sessions to their respective Accounts
-// within the Registry. It requires Accounts and Projects to be fully
-// populated beforehand. This step converts flat prompt queues into model
-// instances and triggers ephemeral ID assignment for each Session.
+// loadSessions resolves and restores Sessions from the flat DTO
+// representation. It requires Accounts and Projects to be fully populated
+// beforehand. Session IDs are preserved.
 func loadSessions(dto *registryDTO, reg *model.Registry) error {
-	for i, sdto := range dto.Sessions {
-		u := reg.User(sdto.UserEmail)
-		p := reg.Vendor(sdto.VendorName)
-		acc := reg.Account(u, p)
+	for i := range dto.Sessions {
+		sdto := &dto.Sessions[i]
+		acc := reg.AccountByID(sdto.AccountID)
 		if acc == nil {
-			return fmt.Errorf("store: load session at index %d: account %q|%q not found", i, sdto.UserEmail, sdto.VendorName)
+			return fmt.Errorf("store: load session at index %d: account id %d not found", i, sdto.AccountID)
 		}
 
 		var proj *model.Project
-		if sdto.ProjectName != "" {
-			proj = reg.Project(sdto.ProjectName)
+		if sdto.ProjectID != 0 {
+			proj = reg.ProjectByID(sdto.ProjectID)
 			if proj == nil {
-				return fmt.Errorf("store: load session at index %d: project %q not found", i, sdto.ProjectName)
+				return fmt.Errorf("store: load session at index %d: project id %d not found", i, sdto.ProjectID)
 			}
 		}
 
@@ -209,12 +230,51 @@ func loadSessions(dto *registryDTO, reg *model.Registry) error {
 			queue = make([]model.Prompt, 0, len(sdto.Queue))
 		}
 		for _, prompt := range sdto.Queue {
-			queue = append(queue, model.NewPrompt(prompt.Text, prompt.SpawnsSession))
+			queue = append(queue, model.NewPrompt(prompt.Text))
 		}
 
-		// AddSession automatically assigns the next incrementing ephemeral ID.
-		if _, err := reg.AddSession(acc, proj, sdto.Topic, queue); err != nil {
+		var updatedAt time.Time
+		if sdto.UpdatedAt != nil {
+			updatedAt = *sdto.UpdatedAt
+		}
+		if _, err := reg.RestoreSession(acc, sdto.ID, proj, sdto.Name, sdto.URL, sdto.Finish, updatedAt, queue); err != nil {
 			return fmt.Errorf("store: load session at index %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// loadNotes resolves and restores Notes from the flat DTO representation. It
+// requires Projects and Accounts to be fully populated beforehand. Note IDs
+// are preserved.
+func loadNotes(dto *registryDTO, reg *model.Registry) error {
+	for i, ndto := range dto.Notes {
+		var proj *model.Project
+		if ndto.ProjectID != 0 {
+			proj = reg.ProjectByID(ndto.ProjectID)
+			if proj == nil {
+				return fmt.Errorf("store: load note at index %d: project id %d not found", i, ndto.ProjectID)
+			}
+		}
+
+		var acc *model.Account
+		emailEmpty := ndto.UserEmail == ""
+		vendorEmpty := ndto.VendorName == ""
+		switch {
+		case emailEmpty && vendorEmpty:
+		case emailEmpty || vendorEmpty:
+			return fmt.Errorf("store: load note at index %d: account requires both user_email and vendor_name", i)
+		default:
+			u := reg.User(ndto.UserEmail)
+			p := reg.Vendor(ndto.VendorName)
+			acc = reg.Account(u, p)
+			if acc == nil {
+				return fmt.Errorf("store: load note at index %d: account %q|%q not found", i, ndto.UserEmail, ndto.VendorName)
+			}
+		}
+
+		if _, err := reg.RestoreNote(ndto.ID, ndto.Text, proj, acc); err != nil {
+			return fmt.Errorf("store: load note at index %d: %w", i, err)
 		}
 	}
 	return nil
@@ -297,6 +357,7 @@ func syncDir(dir string) (err error) {
 func buildDTO(reg *model.Registry) (registryDTO, error) {
 	vendors := reg.Vendors()
 	dto := registryDTO{
+		Version: 1,
 		Vendors: make([]vendorDTO, 0, len(vendors)),
 	}
 	for _, p := range vendors {
@@ -320,6 +381,7 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 	dto.Projects = make([]projectDTO, 0, len(projects))
 	for _, p := range projects {
 		dto.Projects = append(dto.Projects, projectDTO{
+			ID:           p.ID(),
 			Name:         p.Name(),
 			Description:  p.Description(),
 			Instructions: p.Instructions(),
@@ -330,6 +392,7 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 	dto.Accounts = make([]accountDTO, 0, len(accounts))
 	for _, acc := range accounts {
 		adto := accountDTO{
+			ID:         acc.ID(),
 			UserEmail:  acc.UserEmail(),
 			VendorName: acc.VendorName(),
 		}
@@ -343,36 +406,53 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 		if err != nil {
 			return registryDTO{}, fmt.Errorf("store: read projects for account %q|%q: %w", acc.UserEmail(), acc.VendorName(), err)
 		}
-		adto.Projects = make([]string, 0, len(accProjects))
+		adto.ProjectIDs = make([]uint64, 0, len(accProjects))
 		for _, p := range accProjects {
-			adto.Projects = append(adto.Projects, p.Name())
+			adto.ProjectIDs = append(adto.ProjectIDs, p.ID())
 		}
 
 		dto.Accounts = append(dto.Accounts, adto)
 	}
 
 	// reg.Sessions() guarantees deterministic slice ordering by ID.
-	// Saving in this order ensures strict chronological re-creation on Load.
 	sessions := reg.Sessions()
 	dto.Sessions = make([]sessionDTO, 0, len(sessions))
 	for _, s := range sessions {
 		sdto := sessionDTO{
-			UserEmail:   s.AccountKey().Email,
-			VendorName:  s.AccountKey().Vendor,
-			ProjectName: s.ProjectName(),
-			Topic:       s.Topic(),
+			ID:        s.ID(),
+			AccountID: s.AccountID(),
+			ProjectID: s.ProjectID(),
+			Name:      s.Name(),
+			URL:       s.URL(),
+			Finish:    s.Finish(),
+		}
+		if !s.UpdatedAt().IsZero() {
+			updatedAt := s.UpdatedAt()
+			sdto.UpdatedAt = &updatedAt
 		}
 
 		queue := s.Queue()
 		sdto.Queue = make([]promptDTO, 0, len(queue))
 		for _, prompt := range queue {
-			sdto.Queue = append(sdto.Queue, promptDTO{
-				Text:          prompt.Text(),
-				SpawnsSession: prompt.SpawnsSession(),
-			})
+			sdto.Queue = append(sdto.Queue, promptDTO{Text: prompt.Text()})
 		}
 
 		dto.Sessions = append(dto.Sessions, sdto)
+	}
+
+	notes := reg.Notes()
+	dto.Notes = make([]noteDTO, 0, len(notes))
+	for _, n := range notes {
+		ndto := noteDTO{
+			ID:        n.ID(),
+			Text:      n.Text(),
+			ProjectID: n.ProjectID(),
+		}
+		if key, ok := n.AccountKey(); ok {
+			ndto.UserEmail = key.Email
+			ndto.VendorName = key.Vendor
+		}
+		dto.Notes = append(dto.Notes, ndto)
 	}
 
 	return dto, nil
