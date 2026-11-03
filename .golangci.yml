@@ -99,6 +99,7 @@ linters:
             - github.com/balinomad/llm-desk
             - github.com/gdamore/tcell/v2
             - github.com/rivo/tview
+            - golang.design/x/clipboard
 
     revive:
       rules:

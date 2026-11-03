@@ -972,7 +972,7 @@ func (r *Registry) AddSession(acc *Account, project *Project, name string, queue
 	if len(queue) > 0 {
 		updatedAt = r.now().UTC()
 	}
-	sess := newSession(acc.key, acc.id, projID, id, projName, name, "", false, updatedAt, queue)
+	sess := newSession(acc.key, acc.id, projID, id, projName, name, "", SessionStatusActive, updatedAt, queue)
 
 	r.sessions[id] = sess
 	addIndex(r.accountSessions, acc.key, id)
@@ -993,17 +993,16 @@ func (r *Registry) Session(id uint64) *Session {
 }
 
 // StartSessionAtomic creates a session from a validated set of inputs under
-// one write-lock acquisition. At most one of existingProject and newProjectName
-// may be set. When note is set, promptText is required and the note is deleted
-// after the session is created.
+// one write-lock acquisition. When note is set, promptText is required and the
+// note is deleted after the session is created.
 //
 // Every input is validated before the first mutation. On failure the registry
 // is unchanged.
-func (r *Registry) StartSessionAtomic(acc *Account, existingProject *Project, newProjectName, name, promptText string, note *Note) (*Session, error) {
+func (r *Registry) StartSessionAtomic(acc *Account, project *Project, name, url, promptText string, note *Note) (*Session, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	plan, err := r.planStartSession(acc, existingProject, newProjectName, name, promptText, note)
+	plan, err := r.planStartSession(acc, project, name, url, promptText, note)
 	if err != nil {
 		return nil, err
 	}
@@ -1012,30 +1011,25 @@ func (r *Registry) StartSessionAtomic(acc *Account, existingProject *Project, ne
 
 // startSessionPlan holds validated inputs for StartSessionAtomic.
 type startSessionPlan struct {
-	acc             *Account
-	existingProject *Project
-	newProjectName  string
-	name            string
-	promptText      string
-	note            *Note
+	acc        *Account
+	project    *Project
+	name       string
+	url        string
+	promptText string
+	note       *Note
 }
 
 // planStartSession validates every input for StartSessionAtomic. The caller
 // must hold the registry write lock.
-func (r *Registry) planStartSession(acc *Account, existingProject *Project, newProjectName, name, promptText string, note *Note) (startSessionPlan, error) {
+func (r *Registry) planStartSession(acc *Account, project *Project, name, url, promptText string, note *Note) (startSessionPlan, error) {
 	plan := startSessionPlan{}
 	if err := r.verifyAccount(acc); err != nil {
 		return plan, fmt.Errorf("start session: %w", err)
 	}
-
-	normalizedNewProject := NormalizeText(newProjectName)
-	if existingProject != nil && normalizedNewProject != "" {
-		return plan, errors.New("start session: an existing project and a new project name are mutually exclusive")
-	}
-	if err := r.validateStartProject(acc, existingProject, normalizedNewProject); err != nil {
+	if err := r.validateStartProject(acc, project); err != nil {
 		return plan, err
 	}
-	if err := r.validateStartNote(acc, note, existingProject, normalizedNewProject); err != nil {
+	if err := r.validateStartNote(acc, note, project); err != nil {
 		return plan, err
 	}
 
@@ -1045,45 +1039,33 @@ func (r *Registry) planStartSession(acc *Account, existingProject *Project, newP
 	}
 
 	return startSessionPlan{
-		acc:             acc,
-		existingProject: existingProject,
-		newProjectName:  normalizedNewProject,
-		name:            name,
-		promptText:      normalizedPrompt,
-		note:            note,
+		acc:        acc,
+		project:    project,
+		name:       name,
+		url:        NormalizeText(url),
+		promptText: normalizedPrompt,
+		note:       note,
 	}, nil
 }
 
-// validateStartProject validates the project inputs for StartSessionAtomic.
+// validateStartProject validates the project input for StartSessionAtomic.
 // The caller must hold the registry write lock.
-func (r *Registry) validateStartProject(acc *Account, existingProject *Project, newProjectName string) error {
-	if existingProject != nil {
-		if err := r.verifyProject(existingProject); err != nil {
-			return fmt.Errorf("start session: %w", err)
-		}
-		if _, assigned := r.accountProjects[acc.key][existingProject.id]; !assigned {
-			return fmt.Errorf("start session: project %q is not assigned to this account", existingProject.name)
-		}
-	}
-	if newProjectName == "" {
+func (r *Registry) validateStartProject(acc *Account, project *Project) error {
+	if project == nil {
 		return nil
 	}
-	if _, exists := r.projects[newProjectName]; exists {
-		return fmt.Errorf("start session: project %q already exists", newProjectName)
+	if err := r.verifyProject(project); err != nil {
+		return fmt.Errorf("start session: %w", err)
 	}
-	vendor := r.vendors[acc.key.Vendor]
-	if vendor == nil {
-		return fmt.Errorf("start session: vendor %q %w", acc.key.Vendor, ErrVendorNotFound)
-	}
-	if !vendor.hasProjects {
-		return fmt.Errorf("start session: vendor %q %w", acc.key.Vendor, ErrProjectsUnsupported)
+	if _, assigned := r.accountProjects[acc.key][project.id]; !assigned {
+		return fmt.Errorf("start session: project %q is not assigned to this account", project.name)
 	}
 	return nil
 }
 
 // validateStartNote validates the note input for StartSessionAtomic. The
 // caller must hold the registry write lock.
-func (r *Registry) validateStartNote(acc *Account, note *Note, existingProject *Project, newProjectName string) error {
+func (r *Registry) validateStartNote(acc *Account, note *Note, project *Project) error {
 	if note == nil {
 		return nil
 	}
@@ -1096,11 +1078,8 @@ func (r *Registry) validateStartNote(acc *Account, note *Note, existingProject *
 	if note.projectID == 0 {
 		return nil
 	}
-	if existingProject == nil || existingProject.id != note.projectID {
+	if project == nil || project.id != note.projectID {
 		return fmt.Errorf("start session: note project %q must be the given existing project", note.projectName)
-	}
-	if newProjectName != "" {
-		return fmt.Errorf("start session: note project %q forbids a new project name", note.projectName)
 	}
 	return nil
 }
@@ -1121,11 +1100,6 @@ func validateStartPrompt(note *Note, promptText string) error {
 // applyStartSession performs the mutations planned by planStartSession. The
 // caller must hold the registry write lock.
 func (r *Registry) applyStartSession(plan startSessionPlan) *Session {
-	project := plan.existingProject
-	if plan.newProjectName != "" {
-		project = r.createStartProject(plan.acc, plan.newProjectName)
-	}
-
 	var queue []Prompt
 	if plan.promptText != "" {
 		queue = []Prompt{NewPrompt(plan.promptText)}
@@ -1137,12 +1111,12 @@ func (r *Registry) applyStartSession(plan startSessionPlan) *Session {
 
 	var projectID uint64
 	var projectName string
-	if project != nil {
-		projectID = project.id
-		projectName = project.name
+	if plan.project != nil {
+		projectID = plan.project.id
+		projectName = plan.project.name
 	}
 	r.lastSessionID++
-	sess := newSession(plan.acc.key, plan.acc.id, projectID, r.lastSessionID, projectName, plan.name, "", false, updatedAt, queue)
+	sess := newSession(plan.acc.key, plan.acc.id, projectID, r.lastSessionID, projectName, plan.name, plan.url, SessionStatusActive, updatedAt, queue)
 	r.sessions[sess.id] = sess
 	addIndex(r.accountSessions, plan.acc.key, sess.id)
 	if projectID != 0 {
@@ -1154,22 +1128,10 @@ func (r *Registry) applyStartSession(plan startSessionPlan) *Session {
 	return sess
 }
 
-// createStartProject creates and grants a project for StartSessionAtomic. The
-// caller must hold the registry write lock.
-func (r *Registry) createStartProject(acc *Account, name string) *Project {
-	r.lastProjectID++
-	p := newProject(r.lastProjectID, name, "", "")
-	r.projects[p.name] = p
-	r.projectsByID[p.id] = p
-	addIndex(r.accountProjects, acc.key, p.id)
-	addIndex(r.projectAccounts, p.id, acc.key)
-	return p
-}
-
 // RestoreSession inserts a session with every field supplied, including its
 // ID. It validates I1 and I2, refuses a zero or duplicate ID, and raises the
 // session counter to at least id. It is used only by the JSON store.
-func (r *Registry) RestoreSession(acc *Account, id uint64, project *Project, name, url string, finish bool, updatedAt time.Time, queue []Prompt) (*Session, error) {
+func (r *Registry) RestoreSession(acc *Account, id uint64, project *Project, name, url string, status SessionStatus, updatedAt time.Time, queue []Prompt) (*Session, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -1181,6 +1143,9 @@ func (r *Registry) RestoreSession(acc *Account, id uint64, project *Project, nam
 	}
 	if err := r.verifyAccount(acc); err != nil {
 		return nil, fmt.Errorf("restore session: %w", err)
+	}
+	if !status.Valid() {
+		return nil, fmt.Errorf("restore session: invalid status %d", status)
 	}
 	for i, p := range queue {
 		if err := ValidatePrompt(p); err != nil {
@@ -1204,7 +1169,7 @@ func (r *Registry) RestoreSession(acc *Account, id uint64, project *Project, nam
 	if !updatedAt.IsZero() {
 		updatedAt = updatedAt.UTC()
 	}
-	sess := newSession(acc.key, acc.id, projID, id, projName, name, url, finish, updatedAt, queue)
+	sess := newSession(acc.key, acc.id, projID, id, projName, name, url, status, updatedAt, queue)
 	r.sessions[id] = sess
 	addIndex(r.accountSessions, acc.key, id)
 	if projID != 0 {
@@ -1265,6 +1230,58 @@ func (r *Registry) UpdateSessionName(sess *Session, name string) error {
 	}
 	sessCopy := *sess
 	sessCopy.name = newName
+	r.sessions[sess.id] = &sessCopy
+	return nil
+}
+
+// UpdateSession updates a session's name, URL, and project under one write
+// lock. Every input is validated before the first mutation. An unchanged
+// value is a no-op. Updated-at is not changed.
+//
+// Returns ErrSessionNotFound if no such session exists, ErrSessionStale if
+// sess no longer matches the live registry entry, or a project error when the
+// project is missing, stale, or not assigned to the session's account.
+func (r *Registry) UpdateSession(sess *Session, name, url string, project *Project) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := r.verifySession(sess); err != nil {
+		return fmt.Errorf("update session: %w", err)
+	}
+
+	var nextProjectID uint64
+	var nextProjectName string
+	if project != nil {
+		if err := r.verifyProject(project); err != nil {
+			return fmt.Errorf("update session: %w", err)
+		}
+		if _, assigned := r.accountProjects[sess.accountKey][project.id]; !assigned {
+			return fmt.Errorf("update session: project %q is not assigned to this account", project.name)
+		}
+		nextProjectID = project.id
+		nextProjectName = project.name
+	}
+
+	nextName := NormalizeText(name)
+	nextURL := NormalizeText(url)
+	if sess.name == nextName && sess.url == nextURL && sess.projectID == nextProjectID {
+		return nil
+	}
+
+	if sess.projectID != nextProjectID {
+		if sess.projectID != 0 {
+			removeIndex(r.projectSessions, sess.projectID, sess.id)
+		}
+		if nextProjectID != 0 {
+			addIndex(r.projectSessions, nextProjectID, sess.id)
+		}
+	}
+
+	sessCopy := *sess
+	sessCopy.name = nextName
+	sessCopy.url = nextURL
+	sessCopy.projectID = nextProjectID
+	sessCopy.projectName = nextProjectName
 	r.sessions[sess.id] = &sessCopy
 	return nil
 }
@@ -1345,25 +1362,30 @@ func (r *Registry) UpdateSessionURL(sess *Session, url string) error {
 	return nil
 }
 
-// UpdateSessionFinish updates a session's finish flag via Copy-on-Write.
+// UpdateSessionStatus updates a session's lifecycle status via Copy-on-Write.
 // sess must be the exact pointer most recently read from the registry; the
-// caller must re-fetch after a successful update. An unchanged value is a
-// no-op. Updated-at is not changed.
+// caller must re-fetch after a successful update. Any valid status may
+// transition to any other valid status. An unchanged value is a no-op.
+// Updated-at is not changed.
 //
-// Returns ErrSessionNotFound if no such session exists, or ErrSessionStale
-// if sess no longer matches the live registry entry.
-func (r *Registry) UpdateSessionFinish(sess *Session, finish bool) error {
+// Returns ErrSessionNotFound if no such session exists, ErrSessionStale if
+// sess no longer matches the live registry entry, or an error for an invalid
+// status.
+func (r *Registry) UpdateSessionStatus(sess *Session, status SessionStatus) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if err := r.verifySession(sess); err != nil {
-		return fmt.Errorf("update session finish: %w", err)
+		return fmt.Errorf("update session status: %w", err)
 	}
-	if sess.finish == finish {
+	if !status.Valid() {
+		return fmt.Errorf("update session status: invalid status %d", status)
+	}
+	if sess.status == status {
 		return nil
 	}
 	sessCopy := *sess
-	sessCopy.finish = finish
+	sessCopy.status = status
 	r.sessions[sess.id] = &sessCopy
 	return nil
 }

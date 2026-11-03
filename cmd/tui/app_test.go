@@ -244,10 +244,9 @@ func TestApp_AppName(t *testing.T) {
 
 // ── HideModal ─────────────────────────────────────────────────────────────────
 
-// TestApp_HideModal verifies HideModal is safe to call both when no modal
-// was ever shown and after a real ShowModal/HideModal cycle. HideModal
-// clears prevFocus back to nil on its first call, so the second HideModal
-// in each case exercises the same nil guard from a different code path.
+// TestApp_HideModal verifies HideModal is safe to call both when the modal
+// stack is empty and after a real ShowModal/HideModal cycle. The second
+// HideModal in each case exercises the empty-stack guard.
 func TestApp_HideModal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

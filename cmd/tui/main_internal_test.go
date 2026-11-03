@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
+	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
 
@@ -115,9 +117,8 @@ func TestApp_HandleGlobalKeys_IgnoresModal(t *testing.T) {
 	if got := app.handleGlobalKeys(event); got != event {
 		t.Errorf("handleGlobalKeys() = %v, want original event", got)
 	}
-	got, _ := app.pages.GetFrontPage()
-	if got != "modal" {
-		t.Errorf("front page = %q, want modal", got)
+	if len(app.modals) != 1 {
+		t.Errorf("modal stack length = %d, want 1", len(app.modals))
 	}
 }
 
@@ -153,6 +154,149 @@ func TestApp_HandleGlobalMouse_TooSmall(t *testing.T) {
 	app.tooSmall = false
 	if gotEvent, gotAction := app.handleGlobalMouse(event, tview.MouseLeftClick); gotEvent != event || gotAction != tview.MouseLeftClick {
 		t.Errorf("handleGlobalMouse() = (%v, %v), want (%v, %v)", gotEvent, gotAction, event, tview.MouseLeftClick)
+	}
+}
+
+func TestModalMouseGuard_ConsumesUnhandled(t *testing.T) {
+	t.Parallel()
+	inner := tview.NewBox()
+	inner.SetRect(0, 0, 10, 10)
+	guard := &modalMouseGuard{Primitive: inner}
+	event := tcell.NewEventMouse(2, 2, tcell.ButtonPrimary, tcell.ModNone)
+
+	consumed, capture := guard.MouseHandler()(tview.MouseLeftDoubleClick, event, func(tview.Primitive) {})
+	if !consumed || capture != nil {
+		t.Errorf("mouse handler = (%v, %v), want (true, nil)", consumed, capture)
+	}
+}
+
+func TestModalMouseGuard_ForwardsConsumed(t *testing.T) {
+	t.Parallel()
+	list := tview.NewList()
+	list.SetRect(0, 0, 10, 10)
+	called := false
+	views.WireListDoubleClick(list, func() { called = true })
+	guard := &modalMouseGuard{Primitive: list}
+	event := tcell.NewEventMouse(2, 2, tcell.ButtonPrimary, tcell.ModNone)
+
+	consumed, capture := guard.MouseHandler()(tview.MouseLeftDoubleClick, event, func(tview.Primitive) {})
+	if !consumed || capture != nil {
+		t.Errorf("mouse handler = (%v, %v), want (true, nil)", consumed, capture)
+	}
+	if !called {
+		t.Error("modal did not receive the consumed double-click")
+	}
+}
+
+func TestApp_ShowModalWrapsMouseGuard(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	if err := app.ShowModal(tview.NewBox()); err != nil {
+		t.Fatalf("ShowModal: %v", err)
+	}
+	t.Cleanup(app.HideModal)
+
+	_, page := app.pages.GetFrontPage()
+	if _, ok := page.(*modalMouseGuard); !ok {
+		t.Errorf("modal page type = %T, want *modalMouseGuard", page)
+	}
+}
+
+func newBorderedModal() (*tview.Flex, *tview.InputField) {
+	box := tview.NewFlex().SetDirection(tview.FlexRow)
+	field := tview.NewInputField()
+	box.AddItem(field, 1, 0, true)
+	box.SetBorder(true)
+	return box, field
+}
+
+func TestApp_ModalStack_RestoresFocusHintsAndBorder(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	rootFocus := app.tv.GetFocus()
+	app.SetHints("root specific", "root common")
+
+	parent, parentField := newBorderedModal()
+	parentColor := parent.GetBorderColor()
+	if err := app.ShowModal(views.NewModalState(parent, parent)); err != nil {
+		t.Fatalf("ShowModal parent: %v", err)
+	}
+	app.SetHints("parent specific", "parent common")
+	app.SetFocus(parentField)
+
+	child, _ := newBorderedModal()
+	if err := app.ShowModal(views.NewModalState(child, child)); err != nil {
+		t.Fatalf("ShowModal child: %v", err)
+	}
+	app.SetHints("child specific", "child common")
+
+	if got := len(app.modals); got != 2 {
+		t.Fatalf("modal stack length = %d, want 2", got)
+	}
+	if got := parent.GetBorderColor(); got != tcell.ColorGray {
+		t.Errorf("inactive parent border = %v, want gray", got)
+	}
+	if app.hintsSpec != "child specific" {
+		t.Errorf("hints = %q, want child specific", app.hintsSpec)
+	}
+
+	app.HideModal()
+	if got := len(app.modals); got != 1 {
+		t.Fatalf("modal stack length after pop = %d, want 1", got)
+	}
+	if got := app.tv.GetFocus(); got != parentField {
+		t.Errorf("focus after pop = %T, want parent field", got)
+	}
+	if app.hintsSpec != "parent specific" {
+		t.Errorf("hints after pop = %q, want parent specific", app.hintsSpec)
+	}
+	if got := parent.GetBorderColor(); got != parentColor {
+		t.Errorf("restored parent border = %v, want %v", got, parentColor)
+	}
+
+	app.HideModal()
+	if got := len(app.modals); got != 0 {
+		t.Fatalf("modal stack length after final pop = %d, want 0", got)
+	}
+	if got := app.tv.GetFocus(); got != rootFocus {
+		t.Errorf("focus after final pop = %T, want root focus", got)
+	}
+	if app.hintsSpec != "root specific" {
+		t.Errorf("hints after final pop = %q, want root specific", app.hintsSpec)
+	}
+}
+
+func TestApp_ModalStack_ReplaceTop(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.SetHints("root specific", "root common")
+
+	parent, _ := newBorderedModal()
+	if err := app.ShowModal(views.NewModalState(parent, parent)); err != nil {
+		t.Fatalf("ShowModal: %v", err)
+	}
+	app.SetHints("parent specific", "parent common")
+
+	replacement, replacementField := newBorderedModal()
+	if err := app.ReplaceTopModal(views.NewModalState(replacement, replacement)); err != nil {
+		t.Fatalf("ReplaceTopModal: %v", err)
+	}
+	if got := len(app.modals); got != 1 {
+		t.Errorf("modal stack length = %d, want 1", got)
+	}
+	if got := app.tv.GetFocus(); got != replacementField {
+		t.Errorf("focus after replace = %T, want replacement field", got)
+	}
+	if app.hintsSpec != "parent specific" {
+		t.Errorf("hints after replace = %q, want parent specific", app.hintsSpec)
+	}
+}
+
+func TestApp_ReplaceTopModal_NoModal(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	if err := app.ReplaceTopModal(tview.NewBox()); err == nil {
+		t.Error("ReplaceTopModal with no modal returned nil error")
 	}
 }
 
@@ -537,5 +681,232 @@ func TestNew_DetailPanelsFitContent(t *testing.T) {
 	}
 	if want := app.users.RequiredInfoHeight(80); want <= 5 {
 		t.Errorf("user info height = %d, want more than 5 for wrapped name/email", want)
+	}
+}
+
+func TestNew_RightColumnHeights(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	screen := tcell.NewSimulationScreen("UTF-8")
+	must(t, screen.Init())
+	t.Cleanup(screen.Fini)
+	screen.SetSize(80, 24)
+
+	app.resizeAccountInfo(80, 24, statusBarHeight)
+	app.resizeMainRight(80, 24, statusBarHeight)
+	app.mainFlex.SetRect(0, 0, 80, 24-statusBarHeight)
+	app.mainFlex.Draw(screen)
+
+	_, _, _, topHeight := app.mainTop.GetRect()
+	_, _, _, sessionsHeight := app.sessions.GetRect()
+	_, _, _, notesHeight := app.notes.GetRect()
+	wantNotes := max(3, topHeight/3)
+	if notesHeight != wantNotes {
+		t.Errorf("notes height = %d, want %d", notesHeight, wantNotes)
+	}
+	if sessionsHeight != topHeight-wantNotes {
+		t.Errorf("sessions height = %d, want %d", sessionsHeight, topHeight-wantNotes)
+	}
+
+	app.resizeAccountInfo(80, statusBarHeight+minMainTopHeight, statusBarHeight)
+	app.resizeMainRight(80, statusBarHeight+minMainTopHeight, statusBarHeight)
+	app.mainFlex.SetRect(0, 0, 80, minMainTopHeight)
+	app.mainFlex.Draw(screen)
+	_, _, _, sessionsHeight = app.sessions.GetRect()
+	_, _, _, notesHeight = app.notes.GetRect()
+	if sessionsHeight != 3 || notesHeight != 3 {
+		t.Errorf("short layout = sessions %d notes %d, want 3 and 3", sessionsHeight, notesHeight)
+	}
+}
+
+func TestNew_MinMainTopHeight(t *testing.T) {
+	t.Parallel()
+	if minMainTopHeight != 6 {
+		t.Errorf("minMainTopHeight = %d, want 6", minMainTopHeight)
+	}
+}
+
+func TestApp_FocusCycle(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	if got := app.tv.GetFocus(); got != app.accounts {
+		t.Fatalf("initial focus = %T, want accounts", got)
+	}
+
+	next := tcell.NewEventKey(views.KeyFocusNext, 0, tcell.ModNone)
+	prev := tcell.NewEventKey(views.KeyFocusPrev, 0, tcell.ModNone)
+	app.handleGlobalKeys(next)
+	if got := app.tv.GetFocus(); got != app.sessions {
+		t.Errorf("Tab focus = %T, want sessions", got)
+	}
+	app.handleGlobalKeys(next)
+	if got := app.tv.GetFocus(); got != app.notes {
+		t.Errorf("Tab focus = %T, want notes", got)
+	}
+	app.handleGlobalKeys(next)
+	if got := app.tv.GetFocus(); got != app.accounts {
+		t.Errorf("Tab focus = %T, want accounts", got)
+	}
+	app.handleGlobalKeys(prev)
+	if got := app.tv.GetFocus(); got != app.notes {
+		t.Errorf("Shift+Tab focus = %T, want notes", got)
+	}
+
+	app.pages.SwitchToPage("vendors")
+	if got := app.handleGlobalKeys(next); got != next {
+		t.Error("Tab on a non-main page should pass through")
+	}
+}
+
+func TestApp_CopyToClipboard(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+
+	var copied string
+	app.copyFn = func(text string) error {
+		copied = text
+		return nil
+	}
+	if err := app.CopyToClipboard("hello"); err != nil {
+		t.Fatalf("CopyToClipboard: %v", err)
+	}
+	if copied != "hello" {
+		t.Errorf("copied = %q, want hello", copied)
+	}
+
+	app.copyFn = func(string) error { return errors.New("boom") }
+	if err := app.CopyToClipboard("x"); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error = %v, want boom", err)
+	}
+
+	app.copyFn = nil
+	if err := app.CopyToClipboard("x"); !errors.Is(err, apperr.ErrNil) {
+		t.Errorf("error = %v, want ErrNil", err)
+	}
+}
+
+func statusTexts(t *testing.T, app *App) (string, string) {
+	t.Helper()
+
+	lowerRow, ok := app.statusBar.GetItem(1).(*tview.Flex)
+	if !ok {
+		t.Fatalf("expected lower row *tview.Flex, got %T", app.statusBar.GetItem(1))
+	}
+	message, ok := lowerRow.GetItem(3).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected message *tview.TextView, got %T", lowerRow.GetItem(3))
+	}
+	area, ok := app.statusBar.GetItem(2).(*tview.TextView)
+	if !ok {
+		t.Fatalf("expected message area *tview.TextView, got %T", app.statusBar.GetItem(2))
+	}
+	return message.GetText(false), area.GetText(false)
+}
+
+func newStatusUpdates(t *testing.T) (func(func()), <-chan func()) {
+	t.Helper()
+	updates := make(chan func(), 1)
+	return func(fn func()) { updates <- fn }, updates
+}
+
+func TestApp_SetStatus_ClearsAfterTimeout(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.statusTimeout = 10 * time.Millisecond
+	queue, updates := newStatusUpdates(t)
+	app.statusQueue = queue
+
+	app.SetStatus("[green]saved[-]")
+	if got, _ := statusTexts(t, app); got != "[green]saved[-]" {
+		t.Errorf("status = %q, want saved", got)
+	}
+
+	select {
+	case fn := <-updates:
+		fn()
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the status to clear")
+	}
+	if got, _ := statusTexts(t, app); got != "" {
+		t.Errorf("status = %q, want empty after timeout", got)
+	}
+}
+
+func TestApp_SetNotice_ClearsAfterTimeout(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.statusTimeout = 10 * time.Millisecond
+	queue, updates := newStatusUpdates(t)
+	app.statusQueue = queue
+
+	app.SetNotice("No vendors configured.")
+	if _, got := statusTexts(t, app); got != "No vendors configured." {
+		t.Errorf("notice = %q, want the configured notice", got)
+	}
+
+	select {
+	case fn := <-updates:
+		fn()
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the notice to clear")
+	}
+	if _, got := statusTexts(t, app); got != "" {
+		t.Errorf("notice = %q, want empty after timeout", got)
+	}
+}
+
+func TestApp_SetError_DoesNotClearAfterTimeout(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.statusTimeout = 10 * time.Millisecond
+	queue, updates := newStatusUpdates(t)
+	app.statusQueue = queue
+
+	app.SetError("save failed")
+
+	select {
+	case <-updates:
+		t.Fatal("error status must not clear automatically")
+	case <-time.After(30 * time.Millisecond):
+	}
+	if _, got := statusTexts(t, app); got != "save failed" {
+		t.Errorf("error = %q, want save failed", got)
+	}
+}
+
+func TestApp_SetError_CancelsPendingStatusTimer(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.statusTimeout = 10 * time.Millisecond
+	queue, updates := newStatusUpdates(t)
+	app.statusQueue = queue
+
+	app.SetStatus("[green]saved[-]")
+	app.SetError("save failed")
+
+	select {
+	case <-updates:
+		t.Fatal("a pending status timer must not clear a newer error")
+	case <-time.After(30 * time.Millisecond):
+	}
+	if _, got := statusTexts(t, app); got != "save failed" {
+		t.Errorf("error = %q, want save failed", got)
+	}
+}
+
+func TestApp_Quit_CancelsPendingStatusTimer(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	app.statusTimeout = 10 * time.Millisecond
+	queue, updates := newStatusUpdates(t)
+	app.statusQueue = queue
+
+	app.SetStatus("[green]saved[-]")
+	app.Quit()
+
+	select {
+	case <-updates:
+		t.Fatal("Quit must cancel a pending status timer")
+	case <-time.After(30 * time.Millisecond):
 	}
 }

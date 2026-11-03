@@ -656,6 +656,44 @@ func TestPrompt_Comparable(t *testing.T) {
 	}
 }
 
+func TestSessionStatus(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		status model.SessionStatus
+		text   string
+	}{
+		{model.SessionStatusActive, "active"},
+		{model.SessionStatusNeedsClosing, "needs_closing"},
+		{model.SessionStatusClosed, "closed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.text, func(t *testing.T) {
+			t.Parallel()
+			if got := tc.status.String(); got != tc.text {
+				t.Errorf("String() = %q, want %q", got, tc.text)
+			}
+			if !tc.status.Valid() {
+				t.Error("Valid() = false, want true")
+			}
+			got, err := model.ParseSessionStatus(tc.text)
+			must(t, err)
+			if got != tc.status {
+				t.Errorf("ParseSessionStatus(%q) = %v, want %v", tc.text, got, tc.status)
+			}
+		})
+	}
+
+	if _, err := model.ParseSessionStatus("bogus"); err == nil {
+		t.Error("ParseSessionStatus(bogus) returned nil error")
+	}
+	if model.SessionStatus(-1).Valid() {
+		t.Error("negative status is valid")
+	}
+	if model.SessionStatus(99).Valid() {
+		t.Error("out-of-range status is valid")
+	}
+}
+
 func TestNewSession_DefaultRuntimeFields(t *testing.T) {
 	t.Parallel()
 	key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
@@ -664,8 +702,8 @@ func TestNewSession_DefaultRuntimeFields(t *testing.T) {
 	if got := s.URL(); got != "" {
 		t.Errorf("URL() = %q, want empty", got)
 	}
-	if got := s.Finish(); got {
-		t.Error("Finish() = true, want false")
+	if got := s.Status(); got != model.SessionStatusActive {
+		t.Errorf("Status() = %v, want Active", got)
 	}
 	if got := s.UpdatedAt(); !got.IsZero() {
 		t.Errorf("UpdatedAt() = %v, want zero", got)

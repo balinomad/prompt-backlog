@@ -1308,6 +1308,9 @@ func TestRegistry_AddSession_Success(t *testing.T) {
 		if sess.ID() == 0 {
 			t.Error("expected a non-zero ID")
 		}
+		if sess.Status() != model.SessionStatusActive {
+			t.Errorf("Status() = %v, want Active", sess.Status())
+		}
 	})
 	t.Run("success with project", func(t *testing.T) {
 		t.Parallel()
@@ -1327,6 +1330,9 @@ func TestRegistry_AddSession_Success(t *testing.T) {
 		}
 		if len(sess.Queue()) != 1 {
 			t.Errorf("got %d queue items, want 1", len(sess.Queue()))
+		}
+		if sess.Status() != model.SessionStatusActive {
+			t.Errorf("Status() = %v, want Active", sess.Status())
 		}
 		got, err := reg.ProjectSessions(reg.Project("Beta"))
 		must(t, err)
@@ -1988,23 +1994,47 @@ func TestRegistry_UpdateSessionURL(t *testing.T) {
 	})
 }
 
-func TestRegistry_UpdateSessionFinish(t *testing.T) {
+func TestRegistry_UpdateSessionStatus(t *testing.T) {
 	t.Parallel()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		sess := reg.Session(1)
-		must(t, reg.UpdateSessionFinish(sess, true))
+		must(t, reg.UpdateSessionStatus(sess, model.SessionStatusNeedsClosing))
 		got := reg.Session(1)
-		if !got.Finish() {
-			t.Error("Finish() = false, want true")
+		if got.Status() != model.SessionStatusNeedsClosing {
+			t.Errorf("Status() = %v, want Needs closing", got.Status())
 		}
 		if got == sess {
 			t.Error("expected a new pointer after a real change")
 		}
 		if !got.UpdatedAt().Equal(sess.UpdatedAt()) {
-			t.Error("finish update must not change updated-at")
+			t.Error("status update must not change updated-at")
+		}
+	})
+
+	t.Run("any status to any status", func(t *testing.T) {
+		t.Parallel()
+		statuses := []model.SessionStatus{
+			model.SessionStatusActive,
+			model.SessionStatusNeedsClosing,
+			model.SessionStatusClosed,
+		}
+		for _, from := range statuses {
+			for _, to := range statuses {
+				t.Run(from.String()+" to "+to.String(), func(t *testing.T) {
+					t.Parallel()
+					reg := seedRegistry(t)
+					sess := reg.Session(1)
+					must(t, reg.UpdateSessionStatus(sess, from))
+					sess = reg.Session(1)
+					must(t, reg.UpdateSessionStatus(sess, to))
+					if got := reg.Session(1).Status(); got != to {
+						t.Errorf("Status() = %v, want %v", got, to)
+					}
+				})
+			}
 		}
 	})
 
@@ -2012,15 +2042,15 @@ func TestRegistry_UpdateSessionFinish(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		sess := reg.Session(1)
-		must(t, reg.UpdateSessionFinish(sess, false))
+		must(t, reg.UpdateSessionStatus(sess, model.SessionStatusActive))
 		if got := reg.Session(1); got != sess {
-			t.Error("expected the same pointer for an unchanged finish flag")
+			t.Error("expected the same pointer for an unchanged status")
 		}
 	})
 
 	t.Run("nil", func(t *testing.T) {
 		t.Parallel()
-		err := model.NewRegistry().UpdateSessionFinish(nil, true)
+		err := model.NewRegistry().UpdateSessionStatus(nil, model.SessionStatusNeedsClosing)
 		if !errors.Is(err, model.ErrSessionNil) {
 			t.Errorf("got %v, want ErrSessionNil", err)
 		}
@@ -2030,7 +2060,7 @@ func TestRegistry_UpdateSessionFinish(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		ghost := model.NewSession(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, 999, "", "", nil)
-		err := reg.UpdateSessionFinish(ghost, true)
+		err := reg.UpdateSessionStatus(ghost, model.SessionStatusNeedsClosing)
 		if !errors.Is(err, model.ErrSessionNotFound) {
 			t.Errorf("got %v, want ErrSessionNotFound", err)
 		}
@@ -2040,8 +2070,8 @@ func TestRegistry_UpdateSessionFinish(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		stale := reg.Session(1)
-		must(t, reg.UpdateSessionFinish(stale, true))
-		err := reg.UpdateSessionFinish(stale, false)
+		must(t, reg.UpdateSessionStatus(stale, model.SessionStatusNeedsClosing))
+		err := reg.UpdateSessionStatus(stale, model.SessionStatusClosed)
 		if !errors.Is(err, model.ErrSessionStale) {
 			t.Errorf("got %v, want ErrSessionStale", err)
 		}
@@ -2919,13 +2949,13 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		at := time.Date(2026, 10, 30, 9, 15, 0, 0, time.UTC)
 		queue := []model.Prompt{model.NewPrompt("one"), model.NewPrompt("two")}
 
-		sess, err := reg.RestoreSession(acc, 10, reg.Project("Alpha"), "Name", " https://example.com ", true, at, queue)
+		sess, err := reg.RestoreSession(acc, 10, reg.Project("Alpha"), "Name", " https://example.com ", model.SessionStatusNeedsClosing, at, queue)
 		must(t, err)
 		if sess.ID() != 10 {
 			t.Errorf("ID() = %d, want 10", sess.ID())
 		}
-		if sess.Name() != "Name" || sess.URL() != "https://example.com" || !sess.Finish() {
-			t.Errorf("fields = name %q url %q finish %v", sess.Name(), sess.URL(), sess.Finish())
+		if sess.Name() != "Name" || sess.URL() != "https://example.com" || sess.Status() != model.SessionStatusNeedsClosing {
+			t.Errorf("fields = name %q url %q status %v", sess.Name(), sess.URL(), sess.Status())
 		}
 		if sess.AccountID() != acc.ID() {
 			t.Errorf("AccountID() = %d, want %d", sess.AccountID(), acc.ID())
@@ -2950,7 +2980,7 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.RestoreSession(acc, 0, nil, "", "", false, time.Time{}, nil)
+		_, err := reg.RestoreSession(acc, 0, nil, "", "", model.SessionStatusActive, time.Time{}, nil)
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
@@ -2960,7 +2990,7 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.RestoreSession(acc, 1, nil, "", "", false, time.Time{}, nil)
+		_, err := reg.RestoreSession(acc, 1, nil, "", "", model.SessionStatusActive, time.Time{}, nil)
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
@@ -2970,7 +3000,7 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.RestoreSession(acc, 10, nil, "", "", false, time.Time{}, []model.Prompt{model.NewPrompt("")})
+		_, err := reg.RestoreSession(acc, 10, nil, "", "", model.SessionStatusActive, time.Time{}, []model.Prompt{model.NewPrompt("")})
 		if !errors.Is(err, model.ErrTextRequired) {
 			t.Errorf("got %v, want ErrTextRequired", err)
 		}
@@ -2980,7 +3010,7 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.RestoreSession(acc, 10, reg.Project("Orphan"), "", "", false, time.Time{}, nil)
+		_, err := reg.RestoreSession(acc, 10, reg.Project("Orphan"), "", "", model.SessionStatusActive, time.Time{}, nil)
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
@@ -2990,7 +3020,7 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		ghost := model.NewAccount("ghost@example.com", "claude")
-		_, err := reg.RestoreSession(ghost, 10, nil, "", "", false, time.Time{}, nil)
+		_, err := reg.RestoreSession(ghost, 10, nil, "", "", model.SessionStatusActive, time.Time{}, nil)
 		if !errors.Is(err, model.ErrAccountNotFound) {
 			t.Errorf("got %v, want ErrAccountNotFound", err)
 		}
@@ -3000,7 +3030,7 @@ func TestRegistry_RestoreSession(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		sess, err := reg.RestoreSession(acc, 10, nil, "", "", false, time.Time{}, nil)
+		sess, err := reg.RestoreSession(acc, 10, nil, "", "", model.SessionStatusActive, time.Time{}, nil)
 		must(t, err)
 		if !sess.UpdatedAt().IsZero() {
 			t.Errorf("UpdatedAt() = %v, want zero", sess.UpdatedAt())
@@ -3102,7 +3132,7 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 			beforeID = max(beforeID, session.ID())
 		}
 
-		sess, err := reg.StartSessionAtomic(acc, nil, "", "name", "", nil)
+		sess, err := reg.StartSessionAtomic(acc, nil, "name", "", "", nil)
 		must(t, err)
 		if sess.ID() != beforeID+1 {
 			t.Errorf("ID() = %d, want %d", sess.ID(), beforeID+1)
@@ -3110,8 +3140,11 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		if sess.AccountID() != acc.ID() {
 			t.Errorf("AccountID() = %d, want %d", sess.AccountID(), acc.ID())
 		}
-		if sess.ProjectName() != "" || sess.Name() != "name" {
-			t.Errorf("session = project %q name %q", sess.ProjectName(), sess.Name())
+		if sess.ProjectName() != "" || sess.Name() != "name" || sess.URL() != "" {
+			t.Errorf("session = project %q name %q url %q", sess.ProjectName(), sess.Name(), sess.URL())
+		}
+		if sess.Status() != model.SessionStatusActive {
+			t.Errorf("Status() = %v, want Active", sess.Status())
 		}
 		if len(sess.Queue()) != 0 {
 			t.Errorf("Queue() = %v, want empty", sess.Queue())
@@ -3121,14 +3154,14 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		}
 	})
 
-	t.Run("existing project and prompt", func(t *testing.T) {
+	t.Run("existing project, URL, and prompt", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		at := time.Date(2026, 10, 30, 9, 15, 0, 0, time.UTC)
 		reg.SetClock(func() time.Time { return at })
 
-		sess, err := reg.StartSessionAtomic(acc, reg.Project("Alpha"), "", "name", "  hello  ", nil)
+		sess, err := reg.StartSessionAtomic(acc, reg.Project("Alpha"), "name", "  https://example.com/chat  ", "  hello  ", nil)
 		must(t, err)
 		if sess.ProjectName() != "Alpha" {
 			t.Errorf("ProjectName() = %q, want Alpha", sess.ProjectName())
@@ -3136,44 +3169,14 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		if sess.ProjectID() != reg.Project("Alpha").ID() {
 			t.Errorf("ProjectID() = %d, want %d", sess.ProjectID(), reg.Project("Alpha").ID())
 		}
+		if sess.URL() != "https://example.com/chat" {
+			t.Errorf("URL() = %q, want trimmed URL", sess.URL())
+		}
 		if got := sess.Queue(); len(got) != 1 || got[0].Text() != "hello" {
 			t.Errorf("Queue() = %v, want one trimmed prompt", got)
 		}
 		if !sess.UpdatedAt().Equal(at) {
 			t.Errorf("UpdatedAt() = %v, want %v", sess.UpdatedAt(), at)
-		}
-	})
-
-	t.Run("new project is created and granted", func(t *testing.T) {
-		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-
-		sess, err := reg.StartSessionAtomic(acc, nil, "  Gamma  ", "", "hello", nil)
-		must(t, err)
-		if sess.ProjectName() != "Gamma" {
-			t.Errorf("ProjectName() = %q, want Gamma", sess.ProjectName())
-		}
-		if sess.ProjectID() != reg.Project("Gamma").ID() {
-			t.Errorf("ProjectID() = %d, want %d", sess.ProjectID(), reg.Project("Gamma").ID())
-		}
-		proj := reg.Project("Gamma")
-		if proj == nil {
-			t.Fatal("new project was not created")
-		}
-		if proj.Description() != "" || proj.Instructions() != "" {
-			t.Errorf("new project has description %q instructions %q, want empty", proj.Description(), proj.Instructions())
-		}
-		projects, err := reg.AccountProjects(acc)
-		must(t, err)
-		found := false
-		for _, p := range projects {
-			if p.Name() == "Gamma" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("new project was not granted to the account")
 		}
 	})
 
@@ -3184,7 +3187,7 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		note, err := reg.AddNote("note text", nil, acc)
 		must(t, err)
 
-		sess, err := reg.StartSessionAtomic(acc, nil, "", "name", "note text", note)
+		sess, err := reg.StartSessionAtomic(acc, nil, "name", "", "note text", note)
 		must(t, err)
 		if reg.Note(note.ID()) != nil {
 			t.Error("note still exists after a successful start")
@@ -3269,36 +3272,6 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		}
 	})
 
-	t.Run("existing and new project are mutually exclusive", func(t *testing.T) {
-		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.StartSessionAtomic(acc, reg.Project("Alpha"), "Gamma", "", "", nil)
-		if err == nil {
-			t.Fatal("got nil, want error")
-		}
-	})
-
-	t.Run("duplicate new project name", func(t *testing.T) {
-		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.StartSessionAtomic(acc, nil, "Alpha", "", "", nil)
-		if err == nil {
-			t.Fatal("got nil, want error")
-		}
-	})
-
-	t.Run("vendor does not support projects", func(t *testing.T) {
-		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
-		_, err := reg.StartSessionAtomic(acc, nil, "Gamma", "", "", nil)
-		if !errors.Is(err, model.ErrProjectsUnsupported) {
-			t.Errorf("got %v, want ErrProjectsUnsupported", err)
-		}
-	})
-
 	t.Run("note not found", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -3347,18 +3320,6 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		}
 	})
 
-	t.Run("note project forbids a new project name", func(t *testing.T) {
-		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		note, err := reg.AddNote("text", reg.Project("Alpha"), nil)
-		must(t, err)
-		_, err = reg.StartSessionAtomic(acc, nil, "Gamma", "", "text", note)
-		if err == nil {
-			t.Fatal("got nil, want error")
-		}
-	})
-
 	t.Run("note requires prompt text", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
@@ -3379,7 +3340,6 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		must(t, err)
 
 		sessionsBefore := len(reg.Sessions())
-		projectsBefore := len(reg.Projects())
 		notesBefore := len(reg.Notes())
 
 		_, err = reg.StartSessionAtomic(acc, reg.Project("Beta"), "", "", "text", note)
@@ -3388,9 +3348,6 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		}
 		if got := len(reg.Sessions()); got != sessionsBefore {
 			t.Errorf("sessions = %d, want %d", got, sessionsBefore)
-		}
-		if got := len(reg.Projects()); got != projectsBefore {
-			t.Errorf("projects = %d, want %d", got, projectsBefore)
 		}
 		if got := len(reg.Notes()); got != notesBefore {
 			t.Errorf("notes = %d, want %d", got, notesBefore)

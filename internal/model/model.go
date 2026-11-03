@@ -208,6 +208,51 @@ func (a *Account) PauseUntil() time.Time { return a.pauseUntil }
 
 // ── Session ───────────────────────────────────────────────────────────────────
 
+// SessionStatus describes the lifecycle state of a session.
+type SessionStatus int
+
+const (
+	// SessionStatusActive is the normal state of a new session.
+	SessionStatusActive SessionStatus = iota
+	// SessionStatusNeedsClosing marks a session that should be closed soon.
+	SessionStatusNeedsClosing
+	// SessionStatusClosed marks a session that has been closed.
+	SessionStatusClosed
+)
+
+// String returns the canonical persistence value of s.
+func (s SessionStatus) String() string {
+	switch s {
+	case SessionStatusActive:
+		return "active"
+	case SessionStatusNeedsClosing:
+		return "needs_closing"
+	case SessionStatusClosed:
+		return "closed"
+	default:
+		return "unknown"
+	}
+}
+
+// Valid reports whether s is a known session status.
+func (s SessionStatus) Valid() bool {
+	return s >= SessionStatusActive && s <= SessionStatusClosed
+}
+
+// ParseSessionStatus parses a canonical persistence value.
+func ParseSessionStatus(value string) (SessionStatus, error) {
+	switch value {
+	case "active":
+		return SessionStatusActive, nil
+	case "needs_closing":
+		return SessionStatusNeedsClosing, nil
+	case "closed":
+		return SessionStatusClosed, nil
+	default:
+		return SessionStatusActive, fmt.Errorf("invalid session status %q", value)
+	}
+}
+
 // Session holds the runtime state of one active conversation.
 type Session struct {
 	accountKey  AccountKey
@@ -217,22 +262,22 @@ type Session struct {
 	projectName string
 	name        string
 	url         string
-	finish      bool
+	status      SessionStatus
 	updatedAt   time.Time
 	queue       []Prompt
 }
 
 // NewSession constructs a Session for the given account. id is the
 // surrogate key assigned by Registry.AddSession; projectName, name, and
-// queue are the session's initial mutable state. URL and finish start
-// empty, and updated-at starts zero.
+// queue are the session's initial mutable state. URL starts empty, status
+// starts active, and updated-at starts zero.
 func NewSession(accKey AccountKey, id uint64, projectName, name string, queue []Prompt) *Session {
-	return newSession(accKey, 0, 0, id, projectName, name, "", false, time.Time{}, queue)
+	return newSession(accKey, 0, 0, id, projectName, name, "", SessionStatusActive, time.Time{}, queue)
 }
 
 // newSession constructs a Session with every field set. The registry uses it
 // for creation and restore.
-func newSession(accKey AccountKey, accountID, projectID, id uint64, projectName, name, url string, finish bool, updatedAt time.Time, queue []Prompt) *Session {
+func newSession(accKey AccountKey, accountID, projectID, id uint64, projectName, name, url string, status SessionStatus, updatedAt time.Time, queue []Prompt) *Session {
 	return &Session{
 		accountKey:  accKey,
 		accountID:   accountID,
@@ -241,7 +286,7 @@ func newSession(accKey AccountKey, accountID, projectID, id uint64, projectName,
 		projectName: NormalizeText(projectName),
 		name:        NormalizeText(name),
 		url:         NormalizeText(url),
-		finish:      finish,
+		status:      status,
 		updatedAt:   updatedAt,
 		queue:       slices.Clone(queue),
 	}
@@ -268,8 +313,8 @@ func (s *Session) Name() string { return s.name }
 // URL returns the session's conversation URL, or an empty string.
 func (s *Session) URL() string { return s.url }
 
-// Finish reports whether the session is marked finished.
-func (s *Session) Finish() bool { return s.finish }
+// Status returns the session's lifecycle status.
+func (s *Session) Status() SessionStatus { return s.status }
 
 // UpdatedAt returns the time of the session's last queue change, or the zero
 // time when the session has never had a queue change.

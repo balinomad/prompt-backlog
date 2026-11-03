@@ -3,18 +3,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 	"time"
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
+	"github.com/balinomad/llm-desk/cmd/tui/views/panels"
 	"github.com/balinomad/llm-desk/internal/apperr"
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"golang.design/x/clipboard"
 )
 
 // AppName is the application's display name, used in dialog titles and
@@ -22,6 +25,10 @@ import (
 const AppName = "llm-desk"
 
 const savedStatusMessage = "[green]saved ✓[-]"
+
+// statusMessageTimeout is how long non-error status and notice messages stay
+// visible before they clear automatically.
+const statusMessageTimeout = 5 * time.Second
 
 // pauseStatusRefreshInterval is how often the accounts list re-evaluates
 // pause-time status so an account's colour flips without a mutation.
@@ -39,17 +46,26 @@ var minTerminalWidth = max(80, views.MinimumWidth(tview.TaggedStringWidth(savedS
 const (
 	// statusBarHeight is the base outer height reserved below the content.
 	statusBarHeight = views.StatusBarBaseHeight
-	// minMainTopHeight keeps the Accounts and Sessions panels visible when
-	// the terminal is short and the Account panel needs more rows.
-	minMainTopHeight = 3
+	// minMainTopHeight keeps the Accounts, Sessions and Notes panels visible
+	// when the terminal is short and the Account panel needs more rows.
+	minMainTopHeight = 6
 )
 
-// Compile-time check that App implements views.App.
-var _ views.App = (*App)(nil)
+// Compile-time check that App implements views.Host.
+var _ views.Host = (*App)(nil)
+
+type modalEntry struct {
+	page        string
+	primitive   tview.Primitive
+	rootFocus   tview.Primitive
+	resumeFocus tview.Primitive
+	prevSpec    string
+	prevComm    string
+}
 
 // App is the concrete host application. It owns the tview event loop and the
 // application service layer. All views interact with it exclusively through
-// the views.App interface.
+// the views.Host interface.
 type App struct {
 	tv        *tview.Application
 	svc       *service.Service
@@ -57,16 +73,31 @@ type App struct {
 	root      *tview.Flex
 	mainFlex  *tview.Flex
 	mainTop   *tview.Flex
-	prevFocus tview.Primitive // saved by ShowModal, restored by HideModal
+	modals    []modalEntry
+	nextModal int
+	hintsSpec string
+	hintsComm string
 	tooSmall  bool
 
+	copyFn        func(string) error
+	clipboardInit sync.Once
+	clipboardErr  error
+
 	statusBar   *views.StatusBar
-	accounts    *views.AccountsPanel
-	detail      *views.DetailPanel
-	accountInfo *views.AccountInfoPanel
-	vendors     *views.VendorsPanel
-	projects    *views.ProjectsPanel
-	users       *views.UsersPanel
+	accounts    *panels.AccountsPanel
+	sessions    *panels.SessionsPanel
+	notes       *panels.NotesPanel
+	mainRight   *tview.Flex
+	accountInfo *panels.AccountInfoPanel
+	vendors     *panels.VendorsPanel
+	projects    *panels.ProjectsPanel
+	users       *panels.UsersPanel
+
+	statusMu         sync.Mutex
+	statusTimer      *time.Timer
+	statusGeneration uint64
+	statusTimeout    time.Duration
+	statusQueue      func(func())
 }
 
 // New constructs the fully wired application around svc. The caller is
@@ -78,9 +109,11 @@ func New(svc *service.Service) (*App, error) {
 		return nil, fmt.Errorf("new app: service %w", apperr.ErrNil)
 	}
 	a := &App{
-		tv:  tview.NewApplication(),
-		svc: svc,
+		tv:            tview.NewApplication(),
+		svc:           svc,
+		statusTimeout: statusMessageTimeout,
 	}
+	a.copyFn = a.writeClipboard
 	a.build()
 	return a, nil
 }
@@ -93,6 +126,7 @@ func (a *App) Run(ctx context.Context) error {
 	defer func() {
 		ticker.Stop()
 		close(done)
+		a.cancelStatusTimer()
 	}()
 
 	// tcell switches the terminal to application keypad mode at startup. In
@@ -146,7 +180,7 @@ func (a *App) Run(ctx context.Context) error {
 	return nil
 }
 
-// ── views.App implementation ──────────────────────────────────────────────────
+// ── views.Host implementation ──────────────────────────────────────────────────
 
 // Service returns the current application service layer.
 // Views read from this; mutations go through Mutate.
@@ -159,11 +193,39 @@ func (a *App) AppName() string {
 	return AppName
 }
 
+// CopyToClipboard writes text to the system clipboard through the replaceable
+// copy function.
+func (a *App) CopyToClipboard(text string) error {
+	if a.copyFn == nil {
+		return fmt.Errorf("copy to clipboard: function %w", apperr.ErrNil)
+	}
+	if err := a.copyFn(text); err != nil {
+		return fmt.Errorf("copy to clipboard: %w", err)
+	}
+	return nil
+}
+
+// writeClipboard initialises the clipboard once and writes text to it.
+func (a *App) writeClipboard(text string) error {
+	a.clipboardInit.Do(func() {
+		a.clipboardErr = clipboard.Init()
+	})
+	if a.clipboardErr != nil {
+		return fmt.Errorf("init clipboard: %w", a.clipboardErr)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := clipboard.Write(ctx, clipboard.FmtText, []byte(text)); err != nil {
+		return fmt.Errorf("write clipboard: %w", err)
+	}
+	return nil
+}
+
 // Mutate applies fn to the service. If fn returns nil, the result is
 // persisted to disk and all views are refreshed. Views are refreshed
 // regardless of whether the save succeeded so the in-memory state is
 // always reflected. A save failure is wrapped in views.ErrSaveFailed,
-// distinguishing it from fn's own domain error — see the views.App
+// distinguishing it from fn's own domain error — see the views.Host
 // interface doc comment.
 // Returns an error if fn is nil.
 func (a *App) Mutate(fn func(*service.Service) error) error {
@@ -182,8 +244,28 @@ func (a *App) Mutate(fn func(*service.Service) error) error {
 	return nil
 }
 
-// ShowModal displays p as a centred transparent overlay. The currently focused
-// primitive is saved so HideModal can restore it.
+// modalMouseGuard prevents mouse events that a modal does not consume from
+// reaching the page underneath it.
+type modalMouseGuard struct {
+	tview.Primitive
+}
+
+// MouseHandler forwards mouse events to the modal and consumes any event the
+// modal does not handle.
+func (g *modalMouseGuard) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
+	return func(action tview.MouseAction, event *tcell.EventMouse, setFocus func(tview.Primitive)) (bool, tview.Primitive) {
+		if handler := g.Primitive.MouseHandler(); handler != nil {
+			consumed, capture := handler(action, event, setFocus)
+			if consumed || capture != nil {
+				return true, capture
+			}
+		}
+		return true, nil
+	}
+}
+
+// ShowModal pushes p as a centred transparent overlay above the current
+// modal, if any. The current focus and hint lines are saved for HideModal.
 // Returns an error if p is nil, including a non-nil interface wrapping a typed
 // nil pointer.
 func (a *App) ShowModal(p tview.Primitive) error {
@@ -191,8 +273,27 @@ func (a *App) ShowModal(p tview.Primitive) error {
 		return fmt.Errorf("show modal: primitive %w", apperr.ErrNil)
 	}
 
-	a.prevFocus = a.tv.GetFocus()
-	a.pages.AddPage("modal", p, true, true)
+	focus := a.tv.GetFocus()
+	if len(a.modals) > 0 {
+		parent := &a.modals[len(a.modals)-1]
+		parent.resumeFocus = focus
+		if state, ok := parent.primitive.(views.ModalState); ok {
+			state.SetModalActive(false)
+		}
+	}
+	entry := modalEntry{
+		page:      fmt.Sprintf("modal-%d", a.nextModal),
+		primitive: p,
+		rootFocus: focus,
+		prevSpec:  a.hintsSpec,
+		prevComm:  a.hintsComm,
+	}
+	a.nextModal++
+	if state, ok := p.(views.ModalState); ok {
+		state.SetModalActive(true)
+	}
+	a.pages.AddPage(entry.page, &modalMouseGuard{Primitive: p}, true, true)
+	a.modals = append(a.modals, entry)
 	a.tv.SetFocus(p)
 	return nil
 }
@@ -212,14 +313,54 @@ func isNilPrimitive(p tview.Primitive) bool {
 	}
 }
 
-// HideModal removes the modal overlay and restores focus to the primitive
-// that was active before ShowModal was called.
+// HideModal pops the top modal and restores the parent modal, or the screen
+// that was active before the first modal was pushed.
 func (a *App) HideModal() {
-	a.pages.RemovePage("modal")
-	if a.prevFocus != nil {
-		a.tv.SetFocus(a.prevFocus)
-		a.prevFocus = nil
+	if len(a.modals) == 0 {
+		return
 	}
+	top := a.modals[len(a.modals)-1]
+	a.modals = a.modals[:len(a.modals)-1]
+	a.pages.RemovePage(top.page)
+	if len(a.modals) > 0 {
+		parent := &a.modals[len(a.modals)-1]
+		if state, ok := parent.primitive.(views.ModalState); ok {
+			state.SetModalActive(true)
+		}
+		focus := parent.resumeFocus
+		if focus == nil {
+			focus = parent.primitive
+		}
+		a.tv.SetFocus(focus)
+		a.SetHints(top.prevSpec, top.prevComm)
+		return
+	}
+	if top.rootFocus != nil {
+		a.tv.SetFocus(top.rootFocus)
+	}
+	a.SetHints(top.prevSpec, top.prevComm)
+}
+
+// ReplaceTopModal swaps the top modal primitive without changing the stack
+// depth. The caller must already have popped any child modal.
+func (a *App) ReplaceTopModal(p tview.Primitive) error {
+	if isNilPrimitive(p) {
+		return fmt.Errorf("replace modal: primitive %w", apperr.ErrNil)
+	}
+	if len(a.modals) == 0 {
+		return errors.New("replace modal: no modal")
+	}
+	top := &a.modals[len(a.modals)-1]
+	spec, comm := a.hintsSpec, a.hintsComm
+	a.pages.RemovePage(top.page)
+	top.primitive = p
+	if state, ok := p.(views.ModalState); ok {
+		state.SetModalActive(true)
+	}
+	a.pages.AddPage(top.page, &modalMouseGuard{Primitive: p}, true, true)
+	a.tv.SetFocus(p)
+	a.SetHints(spec, comm)
+	return nil
 }
 
 // SetFocus moves keyboard focus to p.
@@ -256,31 +397,99 @@ func (a *App) switchTo(page string, refresh func(), focus tview.Primitive) {
 }
 
 // SetStatus displays an inline status message in the status bar. It clears
-// any notice or error. An empty string clears it.
+// any notice or error. A non-empty message clears automatically after
+// statusMessageTimeout; an empty string clears it immediately.
 // Callers may include tview colour tags (e.g. "[green]saved[-]").
 func (a *App) SetStatus(msg string) {
+	a.scheduleStatusClear(msg, func() { a.statusBar.SetStatus("") })
 	a.statusBar.SetStatus(msg)
 }
 
 // SetNotice displays msg in the separate notice area below the common hints.
-// It clears any inline status and error. An empty string clears it.
+// It clears any inline status and error. A non-empty message clears
+// automatically after statusMessageTimeout; an empty string clears it
+// immediately.
 func (a *App) SetNotice(msg string) {
+	a.scheduleStatusClear(msg, func() { a.statusBar.SetNotice("") })
 	a.statusBar.SetNotice(msg)
 }
 
 // SetError displays msg in the separate red error area below the common
-// hints. It clears any inline status and notice. An empty string clears it.
+// hints. It clears any inline status and notice. Errors remain visible until
+// another message replaces them or an empty string clears them.
 func (a *App) SetError(msg string) {
+	a.cancelStatusTimer()
 	a.statusBar.SetError(msg)
 }
 
 // SetHints replaces the keyboard-hint lines in the status bar.
 func (a *App) SetHints(specific, common string) {
+	a.hintsSpec = specific
+	a.hintsComm = common
 	a.statusBar.SetHints(specific, common)
+}
+
+// scheduleStatusClear replaces any pending status timer with one that clears
+// the message after statusTimeout. An empty message cancels the timer without
+// scheduling a new one.
+func (a *App) scheduleStatusClear(msg string, clearFn func()) {
+	a.statusMu.Lock()
+	defer a.statusMu.Unlock()
+
+	if a.statusTimer != nil {
+		a.statusTimer.Stop()
+		a.statusTimer = nil
+	}
+	a.statusGeneration++
+	if msg == "" {
+		return
+	}
+
+	timeout := a.statusTimeout
+	if timeout <= 0 {
+		timeout = statusMessageTimeout
+	}
+	generation := a.statusGeneration
+	a.statusTimer = time.AfterFunc(timeout, func() {
+		a.queueStatusUpdate(func() {
+			a.statusMu.Lock()
+			if a.statusGeneration != generation {
+				a.statusMu.Unlock()
+				return
+			}
+			a.statusGeneration++
+			a.statusTimer = nil
+			a.statusMu.Unlock()
+			clearFn()
+		})
+	})
+}
+
+// cancelStatusTimer stops any pending clear and invalidates its generation.
+func (a *App) cancelStatusTimer() {
+	a.statusMu.Lock()
+	if a.statusTimer != nil {
+		a.statusTimer.Stop()
+		a.statusTimer = nil
+	}
+	a.statusGeneration++
+	a.statusMu.Unlock()
+}
+
+// queueStatusUpdate runs fn on the tview event loop. A non-nil statusQueue
+// replaces the event-loop queue, allowing tests to run the update
+// synchronously.
+func (a *App) queueStatusUpdate(fn func()) {
+	if a.statusQueue != nil {
+		a.statusQueue(fn)
+		return
+	}
+	a.tv.QueueUpdateDraw(fn)
 }
 
 // Quit stops the tview event loop.
 func (a *App) Quit() {
+	a.cancelStatusTimer()
 	a.tv.Stop()
 }
 
@@ -290,23 +499,47 @@ func (a *App) Quit() {
 // handles first-run state. Called exactly once from New.
 func (a *App) build() {
 	a.statusBar = views.NewStatusBar()
-	a.accounts = views.NewAccountsPanel(a)
-	a.detail = views.NewDetailPanel(a)
-	a.accountInfo = views.NewAccountInfoPanel(a)
-	a.vendors = views.NewVendorsPanel(a)
-	a.projects = views.NewProjectsPanel(a)
-	a.users = views.NewUsersPanel(a)
+	a.accounts = panels.NewAccountsPanel(a)
+	a.sessions = panels.NewSessionsPanel(a)
+	a.notes = panels.NewNotesPanel(a)
+	a.accountInfo = panels.NewAccountInfoPanel(a)
+	a.vendors = panels.NewVendorsPanel(a)
+	a.projects = panels.NewProjectsPanel(a)
+	a.users = panels.NewUsersPanel(a)
 
-	// Wire account-list selection changes to both account views.
+	filter := views.NewProjectFilterState()
+	a.accounts.SetFilter(filter)
+	a.sessions.SetFilter(filter)
+	a.notes.SetFilter(filter)
+
+	// Wire account-list selection changes to both panes and the info panel.
 	a.accounts.SetOnSelect(func(acc *model.Account) {
-		a.detail.SetAccount(acc)
+		a.sessions.SetAccount(acc)
+		a.notes.SetAccount(acc)
 		a.accountInfo.SetAccount(acc)
 	})
 
-	// Top row: accounts panel (sized to its widest row) beside sessions.
+	refreshFilter := func() {
+		a.sessions.Refresh()
+		a.notes.Refresh()
+	}
+	a.accounts.SetOnFilterChange(refreshFilter)
+	a.sessions.SetOnFilterChange(refreshFilter)
+	a.notes.SetOnFilterChange(refreshFilter)
+	a.notes.SetOnSessionStart(func(sess *model.Session) {
+		a.sessions.ShowSession(sess)
+	})
+
+	// Right column: Sessions above Notes.
+	a.mainRight = tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(a.sessions, 0, 1, false).
+		AddItem(a.notes, 0, 1, false)
+
+	// Top row: accounts panel (sized to its widest row) beside the right column.
 	a.mainTop = tview.NewFlex().
 		AddItem(a.accounts, 0, 1, true).
-		AddItem(a.detail, 0, 2, false)
+		AddItem(a.mainRight, 0, 2, false)
 
 	// Main page: top row above a full-width account panel.
 	a.mainFlex = tview.NewFlex().
@@ -315,7 +548,7 @@ func (a *App) build() {
 		AddItem(a.accountInfo, 5, 0, false)
 
 	// Pages for full-screen switching.
-	// The "modal" page is added/removed dynamically by ShowModal/HideModal.
+	// Modal pages are added and removed dynamically by ShowModal/HideModal.
 	a.pages = tview.NewPages().
 		AddPage("main", a.mainFlex, true, true).
 		AddPage("vendors", a.vendors, true, false).
@@ -369,12 +602,7 @@ func (a *App) refreshAccounts() {
 // current text needs.
 func (a *App) resizeDetailPanels(screenWidth, screenHeight, statusHeight int) {
 	a.resizeAccountInfo(screenWidth, screenHeight, statusHeight)
-
-	if a.detail != nil {
-		if _, _, width, _ := a.detail.GetInnerRect(); width > 0 {
-			a.detail.SetWidth(width)
-		}
-	}
+	a.resizeMainRight(screenWidth, screenHeight, statusHeight)
 
 	available := screenHeight - statusHeight
 	if available <= 0 {
@@ -428,6 +656,35 @@ func (a *App) beforeDraw(screen tcell.Screen) bool {
 	return false
 }
 
+// resizeMainRight sizes the Sessions and Notes panes in the right column.
+func (a *App) resizeMainRight(screenWidth, screenHeight, statusHeight int) {
+	if a.mainRight == nil || a.accountInfo == nil {
+		return
+	}
+	available := screenHeight - statusHeight
+	if available <= 0 {
+		return
+	}
+	maxInfoHeight := available - minMainTopHeight
+	infoHeight := 0
+	if maxInfoHeight >= 1 {
+		infoHeight = min(a.accountInfo.RequiredHeight(screenWidth), maxInfoHeight)
+	}
+	topHeight := available - infoHeight
+	if topHeight <= 0 {
+		return
+	}
+	notesHeight := max(3, topHeight/3)
+	sessionsHeight := topHeight - notesHeight
+	a.mainRight.ResizeItem(a.sessions, sessionsHeight, 0)
+	a.mainRight.ResizeItem(a.notes, notesHeight, 0)
+
+	rightWidth := screenWidth - a.accounts.RequiredWidth()
+	innerWidth := max(rightWidth-2, 0)
+	a.sessions.SetWidth(innerWidth)
+	a.notes.SetWidth(innerWidth)
+}
+
 func terminalTooSmall(width, height int) bool {
 	return width < minTerminalWidth || height < minTerminalHeight
 }
@@ -450,9 +707,9 @@ func drawTerminalTooSmall(screen tcell.Screen, width, height int) {
 
 // handleGlobalKeys handles focus switching on Tab/Shift+Tab and screen
 // switching on the vendor, project, and user keys. Focus switching applies
-// only to the main page; screen switching applies on every page except
-// "modal", so a form or editor keeps its own rune input. All input is blocked
-// while the terminal is too small.
+// only to the main page; screen switching is disabled while any modal is open,
+// so a form or editor keeps its own rune input. All input is blocked while the
+// terminal is too small.
 func (a *App) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 	if a.tooSmall {
 		if event.Key() == tcell.KeyCtrlC {
@@ -465,18 +722,14 @@ func (a *App) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 		if name, _ := a.pages.GetFrontPage(); name != "main" {
 			return event
 		}
-		if a.tv.GetFocus() == a.accounts {
-			a.tv.SetFocus(a.detail)
-		} else {
-			a.tv.SetFocus(a.accounts)
-		}
+		a.cycleMainFocus(event.Key() == views.KeyFocusNext)
 		return nil
 	}
 
 	if event.Key() != tcell.KeyRune {
 		return event
 	}
-	if name, _ := a.pages.GetFrontPage(); name == "modal" {
+	if len(a.modals) > 0 {
 		return event
 	}
 
@@ -492,6 +745,25 @@ func (a *App) handleGlobalKeys(event *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 	return event
+}
+
+// cycleMainFocus moves focus through Accounts, Sessions and Notes.
+func (a *App) cycleMainFocus(forward bool) {
+	order := []tview.Primitive{a.accounts, a.sessions, a.notes}
+	current := a.tv.GetFocus()
+	index := 0
+	for i, p := range order {
+		if p == current {
+			index = i
+			break
+		}
+	}
+	if forward {
+		index = (index + 1) % len(order)
+	} else {
+		index = (index + len(order) - 1) % len(order)
+	}
+	a.tv.SetFocus(order[index])
 }
 
 // handleGlobalMouse blocks mouse input while the terminal is too small.
