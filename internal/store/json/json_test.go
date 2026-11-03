@@ -1117,6 +1117,48 @@ func TestRoundTrip_Notes(t *testing.T) {
 	}
 }
 
+func TestLoad_SessionStatus(t *testing.T) {
+	t.Parallel()
+
+	base := `{
+  "version": 1,
+  "vendors": [{"name": "claude"}],
+  "users": [{"email": "alice@example.com", "name": "Alice"}],
+  "accounts": [{"id": 1, "user_email": "alice@example.com", "vendor_name": "claude"}],
+  "sessions": [{"id": 1, "account_id": 1%s}]
+}`
+
+	cases := []struct {
+		name   string
+		suffix string
+		want   model.SessionStatus
+	}{
+		{"active", "", model.SessionStatusActive},
+		{"needs closing", `, "status": "needs_closing"`, model.SessionStatusNeedsClosing},
+		{"closed", `, "status": "closed"`, model.SessionStatusClosed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeTempFile(t, fmt.Sprintf(base, tc.suffix))
+			reg, err := storejson.New(path).Load()
+			must(t, err)
+			if got := reg.Session(1).Status(); got != tc.want {
+				t.Errorf("Status() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("invalid status", func(t *testing.T) {
+		t.Parallel()
+		path := writeTempFile(t, fmt.Sprintf(base, `, "status": "bogus"`))
+		_, err := storejson.New(path).Load()
+		if err == nil || !strings.Contains(err.Error(), "invalid session status") {
+			t.Errorf("error = %v, want invalid session status", err)
+		}
+	})
+}
+
 func TestRoundTrip_SessionFields(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
@@ -1134,7 +1176,7 @@ func TestRoundTrip_SessionFields(t *testing.T) {
 	})
 	must(t, err)
 	must(t, reg.UpdateSessionURL(sess, " https://example.com/chat/1 "))
-	must(t, reg.UpdateSessionFinish(reg.Session(sess.ID()), true))
+	must(t, reg.UpdateSessionStatus(reg.Session(sess.ID()), model.SessionStatusNeedsClosing))
 
 	st, _ := newStore(t)
 	must(t, st.Save(reg))
@@ -1148,8 +1190,8 @@ func TestRoundTrip_SessionFields(t *testing.T) {
 	if got.URL() != "https://example.com/chat/1" {
 		t.Errorf("URL() = %q", got.URL())
 	}
-	if !got.Finish() {
-		t.Error("Finish() = false, want true")
+	if got.Status() != model.SessionStatusNeedsClosing {
+		t.Errorf("Status() = %v, want Needs closing", got.Status())
 	}
 	wantAt := time.Date(2026, 10, 30, 9, 15, 0, 0, time.UTC)
 	if !got.UpdatedAt().Equal(wantAt) {
@@ -1186,6 +1228,7 @@ func TestSave_WritesVersionAndFields(t *testing.T) {
 			ID        uint64 `json:"id"`
 			AccountID uint64 `json:"account_id"`
 			ProjectID uint64 `json:"project_id"`
+			Status    string `json:"status"`
 			Queue     []struct {
 				Text string `json:"text"`
 			} `json:"queue"`
@@ -1230,6 +1273,11 @@ func TestSave_WritesVersionAndFields(t *testing.T) {
 	}
 	if raw.Sessions[0].ID != 1 || raw.Sessions[0].AccountID == 0 || raw.Sessions[0].ProjectID == 0 {
 		t.Errorf("sessions[0] = %+v, want id, account_id and project_id", raw.Sessions[0])
+	}
+	for i, session := range raw.Sessions {
+		if session.Status == "" {
+			t.Errorf("sessions[%d].status is empty", i)
+		}
 	}
 	if len(raw.Sessions[0].Queue) != 2 || raw.Sessions[0].Queue[0].Text != "continue" {
 		t.Errorf("sessions[0].queue = %+v", raw.Sessions[0].Queue)

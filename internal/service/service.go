@@ -379,6 +379,14 @@ func (s *Service) RevokeProject(userEmail, vendorName, projectName string) error
 
 // ── Session ───────────────────────────────────────────────────────────────────
 
+// SessionFields are the user-editable session fields shared by create and
+// update use cases.
+type SessionFields struct {
+	Name        string
+	URL         string
+	ProjectName string
+}
+
 // Session returns the session with the given ID, or nil if not found.
 func (s *Service) Session(id uint64) *model.Session { return s.reg.Session(id) }
 
@@ -421,13 +429,29 @@ func (s *Service) UpdateSessionURL(userEmail, vendorName string, id uint64, url 
 	return s.reg.UpdateSessionURL(sess, url)
 }
 
-// UpdateSessionFinish updates a session's finish flag.
-func (s *Service) UpdateSessionFinish(userEmail, vendorName string, id uint64, finish bool) error {
+// UpdateSessionStatus updates a session's lifecycle status.
+func (s *Service) UpdateSessionStatus(userEmail, vendorName string, id uint64, status model.SessionStatus) error {
 	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
-		return fmt.Errorf("update session finish: %w", err)
+		return fmt.Errorf("update session status: %w", err)
 	}
-	return s.reg.UpdateSessionFinish(sess, finish)
+	return s.reg.UpdateSessionStatus(sess, status)
+}
+
+// UpdateSession updates a session's name, URL, and project atomically.
+func (s *Service) UpdateSession(userEmail, vendorName string, id uint64, fields SessionFields) error {
+	sess, err := s.resolveSession(userEmail, vendorName, id)
+	if err != nil {
+		return fmt.Errorf("update session: %w", err)
+	}
+	var project *model.Project
+	if fields.ProjectName != "" {
+		project, err = s.resolveProject("resolve", fields.ProjectName)
+		if err != nil {
+			return fmt.Errorf("update session: %w", err)
+		}
+	}
+	return s.reg.UpdateSession(sess, fields.Name, fields.URL, project)
 }
 
 // LatestSession returns the account's latest session, or false when the
@@ -561,84 +585,59 @@ func (s *Service) UpdateSessionPrompts(userEmail, vendorName string, id uint64, 
 	return s.reg.UpdateSessionPrompts(sess, queue)
 }
 
-// EndSession removes a session from its account and cleans up indexes —
-// the counterpart to StartSession.
-func (s *Service) EndSession(userEmail, vendorName string, id uint64) error {
+// DeleteSession removes a session from its account and cleans up indexes.
+func (s *Service) DeleteSession(userEmail, vendorName string, id uint64) error {
 	sess, err := s.resolveSession(userEmail, vendorName, id)
 	if err != nil {
-		return fmt.Errorf("end session: %w", err)
+		return fmt.Errorf("delete session: %w", err)
 	}
 	return s.reg.DeleteSession(sess)
 }
 
 // ── Workflows (cross-aggregate) ────────────────────────────────────────────────
 
-// StartSessionAtomic resolves the account, optional existing project and
-// optional note, then performs the atomic start in the registry. noteID 0
-// means no note. At most one of projectName and newProjectName may be set.
-func (s *Service) StartSessionAtomic(userEmail, vendorName, projectName, newProjectName, name, promptText string, noteID uint64) (*model.Session, error) {
+// StartSession creates a session with the given fields. The prompt queue is
+// empty; prompts are added separately.
+func (s *Service) StartSession(userEmail, vendorName string, fields SessionFields) (*model.Session, error) {
 	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
 	}
-
 	var project *model.Project
-	if projectName != "" {
-		project, err = s.resolveProject("resolve", projectName)
+	if fields.ProjectName != "" {
+		project, err = s.resolveProject("resolve", fields.ProjectName)
 		if err != nil {
 			return nil, fmt.Errorf("start session: %w", err)
 		}
 	}
-
-	var note *model.Note
-	if noteID != 0 {
-		note = s.reg.Note(noteID)
-		if note == nil {
-			return nil, fmt.Errorf("start session: note %d: %w", noteID, model.ErrNoteNotFound)
-		}
-	}
-
-	sess, err := s.reg.StartSessionAtomic(acc, project, newProjectName, name, promptText, note)
+	sess, err := s.reg.StartSessionAtomic(acc, project, fields.Name, fields.URL, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("start session: %w", err)
 	}
 	return sess, nil
 }
 
-// ensureAccount returns the account for u and p, creating it on demand.
-func (s *Service) ensureAccount(u *model.User, p *model.Vendor) (*model.Account, error) {
-	if acc := s.reg.Account(u, p); acc != nil {
-		return acc, nil
-	}
-	return s.reg.AddAccount(u, p)
-}
-
-// StartSession is the entry point for the "new session" action. The user must
-// already exist; the account is created on demand. projectName is optional and
-// must already be granted to the account.
-func (s *Service) StartSession(userEmail, vendorName, projectName, name string, queue []model.Prompt) (*model.Session, error) {
-	p, err := s.resolveVendor("resolve", vendorName)
+// StartSessionFromNote creates a session from a note. The note text becomes
+// the first prompt and the note is deleted atomically.
+func (s *Service) StartSessionFromNote(userEmail, vendorName string, noteID uint64, fields SessionFields) (*model.Session, error) {
+	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {
-		return nil, fmt.Errorf("start session: %w", err)
+		return nil, fmt.Errorf("start session from note: %w", err)
 	}
-
-	u, err := s.resolveUser("start session", userEmail)
-	if err != nil {
-		return nil, err
+	note := s.reg.Note(noteID)
+	if note == nil {
+		return nil, fmt.Errorf("start session from note %d: %w", noteID, model.ErrNoteNotFound)
 	}
-
-	var proj *model.Project
-	if projectName != "" {
-		proj, err = s.resolveProject("resolve", projectName)
+	var project *model.Project
+	if fields.ProjectName != "" {
+		project, err = s.resolveProject("resolve", fields.ProjectName)
 		if err != nil {
-			return nil, fmt.Errorf("start session: %w", err)
+			return nil, fmt.Errorf("start session from note: %w", err)
 		}
 	}
-
-	acc, err := s.ensureAccount(u, p)
+	sess, err := s.reg.StartSessionAtomic(acc, project, fields.Name, fields.URL, note.Text(), note)
 	if err != nil {
-		return nil, fmt.Errorf("start session: %w", err)
+		return nil, fmt.Errorf("start session from note: %w", err)
 	}
-
-	return s.reg.AddSession(acc, proj, name, queue)
+	return sess, nil
 }

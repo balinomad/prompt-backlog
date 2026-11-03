@@ -86,11 +86,19 @@ func seedService(t *testing.T) *service.Service {
 	must(t, svc.AddAccount("bob@example.com", "chatgpt"))
 	must(t, svc.GrantProject("alice@example.com", "claude", "Alpha"))
 	must(t, svc.GrantProject("alice@example.com", "claude", "Beta"))
-	_, err := svc.StartSession("alice@example.com", "claude", "Alpha", "Architecture review", nil)
-	must(t, err)
-	_, err = svc.StartSession("bob@example.com", "chatgpt", "", "", nil)
-	must(t, err)
+	startSession(t, svc, "alice@example.com", "claude", "Alpha", "Architecture review", nil)
+	startSession(t, svc, "bob@example.com", "chatgpt", "", "", nil)
 	return svc
+}
+
+func startSession(t *testing.T, svc *service.Service, email, vendor, project, name string, queue []model.Prompt) *model.Session {
+	t.Helper()
+	sess, err := svc.StartSession(email, vendor, service.SessionFields{Name: name, ProjectName: project})
+	must(t, err)
+	if len(queue) > 0 {
+		must(t, svc.UpdateSessionPrompts(email, vendor, sess.ID(), queue))
+	}
+	return sess
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -1336,8 +1344,8 @@ func TestService_UpdateSessionPrompts(t *testing.T) {
 	}
 }
 
-// TestService_EndSession covers the full resolveSession branch set.
-func TestService_EndSession(t *testing.T) {
+// TestService_DeleteSession covers the full resolveSession branch set.
+func TestService_DeleteSession(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -1359,7 +1367,7 @@ func TestService_EndSession(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.EndSession(tc.email, tc.vendor, tc.id)
+			err := svc.DeleteSession(tc.email, tc.vendor, tc.id)
 			if tc.wantErr == nil {
 				must(t, err)
 				if svc.Session(tc.id) != nil {
@@ -1379,88 +1387,65 @@ func TestService_EndSession(t *testing.T) {
 
 // ── Workflows ─────────────────────────────────────────────────────────────────
 
-// TestService_StartSession covers account creation for an existing user,
-// project and queue passthrough, and the error branches.
+// TestService_StartSession covers session creation with the shared fields.
 func TestService_StartSession(t *testing.T) {
 	t.Parallel()
 
-	t.Run("creates an account for an existing user", func(t *testing.T) {
+	t.Run("creates a session with fields", func(t *testing.T) {
 		t.Parallel()
-		svc := newService(t)
-		must(t, svc.AddVendor("claude", true, false))
-		must(t, svc.AddUser("alice@example.com", "Alice"))
-		sess, err := svc.StartSession("alice@example.com", "claude", "", "Name", nil)
+		svc := seedService(t)
+		sess, err := svc.StartSession("alice@example.com", "claude", service.SessionFields{
+			Name:        "Name",
+			URL:         "https://example.com/chat",
+			ProjectName: "Alpha",
+		})
 		must(t, err)
-		if sess.ProjectName() != "" {
-			t.Errorf("got project %q, want empty", sess.ProjectName())
+		if sess.Name() != "Name" || sess.URL() != "https://example.com/chat" || sess.ProjectName() != "Alpha" {
+			t.Errorf("session = name %q url %q project %q", sess.Name(), sess.URL(), sess.ProjectName())
 		}
-		if _, err := svc.Account("alice@example.com", "claude"); err != nil {
-			t.Errorf("expected account to be created: %v", err)
+		if len(sess.Queue()) != 0 {
+			t.Errorf("queue = %v, want empty", sess.Queue())
 		}
 	})
 
 	t.Run("reuses an existing account without creating a duplicate", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
-		_, err := svc.StartSession("alice@example.com", "claude", "", "second", nil)
+		_, err := svc.StartSession("alice@example.com", "claude", service.SessionFields{Name: "second"})
 		must(t, err)
 		got, err := svc.AccountSessions("alice@example.com", "claude")
 		must(t, err)
 		if len(got) != 2 {
 			t.Errorf("got %d sessions on the account, want 2", len(got))
 		}
-		// Only one account can exist for this key; a second AddAccount must
-		// still fail, confirming StartSession did not create a duplicate.
 		err = svc.AddAccount("alice@example.com", "claude")
 		if !errors.Is(err, model.ErrAccountExists) {
 			t.Errorf("got %v, want ErrAccountExists", err)
 		}
 	})
 
-	t.Run("with project and queue", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		queue := []model.Prompt{model.NewPrompt("continue")}
-		sess, err := svc.StartSession("alice@example.com", "claude", "Alpha", "Name", queue)
-		must(t, err)
-		if sess.ProjectName() != "Alpha" {
-			t.Errorf("got project %q, want Alpha", sess.ProjectName())
-		}
-		if len(sess.Queue()) != 1 {
-			t.Errorf("got %d queue items, want 1", len(sess.Queue()))
-		}
-	})
-
 	t.Run("project not granted to account", func(t *testing.T) {
 		t.Parallel()
-		_, err := seedService(t).StartSession("alice@example.com", "claude", "Orphan", "", nil)
+		_, err := seedService(t).StartSession("alice@example.com", "claude", service.SessionFields{ProjectName: "Orphan"})
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
 	})
 
 	errorCases := []struct {
-		name        string
-		email       string
-		vendor      string
-		project     string
-		sessionName string
-		queue       []model.Prompt
-		wantErr     error
+		name    string
+		email   string
+		vendor  string
+		project string
+		wantErr error
 	}{
-		{"user not found", "ghost@example.com", "claude", "", "", nil, model.ErrUserNotFound},
-		{"vendor not found", "alice@example.com", "ghost", "", "", nil, model.ErrVendorNotFound},
-		{"project not found", "alice@example.com", "claude", "Ghost", "", nil, model.ErrProjectNotFound},
-		{
-			"invalid message in queue", "alice@example.com", "claude", "", "",
-			[]model.Prompt{model.NewPrompt("ok"), model.NewPrompt("")},
-			model.ErrTextRequired,
-		},
+		{"account not found", "alice@example.com", "chatgpt", "", model.ErrAccountNotFound},
+		{"project not found", "alice@example.com", "claude", "Ghost", model.ErrProjectNotFound},
 	}
 	for _, tc := range errorCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := seedService(t).StartSession(tc.email, tc.vendor, tc.project, tc.sessionName, tc.queue)
+			_, err := seedService(t).StartSession(tc.email, tc.vendor, service.SessionFields{ProjectName: tc.project})
 			if !errors.Is(err, tc.wantErr) {
 				t.Errorf("got %v, want errors.Is(_, %v)", err, tc.wantErr)
 			}
@@ -1509,7 +1494,7 @@ func TestService_UpdateSessionURL(t *testing.T) {
 	}
 }
 
-func TestService_UpdateSessionFinish(t *testing.T) {
+func TestService_UpdateSessionStatus(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -1517,26 +1502,26 @@ func TestService_UpdateSessionFinish(t *testing.T) {
 		email        string
 		vendor       string
 		id           uint64
-		finish       bool
+		status       model.SessionStatus
 		wantErr      error
 		wantErrIsNot error
 	}{
-		{"success", "alice@example.com", "claude", 1, true, nil, nil},
-		{"user not found", "ghost@example.com", "claude", 1, true, model.ErrUserNotFound, nil},
-		{"vendor not found", "alice@example.com", "ghost", 1, true, model.ErrVendorNotFound, nil},
-		{"account not found", "alice@example.com", "chatgpt", 1, true, model.ErrAccountNotFound, nil},
-		{"session not found", "alice@example.com", "claude", 9999, true, model.ErrSessionNotFound, nil},
-		{"cross-account session", "alice@example.com", "claude", 2, true, apperr.ErrNotFound, model.ErrSessionNotFound},
+		{"success", "alice@example.com", "claude", 1, model.SessionStatusNeedsClosing, nil, nil},
+		{"user not found", "ghost@example.com", "claude", 1, model.SessionStatusNeedsClosing, model.ErrUserNotFound, nil},
+		{"vendor not found", "alice@example.com", "ghost", 1, model.SessionStatusNeedsClosing, model.ErrVendorNotFound, nil},
+		{"account not found", "alice@example.com", "chatgpt", 1, model.SessionStatusNeedsClosing, model.ErrAccountNotFound, nil},
+		{"session not found", "alice@example.com", "claude", 9999, model.SessionStatusNeedsClosing, model.ErrSessionNotFound, nil},
+		{"cross-account session", "alice@example.com", "claude", 2, model.SessionStatusNeedsClosing, apperr.ErrNotFound, model.ErrSessionNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			svc := seedService(t)
-			err := svc.UpdateSessionFinish(tc.email, tc.vendor, tc.id, tc.finish)
+			err := svc.UpdateSessionStatus(tc.email, tc.vendor, tc.id, tc.status)
 			if tc.wantErr == nil {
 				must(t, err)
-				if !svc.Session(tc.id).Finish() {
-					t.Error("Finish() = false, want true")
+				if got := svc.Session(tc.id).Status(); got != model.SessionStatusNeedsClosing {
+					t.Errorf("Status() = %v, want Needs closing", got)
 				}
 				return
 			}
@@ -1622,8 +1607,7 @@ func TestService_AccountSessionsActivityOrder(t *testing.T) {
 	t.Run("touched session comes first", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
-		_, err := svc.StartSession("alice@example.com", "claude", "", "", nil)
-		must(t, err)
+		startSession(t, svc, "alice@example.com", "claude", "", "", nil)
 		must(t, svc.UpdateSessionPrompts("alice@example.com", "claude", 1, []model.Prompt{model.NewPrompt("next")}))
 
 		got, err := svc.AccountSessionsActivityOrder("alice@example.com", "claude")
@@ -1941,53 +1925,16 @@ func TestService_ProjectNotes(t *testing.T) {
 	})
 }
 
-//nolint:cyclop // Table-driven test with independent cases; splitting would obscure coverage.
-func TestService_StartSessionAtomic(t *testing.T) {
+func TestService_StartSessionFromNote(t *testing.T) {
 	t.Parallel()
 
-	t.Run("blank start", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "", "", "name", "", 0)
-		must(t, err)
-		if sess.ProjectName() != "" || len(sess.Queue()) != 0 {
-			t.Errorf("session = project %q queue %v, want empty", sess.ProjectName(), sess.Queue())
-		}
-	})
-
-	t.Run("existing project and prompt", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "Alpha", "", "name", " hello ", 0)
-		must(t, err)
-		if sess.ProjectName() != "Alpha" {
-			t.Errorf("ProjectName() = %q, want Alpha", sess.ProjectName())
-		}
-		if got := sess.Queue(); len(got) != 1 || got[0].Text() != "hello" {
-			t.Errorf("Queue() = %v, want one trimmed prompt", got)
-		}
-	})
-
-	t.Run("new project", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "", " Gamma ", "name", "hello", 0)
-		must(t, err)
-		if sess.ProjectName() != "Gamma" {
-			t.Errorf("ProjectName() = %q, want Gamma", sess.ProjectName())
-		}
-		if svc.Project("Gamma") == nil {
-			t.Error("new project was not created")
-		}
-	})
-
-	t.Run("from a note", func(t *testing.T) {
+	t.Run("uses note text as the first prompt and deletes the note", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
 		n, err := svc.AddNote("note text", "", "alice@example.com", "claude")
 		must(t, err)
 
-		sess, err := svc.StartSessionAtomic("alice@example.com", "claude", "", "", "name", "note text", n.ID())
+		sess, err := svc.StartSessionFromNote("alice@example.com", "claude", n.ID(), service.SessionFields{Name: "name"})
 		must(t, err)
 		if got := sess.Queue(); len(got) != 1 || got[0].Text() != "note text" {
 			t.Errorf("Queue() = %v, want the note text", got)
@@ -1999,60 +1946,28 @@ func TestService_StartSessionAtomic(t *testing.T) {
 
 	t.Run("account not found", func(t *testing.T) {
 		t.Parallel()
-		_, err := seedService(t).StartSessionAtomic("alice@example.com", "chatgpt", "", "", "", "", 0)
+		_, err := seedService(t).StartSessionFromNote("alice@example.com", "chatgpt", 1, service.SessionFields{})
 		if !errors.Is(err, model.ErrAccountNotFound) {
 			t.Errorf("got %v, want ErrAccountNotFound", err)
 		}
 	})
 
-	t.Run("user not found", func(t *testing.T) {
-		t.Parallel()
-		_, err := seedService(t).StartSessionAtomic("ghost@example.com", "claude", "", "", "", "", 0)
-		if !errors.Is(err, model.ErrUserNotFound) {
-			t.Errorf("got %v, want ErrUserNotFound", err)
-		}
-	})
-
-	t.Run("vendor not found", func(t *testing.T) {
-		t.Parallel()
-		_, err := seedService(t).StartSessionAtomic("alice@example.com", "ghost", "", "", "", "", 0)
-		if !errors.Is(err, model.ErrVendorNotFound) {
-			t.Errorf("got %v, want ErrVendorNotFound", err)
-		}
-	})
-
-	t.Run("project not found", func(t *testing.T) {
-		t.Parallel()
-		_, err := seedService(t).StartSessionAtomic("alice@example.com", "claude", "Ghost", "", "", "", 0)
-		if !errors.Is(err, model.ErrProjectNotFound) {
-			t.Errorf("got %v, want ErrProjectNotFound", err)
-		}
-	})
-
 	t.Run("note not found", func(t *testing.T) {
 		t.Parallel()
-		_, err := seedService(t).StartSessionAtomic("alice@example.com", "claude", "", "", "", "text", 99)
+		_, err := seedService(t).StartSessionFromNote("alice@example.com", "claude", 99, service.SessionFields{})
 		if !errors.Is(err, model.ErrNoteNotFound) {
 			t.Errorf("got %v, want ErrNoteNotFound", err)
 		}
 	})
 
-	t.Run("note requires prompt text", func(t *testing.T) {
+	t.Run("project not found", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
 		n, err := svc.AddNote("note text", "", "alice@example.com", "claude")
 		must(t, err)
-		_, err = svc.StartSessionAtomic("alice@example.com", "claude", "", "", "", "", n.ID())
-		if err == nil {
-			t.Fatal("got nil, want error")
-		}
-	})
-
-	t.Run("duplicate new project", func(t *testing.T) {
-		t.Parallel()
-		_, err := seedService(t).StartSessionAtomic("alice@example.com", "claude", "", "Alpha", "", "", 0)
-		if err == nil {
-			t.Fatal("got nil, want error")
+		_, err = svc.StartSessionFromNote("alice@example.com", "claude", n.ID(), service.SessionFields{ProjectName: "Ghost"})
+		if !errors.Is(err, model.ErrProjectNotFound) {
+			t.Errorf("got %v, want ErrProjectNotFound", err)
 		}
 	})
 
@@ -2061,11 +1976,42 @@ func TestService_StartSessionAtomic(t *testing.T) {
 		svc := seedService(t)
 		n, err := svc.AddNote("note text", "Alpha", "", "")
 		must(t, err)
-		_, err = svc.StartSessionAtomic("alice@example.com", "claude", "Beta", "", "", "note text", n.ID())
+		_, err = svc.StartSessionFromNote("alice@example.com", "claude", n.ID(), service.SessionFields{ProjectName: "Beta"})
 		if err == nil {
 			t.Fatal("got nil, want error")
 		}
 	})
+}
+
+func TestService_UpdateSession(t *testing.T) {
+	t.Parallel()
+	svc := seedService(t)
+
+	err := svc.UpdateSession("alice@example.com", "claude", 1, service.SessionFields{
+		Name:        "New Name",
+		URL:         "https://example.com/chat",
+		ProjectName: "Beta",
+	})
+	must(t, err)
+	got := svc.Session(1)
+	if got.Name() != "New Name" || got.URL() != "https://example.com/chat" || got.ProjectName() != "Beta" {
+		t.Errorf("session = name %q url %q project %q", got.Name(), got.URL(), got.ProjectName())
+	}
+}
+
+func TestService_UpdateSession_ProjectNotGranted(t *testing.T) {
+	t.Parallel()
+	svc := seedService(t)
+	err := svc.UpdateSession("alice@example.com", "claude", 1, service.SessionFields{
+		Name:        "New Name",
+		ProjectName: "Orphan",
+	})
+	if err == nil {
+		t.Fatal("got nil, want error")
+	}
+	if got := svc.Session(1).Name(); got != "Architecture review" {
+		t.Errorf("Name() = %q, want original value", got)
+	}
 }
 
 func TestService_RenameProject(t *testing.T) {

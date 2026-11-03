@@ -72,7 +72,7 @@ type sessionDTO struct {
 	ProjectID uint64      `json:"project_id,omitempty"`
 	Name      string      `json:"name,omitempty"`
 	URL       string      `json:"url,omitempty"`
-	Finish    bool        `json:"finish,omitempty"`
+	Status    string      `json:"status"`
 	UpdatedAt *time.Time  `json:"updated_at,omitempty"`
 	Queue     []promptDTO `json:"queue,omitempty"`
 }
@@ -237,11 +237,28 @@ func loadSessions(dto *registryDTO, reg *model.Registry) error {
 		if sdto.UpdatedAt != nil {
 			updatedAt = *sdto.UpdatedAt
 		}
-		if _, err := reg.RestoreSession(acc, sdto.ID, proj, sdto.Name, sdto.URL, sdto.Finish, updatedAt, queue); err != nil {
+		status, err := loadSessionStatus(sdto)
+		if err != nil {
+			return fmt.Errorf("store: load session at index %d: %w", i, err)
+		}
+		if _, err := reg.RestoreSession(acc, sdto.ID, proj, sdto.Name, sdto.URL, status, updatedAt, queue); err != nil {
 			return fmt.Errorf("store: load session at index %d: %w", i, err)
 		}
 	}
 	return nil
+}
+
+// loadSessionStatus parses the session status. A missing status defaults to
+// active; an invalid status is an error.
+func loadSessionStatus(sdto *sessionDTO) (model.SessionStatus, error) {
+	if sdto.Status == "" {
+		return model.SessionStatusActive, nil
+	}
+	status, err := model.ParseSessionStatus(sdto.Status)
+	if err != nil {
+		return model.SessionStatusActive, err
+	}
+	return status, nil
 }
 
 // loadNotes resolves and restores Notes from the flat DTO representation. It
@@ -424,7 +441,7 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 			ProjectID: s.ProjectID(),
 			Name:      s.Name(),
 			URL:       s.URL(),
-			Finish:    s.Finish(),
+			Status:    s.Status().String(),
 		}
 		if !s.UpdatedAt().IsZero() {
 			updatedAt := s.UpdatedAt()
