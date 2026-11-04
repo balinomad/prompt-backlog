@@ -262,8 +262,8 @@ func TestStatusBar_InlineMessageWidth(t *testing.T) {
 	}
 
 	commonWidth, spacerWidth, messageWidth, _ := draw()
-	if commonWidth != 50 {
-		t.Errorf("empty common width = %d, want 50", commonWidth)
+	if commonWidth != 69 {
+		t.Errorf("empty common width = %d, want 69", commonWidth)
 	}
 	if spacerWidth != 0 {
 		t.Errorf("empty spacer width = %d, want 0", spacerWidth)
@@ -274,8 +274,8 @@ func TestStatusBar_InlineMessageWidth(t *testing.T) {
 
 	sb.SetStatus("saved ✓")
 	commonWidth, spacerWidth, messageWidth, messageX := draw()
-	if commonWidth != 50 {
-		t.Errorf("inline common width = %d, want 50", commonWidth)
+	if commonWidth != 69 {
+		t.Errorf("inline common width = %d, want 69", commonWidth)
 	}
 	if spacerWidth != 2 {
 		t.Errorf("inline spacer width = %d, want 2", spacerWidth)
@@ -296,11 +296,12 @@ func TestHintLinesExactText(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"accounts", views.HintsAccountsPanelSpecific, "Tab sessions · Enter pause · Ins add · Del delete"},
-		{"sessions", views.HintsSessionsPanelSpecific, "Enter edit · Ins new session · Del delete"},
-		{"notes", views.HintsNotesPanelSpecific, "Enter edit · Ins add · Del delete · s start"},
-		{"project accounts", views.HintsProjectAccountsSpecific, "Tab project notes · Ins add · Del delete"},
-		{"project notes", views.HintsProjectNotesSpecific, "Tab projects · Enter edit · Ins add · Del delete"},
+		{"accounts", views.HintsAccountsPanelSpecific, "Tab sessions · Shift+Tab notes · Enter pause · Ins add · Del delete"},
+		{"sessions", views.HintsSessionsPanelSpecific, "Enter edit · Ins new session · Del delete · Tab notes · Shift+Tab accounts"},
+		{"notes", views.HintsNotesPanelSpecific, "Enter edit · Ins add · Del delete · Tab accounts · Shift+Tab sessions"},
+		{"projects", views.HintsProjectsPanelSpecific, "Tab accounts · Shift+Tab notes · Enter edit · Ins add · Del delete"},
+		{"project accounts", views.HintsProjectAccountsSpecific, "Tab project notes · Shift+Tab projects · Ins add · Del delete"},
+		{"project notes", views.HintsProjectNotesSpecific, "Tab projects · Shift+Tab project accounts · Enter edit · Ins add · Del delete"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -314,7 +315,7 @@ func TestHintLinesExactText(t *testing.T) {
 
 func TestMinimumWidth(t *testing.T) {
 	t.Parallel()
-	if got, want := views.MinimumWidth(7), 74; got != want {
+	if got, want := views.MinimumWidth(7), 78; got != want {
 		t.Errorf("MinimumWidth(7) = %d, want %d", got, want)
 	}
 }
@@ -379,13 +380,17 @@ func helpOverlayTextView(t *testing.T, overlay tview.Primitive) *tview.TextView 
 	if !ok {
 		t.Fatalf("expected *tview.Flex, got %T", overlay)
 	}
-	inner, ok := outer.GetItem(1).(*tview.Flex)
+	column, ok := outer.GetItem(1).(*tview.Flex)
 	if !ok {
-		t.Fatalf("expected inner *tview.Flex, got %T", outer.GetItem(1))
+		t.Fatalf("expected column *tview.Flex, got %T", outer.GetItem(1))
 	}
-	frame, ok := inner.GetItem(1).(*tview.Frame)
+	row, ok := column.GetItem(2).(*tview.Flex)
 	if !ok {
-		t.Fatalf("expected *tview.Frame, got %T", inner.GetItem(1))
+		t.Fatalf("expected row *tview.Flex, got %T", column.GetItem(2))
+	}
+	frame, ok := row.GetItem(2).(*tview.Frame)
+	if !ok {
+		t.Fatalf("expected *tview.Frame, got %T", row.GetItem(2))
 	}
 	text, ok := frame.GetPrimitive().(*tview.TextView)
 	if !ok {
@@ -488,7 +493,6 @@ func TestHelpOverlayContent(t *testing.T) {
 		"Sessions pane",
 		"Notes pane",
 		"Cycle project filter",
-		"Start session from note",
 		"Edit prompt",
 		"Project notes",
 		"Switch to project notes",

@@ -616,28 +616,3 @@ func (s *Service) StartSession(userEmail, vendorName string, fields SessionField
 	}
 	return sess, nil
 }
-
-// StartSessionFromNote creates a session from a note. The note text becomes
-// the first prompt and the note is deleted atomically.
-func (s *Service) StartSessionFromNote(userEmail, vendorName string, noteID uint64, fields SessionFields) (*model.Session, error) {
-	acc, err := s.resolveAccount(userEmail, vendorName)
-	if err != nil {
-		return nil, fmt.Errorf("start session from note: %w", err)
-	}
-	note := s.reg.Note(noteID)
-	if note == nil {
-		return nil, fmt.Errorf("start session from note %d: %w", noteID, model.ErrNoteNotFound)
-	}
-	var project *model.Project
-	if fields.ProjectName != "" {
-		project, err = s.resolveProject("resolve", fields.ProjectName)
-		if err != nil {
-			return nil, fmt.Errorf("start session from note: %w", err)
-		}
-	}
-	sess, err := s.reg.StartSessionAtomic(acc, project, fields.Name, fields.URL, note.Text(), note)
-	if err != nil {
-		return nil, fmt.Errorf("start session from note: %w", err)
-	}
-	return sess, nil
-}

@@ -6,7 +6,6 @@ import (
 
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
@@ -176,6 +175,9 @@ func (p *NotesPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleInsert()
 	case views.KeyDelete:
 		return p.handleDelete()
+	case views.KeyCancel:
+		views.ConfirmQuit(p.app, views.HintsNotesPanelSpecific, views.HintsNotesPanelCommon)
+		return nil
 	default:
 	}
 
@@ -183,10 +185,7 @@ func (p *NotesPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return result
 	}
 
-	switch event.Rune() {
-	case views.KeyStart:
-		return p.handleStart()
-	case views.KeyFilter:
+	if event.Rune() == views.KeyFilter {
 		p.advanceFilter()
 		return nil
 	}
@@ -225,50 +224,6 @@ func (p *NotesPanel) handleDelete() *tcell.EventKey {
 		p.closeForm,
 	)
 	views.ShowModal(p.app, modal, views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon)
-	return nil
-}
-
-func (p *NotesPanel) handleStart() *tcell.EventKey {
-	note := p.SelectedNote()
-	if note == nil || p.account == nil {
-		return nil
-	}
-	account := p.account
-	fixedProject := ""
-	if note.ProjectID() != 0 {
-		fixedProject = note.ProjectName()
-	}
-	values := service.SessionFields{
-		Name:        strings.TrimSpace(views.TruncateWidth(firstLine(note.Text()), 60)),
-		ProjectName: fixedProject,
-	}
-	onSubmit := func(fields service.SessionFields) error {
-		var started *model.Session
-		if err := p.app.Mutate(func(svc *service.Service) error {
-			sess, err := svc.StartSessionFromNote(account.UserEmail(), account.VendorName(), note.ID(), fields)
-			if err != nil {
-				return err
-			}
-			started = sess
-			return nil
-		}); err != nil {
-			return fmt.Errorf("start session from note: %w", err)
-		}
-		if p.onSessionStart != nil && started != nil {
-			p.onSessionStart(started)
-		}
-		p.closeForm()
-		return nil
-	}
-	views.ShowModal(p.app, forms.NewSessionForm(p.app, &forms.SessionFormOptions{
-		Title:            "Start Session",
-		SubmitLabel:      "Start",
-		Account:          account,
-		Values:           values,
-		FixedProjectName: fixedProject,
-		OnSubmit:         onSubmit,
-		OnCancel:         p.closeForm,
-	}), views.HintsFormSpecific, views.HintsFormCommon)
 	return nil
 }
 

@@ -5,10 +5,10 @@ import (
 	"github.com/rivo/tview"
 )
 
-// BorderBox is a primitive whose border colour can be read and changed.
+// BorderBox is a primitive whose border and title colours can be changed.
 type BorderBox interface {
 	SetBorderColor(tcell.Color) *tview.Box
-	GetBorderColor() tcell.Color
+	SetTitleColor(tcell.Color) *tview.Box
 }
 
 // ModalState marks a modal as active or inactive.
@@ -18,27 +18,26 @@ type ModalState interface {
 
 type modalState struct {
 	tview.Primitive
-	border      BorderBox
-	activeColor tcell.Color
+	border BorderBox
 }
 
 // NewModalState wraps a modal and the border that identifies its active state.
 func NewModalState(modal tview.Primitive, border BorderBox) tview.Primitive {
 	return &modalState{
-		Primitive:   modal,
-		border:      border,
-		activeColor: border.GetBorderColor(),
+		Primitive: modal,
+		border:    border,
 	}
 }
 
-// SetModalActive restores the original border colour when active and uses gray
-// when inactive.
+// SetModalActive uses the accent colour when active and gray when inactive.
 func (m *modalState) SetModalActive(active bool) {
 	if active {
-		m.border.SetBorderColor(m.activeColor)
+		m.border.SetBorderColor(ColorAccent)
+		m.border.SetTitleColor(ColorAccent)
 		return
 	}
-	m.border.SetBorderColor(tcell.ColorGray)
+	m.border.SetBorderColor(ColorInactive)
+	m.border.SetTitleColor(ColorInactive)
 }
 
 // UnwrapModal returns the primitive inside a modal-state wrapper.

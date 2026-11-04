@@ -23,9 +23,6 @@ const (
 	// KeyUsers switches to the users management screen.
 	KeyUsers rune = 'u'
 
-	// KeyStart starts a session from the selected note.
-	KeyStart rune = 's'
-
 	// KeyFilter advances the project filter.
 	KeyFilter rune = 'f'
 )
@@ -73,16 +70,13 @@ func DispatchPanelKey(event *tcell.EventKey, app Host, specific, common string) 
 		showHelp(app, specific, common)
 		return nil, true
 	case KeyQuit:
-		confirmQuit(app, specific, common)
+		ConfirmQuit(app, specific, common)
 		return nil, true
 	}
 	return nil, false
 }
 
 // ── Focus/border wiring ───────────────────────────────────────────────────────
-
-// accentColor is used for the focused pane border and the notice area.
-const accentColor = tcell.ColorYellow
 
 // WirePanelFocus registers list's focus and blur callbacks: onFocus runs
 // first (e.g. status-bar hints), then the border turns yellow while list
@@ -92,7 +86,7 @@ const accentColor = tcell.ColorYellow
 func WirePanelFocus(list *tview.List, onFocus func()) {
 	list.SetFocusFunc(func() {
 		onFocus()
-		list.SetBorderColor(accentColor)
+		list.SetBorderColor(ColorAccent)
 	})
 	list.SetBlurFunc(func() {
 		list.SetBorderColor(tview.Styles.BorderColor)

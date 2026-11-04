@@ -210,6 +210,9 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleEdit()
 	case views.KeyDelete:
 		return p.handleDelete()
+	case views.KeyCancel:
+		views.ConfirmQuit(p.app, views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
+		return nil
 	default:
 	}
 

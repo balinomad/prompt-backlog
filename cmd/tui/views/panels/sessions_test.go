@@ -123,17 +123,17 @@ func TestSessionsPanel_StatusMarkers(t *testing.T) {
 	p.Refresh()
 
 	first := itemText(t, p, 0)
-	if !strings.Contains(first, "2") || !strings.Contains(first, "[yellow]✓[-]") {
-		t.Errorf("needs-closing row = %q, want count and yellow marker", first)
+	if !strings.Contains(first, "2") || !strings.Contains(first, "[yellow]▲[-]") {
+		t.Errorf("needs-closing row = %q, want count and yellow triangle", first)
 	}
-	if strings.Index(first, "✓") < strings.Index(first, "2") {
+	if strings.Index(first, "▲") < strings.Index(first, "2") {
 		t.Errorf("status marker = %q, want marker after count", first)
 	}
 	second := itemText(t, p, 1)
-	if !strings.Contains(second, "[gray]✓[-]") {
-		t.Errorf("closed row = %q, want gray marker", second)
+	if !strings.HasPrefix(second, "[gray]") || !strings.HasSuffix(second, "[-]") || !strings.Contains(second, "✓") {
+		t.Errorf("closed row = %q, want the whole row gray with a check marker", second)
 	}
-	if strings.Contains(itemText(t, p, 2), "✓") {
+	if strings.Contains(itemText(t, p, 2), "▲") || strings.Contains(itemText(t, p, 2), "✓") {
 		t.Errorf("active row = %q, want no marker", itemText(t, p, 2))
 	}
 }
@@ -330,13 +330,13 @@ func TestSessionsPanel_Delete(t *testing.T) {
 	}
 }
 
-func TestSessionsPanel_StartKeyRemoved(t *testing.T) {
+func TestSessionsPanel_EscOpensQuitConfirmation(t *testing.T) {
 	t.Parallel()
 	f := newSessionsFixture(t)
 	p := f.panel(t)
-	p.GetInputCapture()(runeKey(views.KeyStart))
-	if f.app.Modal != nil {
-		t.Error("s opened a modal in the Sessions pane")
+	p.GetInputCapture()(specialKey(views.KeyCancel))
+	if f.app.Modal == nil {
+		t.Fatal("Esc did not open the quit confirmation")
 	}
 }
 

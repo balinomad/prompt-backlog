@@ -12,7 +12,7 @@ rows use a one-cell inset on both sides that also applies to wrapped lines.
 │  ┌ Accounts 1/3 ────────────┐  ┌ Sessions 1/5 ───────────────────────┐  │
 │  │▶ claude │ Alice │ 18:00  │  │▶ Alpha │ Architecture review│ 2 │   │  │
 │  │  chatgpt│ Bob   │ 09:15  │  │  Beta  │ Billing refactor   │ 0 │   │  │
-│  │  claude │ Carol │        │  │  Alpha │ Old research       │ 3 │ ✓ │  │
+│  │  claude │ Carol │        │  │  Alpha │ Old research       │ 3 │ ▲ │  │
 │  └──────────────────────────┘  └─────────────────────────────────────┘  │
 │                                ┌ Notes 1/2 ──────────────────────────┐  │
 │                                │Alpha │ Alice │ Implement export     │  │
@@ -24,8 +24,8 @@ rows use a one-cell inset on both sides that also applies to wrapped lines.
 │  │ Projects Alpha, Beta                                              │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
-│  Tab sessions · Enter pause · Ins add · Del delete                      │
-│  v vendors · p projects · u users · ? help · q quit              saved ✓│
+│  Tab sessions · Shift+Tab notes · Enter pause · Ins add · Del delete    │
+│  f project filter · v vendors · p projects · u users · ? help · q quit  │
 └─────────────────────────────────────────────────────────────────────────┘
 
 Accounts (left) lists every (user, vendor) pair as aligned columns:
@@ -46,10 +46,10 @@ Sessions (top right) lists the account's sessions in activity order:
 updated-at descending, then ID descending. Each row is one session and
 shows the project, session name, prompt count, and status marker. The
 project column is hidden when no visible session has a project. The status
-marker is a yellow "✓" for needs closing, a gray "✓" for closed, and empty
+marker is a yellow "▲" for needs closing, a gray "✓" for closed, and empty
 for active. An empty session name renders as dim "(untitled)". The title
 shows the project filter suffix, if any, and the selected row position over
-the total displayed row count. The key `f` advances the project filter.
+the total displayed row count. The key `f` advances the project filter. `Esc` behaves like `q` on every pane of the account screen.
 
 Sessions keys:
 - `Enter` opens the prompt editor for the selected session.
@@ -95,17 +95,18 @@ prompt field:
 │ Clear                                           │
 │ Copy                                            │
 │                                                 │
-│          [Save]   [Cancel]   [Delete]           │
+│ [Save & Pause] [Save] [Cancel] [Delete]         │
 └─────────────────────────────────────────────────┘
 
 - The prompt list is shown in Edit mode. It is omitted in Add mode.
 - The list shows at most five rows and scrolls beyond that.
-- Focus order: Status, Session, list, Clear, Copy, Prompt, Save, Cancel.
+- Focus order: Status, Session, list, Clear, Copy, Prompt, Save & Pause, Save, Cancel, Delete.
 - When the list has focus, normal list keys navigate it, `Enter` focuses the
   prompt field, `Ins` adds a prompt, and `Del` removes the selected prompt
   after confirmation.
 - The list highlights only when it has focus.
 - Save writes the whole prompt list atomically. Cancel discards unsaved edits.
+- Save & Pause saves the prompt, closes the editor, and opens the Pause Account modal. If the pause is cancelled, the prompt remains saved.
 - Add mode appends one prompt and closes on Save.
 - The `Delete` button removes the current prompt after confirmation and saves
   immediately. If prompts remain, the next prompt is selected and the editor
@@ -134,8 +135,8 @@ modal alone receives keyboard and mouse input.
 │  │ Projects      yes                                            │  │
 │  │ Deep research yes                                            │  │
 │  └──────────────────────────────────────────────────────────────┘  │
-│  Enter edit · Ins add · Del delete                                 │
-│  Esc accounts · v vendors · p projects · u users · ? help · q quit │
+│  Enter edit · Ins add · Del delete                                      │
+│  Esc accounts · v vendors · p projects · u users · ? help · q quit      │
 └────────────────────────────────────────────────────────────────────┘
 
 Vendor names and capabilities are padded columns separated by " │ ",
@@ -155,8 +156,8 @@ Vendor Details panel below grows with wrapped text.
 │  │ Name  Alice                                                  │  │
 │  │ Email alice@example.com                                      │  │
 │  └──────────────────────────────────────────────────────────────┘  │
-│  Enter edit · Ins add · Del delete                                 │
-│  Esc accounts · v vendors · p projects · u users · ? help · q quit │
+│  Enter edit · Ins add · Del delete                                      │
+│  Esc accounts · v vendors · p projects · u users · ? help · q quit      │
 └────────────────────────────────────────────────────────────────────┘
 
 User rows show the display name and email as padded columns separated by
@@ -182,8 +183,8 @@ Details panel below grows with wrapped text.
 │  │ Instructions Use Go interfaces                               │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                    │
-│  Tab project accounts · Enter edit · Ins add · Del delete          │
-│  Esc accounts · v vendors · p projects · u users · ? help · q quit │
+│  Tab project accounts · Enter edit · Ins add · Del delete               │
+│  Esc accounts · v vendors · p projects · u users · ? help · q quit      │
 └────────────────────────────────────────────────────────────────────┘
 
 The right side of the body is a column with the Project Accounts list

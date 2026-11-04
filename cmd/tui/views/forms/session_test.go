@@ -192,21 +192,3 @@ func TestNewSessionForm_StartShape(t *testing.T) {
 		t.Errorf("first button = %q, want Start", got)
 	}
 }
-
-func TestNewSessionForm_FixedProject(t *testing.T) {
-	t.Parallel()
-	app := newMockApp(t)
-	acc := sessionFormAccount(t, app, "alice@example.com", "claude")
-	form := formFromCenteredModal(t, forms.NewSessionForm(app, &forms.SessionFormOptions{
-		Title:            "Start Session",
-		SubmitLabel:      "Start",
-		Account:          acc,
-		FixedProjectName: "Alpha",
-		OnSubmit:         func(service.SessionFields) error { return nil },
-		OnCancel:         func() {},
-	}))
-
-	if got := form.GetFormItemByLabel("Project"); got != nil {
-		t.Errorf("Project dropdown = %v, want nil for a fixed project", got)
-	}
-}

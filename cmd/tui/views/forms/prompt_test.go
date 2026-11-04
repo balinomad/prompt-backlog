@@ -108,6 +108,7 @@ func TestPromptForm_Layout(t *testing.T) {
 			px, py, pw, ph := pf.CopyButton().GetRect()
 			sx, sy, sw, sh := pf.SessionButton().GetRect()
 			fx, fy, fw, fh := pf.Status().GetRect()
+			ppx, _, ppw, _ := pf.SavePauseButton().GetRect()
 			vx, vy, vw, vh := pf.SaveButton().GetRect()
 			lx, ly, lw, lh := pf.CancelButton().GetRect()
 			rightButtonX, rightButtonW := lx, lw
@@ -152,8 +153,8 @@ func TestPromptForm_Layout(t *testing.T) {
 					t.Errorf("first list item = %q, want 1. first", got)
 				}
 				listX, listY, listW, listH := list.GetRect()
-				if listH != 7 {
-					t.Errorf("list height = %d, want 7", listH)
+				if listH != 4 {
+					t.Errorf("list height = %d, want 4 for two prompts", listH)
 				}
 				if listY <= sy {
 					t.Errorf("list y = %d, want below the session row y = %d", listY, sy)
@@ -173,8 +174,11 @@ func TestPromptForm_Layout(t *testing.T) {
 			if got, want := fw, forms.PromptSideWidth+1+tview.TaggedStringWidth("Needs closing")+tview.TaggedStringWidth(forms.DropDownArrow); got != want {
 				t.Errorf("status width = %d, want %d", got, want)
 			}
-			if got := (vx - editorX) - (editorX + editorW - (rightButtonX + rightButtonW)); got < -1 || got > 1 {
+			if got := (ppx - editorX) - (editorX + editorW - (rightButtonX + rightButtonW)); got < -1 || got > 1 {
 				t.Errorf("button-row margins differ by %d", got)
+			}
+			if vx <= ppx+ppw {
+				t.Errorf("Save x = %d, want after Save & Pause", vx)
 			}
 		})
 	}
@@ -245,6 +249,7 @@ func TestPromptForm_Focus(t *testing.T) {
 		}
 	}
 
+	step(pf.SavePauseButton())
 	step(pf.SaveButton())
 	step(pf.CancelButton())
 	step(pf.DeleteButton())
@@ -456,6 +461,54 @@ func TestPromptForm_ListDeleteLast(t *testing.T) {
 	}
 }
 
+func TestPromptForm_SaveAndPause(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	closed, paused := false, false
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {
+		closed = true
+	}, func() {
+		paused = true
+	})
+
+	pf.TextArea().SetText("changed", true)
+	pressButton(t, pf.SavePauseButton())
+
+	if got := app.Svc.Session(sess.ID()).Queue()[0].Text(); got != "changed" {
+		t.Errorf("prompt = %q, want changed", got)
+	}
+	if !closed {
+		t.Error("prompt form was not closed")
+	}
+	if !paused {
+		t.Error("pause callback was not called")
+	}
+}
+
+func TestPromptForm_SaveAndPauseFailureDoesNotPause(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	closed, paused := false, false
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {
+		closed = true
+	}, func() {
+		paused = true
+	})
+
+	pf.TextArea().SetText("   ", true)
+	pressButton(t, pf.SavePauseButton())
+
+	if app.ErrorStatus == "" {
+		t.Error("expected a validation error")
+	}
+	if closed {
+		t.Error("prompt form closed after a failed save")
+	}
+	if paused {
+		t.Error("pause callback was called after a failed save")
+	}
+}
+
 func TestPromptForm_DeleteButtonSavesImmediately(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
@@ -535,6 +588,20 @@ func TestPromptForm_DeleteButtonCancel(t *testing.T) {
 	}
 	if got := list.GetItemCount(); got != 2 {
 		t.Errorf("list items = %d, want 2", got)
+	}
+}
+
+func TestPromptForm_ListFocusHints(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+
+	app.SetFocus(pf.PromptList())
+	if got := app.HintsSpecific; got != views.HintsPromptListSpecific {
+		t.Errorf("specific hints = %q, want prompt-list hints", got)
+	}
+	if got := app.HintsCommon; got != views.HintsFormCommon {
+		t.Errorf("common hints = %q, want form hints", got)
 	}
 }
 

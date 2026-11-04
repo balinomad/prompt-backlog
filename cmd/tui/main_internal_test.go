@@ -217,7 +217,6 @@ func TestApp_ModalStack_RestoresFocusHintsAndBorder(t *testing.T) {
 	app.SetHints("root specific", "root common")
 
 	parent, parentField := newBorderedModal()
-	parentColor := parent.GetBorderColor()
 	if err := app.ShowModal(views.NewModalState(parent, parent)); err != nil {
 		t.Fatalf("ShowModal parent: %v", err)
 	}
@@ -233,7 +232,7 @@ func TestApp_ModalStack_RestoresFocusHintsAndBorder(t *testing.T) {
 	if got := len(app.modals); got != 2 {
 		t.Fatalf("modal stack length = %d, want 2", got)
 	}
-	if got := parent.GetBorderColor(); got != tcell.ColorGray {
+	if got := parent.GetBorderColor(); got != views.ColorInactive {
 		t.Errorf("inactive parent border = %v, want gray", got)
 	}
 	if app.hintsSpec != "child specific" {
@@ -250,8 +249,8 @@ func TestApp_ModalStack_RestoresFocusHintsAndBorder(t *testing.T) {
 	if app.hintsSpec != "parent specific" {
 		t.Errorf("hints after pop = %q, want parent specific", app.hintsSpec)
 	}
-	if got := parent.GetBorderColor(); got != parentColor {
-		t.Errorf("restored parent border = %v, want %v", got, parentColor)
+	if got := parent.GetBorderColor(); got != views.ColorAccent {
+		t.Errorf("restored parent border = %v, want accent", got)
 	}
 
 	app.HideModal()
@@ -755,6 +754,24 @@ func TestApp_FocusCycle(t *testing.T) {
 	app.pages.SwitchToPage("vendors")
 	if got := app.handleGlobalKeys(next); got != next {
 		t.Error("Tab on a non-main page should pass through")
+	}
+}
+
+func TestApp_FocusCycle_ChildFocus(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	prev := tcell.NewEventKey(views.KeyFocusPrev, 0, tcell.ModNone)
+
+	app.tv.SetFocus(app.sessions.List)
+	app.handleGlobalKeys(prev)
+	if got := app.tv.GetFocus(); got != app.accounts {
+		t.Errorf("Shift+Tab from sessions child = %T, want accounts", got)
+	}
+
+	app.tv.SetFocus(app.notes.List)
+	app.handleGlobalKeys(prev)
+	if got := app.tv.GetFocus(); got != app.sessions {
+		t.Errorf("Shift+Tab from notes child = %T, want sessions", got)
 	}
 }
 

@@ -10,8 +10,13 @@
 | `Tab`       | projects screen, project accounts list   | switch to project notes                     |
 | `Tab`       | projects screen, project notes list      | switch to projects                          |
 | `Tab`       | form                                     | next field                                  |
-| `Shift+Tab` | main screen                              | switch focus backward                       |
-| `Shift+Tab` | projects screen                          | switch focus backward                       |
+| `Ctrl+S`    | form                                     | save / submit                               |
+| `Shift+Tab` | accounts list                            | switch to notes                             |
+| `Shift+Tab` | sessions pane                            | switch to accounts                          |
+| `Shift+Tab` | notes pane                               | switch to sessions                          |
+| `Shift+Tab` | projects screen, projects list           | switch to project notes                     |
+| `Shift+Tab` | projects screen, project accounts list   | switch to projects                          |
+| `Shift+Tab` | projects screen, project notes list      | switch to project accounts                  |
 | `Insert`    | accounts list                            | add account form                            |
 | `Insert`    | vendors screen                           | add vendor form                             |
 | `Insert`    | users screen                             | add user form                               |
@@ -38,8 +43,10 @@
 | `Del`       | sessions pane, selected session          | delete session (confirm modal)              |
 | `Del`       | prompt form, prompt list                 | remove prompt from draft (confirm modal)    |
 | `Del`       | notes pane, selected note                | delete note (confirm modal)                 |
-| `s`         | notes pane                               | start session from selected note            |
 | `f`         | accounts list, sessions pane, notes pane | advance project filter                      |
+| `Esc`       | accounts list                            | quit                                        |
+| `Esc`       | sessions pane                            | quit                                        |
+| `Esc`       | notes pane                               | quit                                        |
 | `Esc`       | form / modal                             | cancel / close top modal                    |
 | `Esc`       | vendors screen                           | return to main screen                       |
 | `Esc`       | users screen                             | return to main screen                       |
@@ -51,7 +58,7 @@
 | `?`         | main, vendors, users, projects           | help overlay                                |
 | `q`         | main, vendors, users, projects           | quit                                        |
 
-`Tab` and `Shift+Tab` are ignored on the single-pane vendors and users screens. The main screen and the projects screen use `Tab` to switch panes; `Esc` from any projects list returns to the main screen.
+`Tab` and `Shift+Tab` are ignored on the single-pane vendors and users screens. The main screen and the projects screen use `Tab` and `Shift+Tab` to switch panes; `Esc` from any projects list returns to the main screen.
 
 The `v`, `p`, and `u` screen-switch keys are ignored while a form, help overlay, or confirmation modal has focus.
 
@@ -83,8 +90,10 @@ Terminal mouse reporting varies. Some terminals or multiplexers intercept clicks
 **Colour semantics** (works in 16-color terminals):
 
 - selected item: **reverse video** (default tview behaviour)
-- session status: **yellow** `✓` for needs closing, **gray** `✓` for closed, no marker for active
+- session status: **yellow** `▲` for needs closing, **gray** `✓` for closed, no marker for active
 - account pause status, accounts list: `PauseUntil` in the future (still unavailable) shown in **red**; in the past (available again) shown in **green**; never paused shows nothing
 - vendor capability badges (vendors screen): `projects` shown in **green**; `deep-research` shown in **cyan**
 - boolean capability display (`yes` / `no`): `yes` shown in **green**; `no` shown in **dim**
 - saved status indicator in footer: `saved ✓` (**green**) on a successful save; save/validation errors shown in **red**
+- dropdown popup: **navy** background with white text; selected item inverse
+- active modal: **yellow** border and title; inactive parent: **gray** border and title

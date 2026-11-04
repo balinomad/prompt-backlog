@@ -26,90 +26,102 @@ const (
 var sessionStatusLabels = []string{"Active", "Needs closing", "Closed"}
 
 const (
-	promptFieldHeight = 6
-	promptSideWidth   = 9
-	promptModalWidth  = promptSideWidth + 1 + formFieldWidth + 4
-	promptModalHeight = 1 + 1 + promptFieldHeight + 1 + 1 + 4
-	promptListMaxRows = 5
-	promptListChrome  = 2
-	promptListHeight  = promptListMaxRows + promptListChrome
+	promptTextWidth        = 60
+	promptSideWidth        = 9
+	promptModalWidth       = promptSideWidth + 1 + promptTextWidth + 4
+	promptModalTotalHeight = 22
+	promptListMaxRows      = 5
+	promptListChrome       = 2
+	promptMinFieldHeight   = 6
+	promptAddFieldHeight   = 14
 )
 
 // promptEditorState preserves the prompt editor across the session modal.
 type promptEditorState struct {
-	mode      PromptFormMode
-	index     int
-	text      string
-	status    model.SessionStatus
-	queue     []model.Prompt
-	focusList bool
-	onSaved   func()
-	onClose   func()
+	mode           PromptFormMode
+	index          int
+	text           string
+	status         model.SessionStatus
+	queue          []model.Prompt
+	focusList      bool
+	onSaved        func()
+	onClose        func()
+	onSaveAndPause func()
 }
 
 // promptEditor is the Add/Edit prompt modal. It uses standard widgets and a
 // custom layout rather than a custom tview FormItem.
 type promptEditor struct {
 	*tview.Flex
-	app           views.Host
-	label         *tview.TextView
-	textArea      *tview.TextArea
-	status        *tview.DropDown
-	list          *tview.List
-	clearButton   *tview.Button
-	copyButton    *tview.Button
-	sessionButton *tview.Button
-	saveButton    *tview.Button
-	cancelButton  *tview.Button
-	deleteButton  *tview.Button
-	email         string
-	vendor        string
-	sessionID     uint64
-	mode          PromptFormMode
-	index         int
-	queue         []model.Prompt
-	onSaved       func()
-	onClose       func()
-	focusables    []tview.Primitive
-	refreshing    bool
+	app             views.Host
+	label           *tview.TextView
+	textArea        *tview.TextArea
+	status          *tview.DropDown
+	list            *tview.List
+	clearButton     *tview.Button
+	copyButton      *tview.Button
+	sessionButton   *tview.Button
+	savePauseButton *tview.Button
+	saveButton      *tview.Button
+	cancelButton    *tview.Button
+	deleteButton    *tview.Button
+	email           string
+	vendor          string
+	sessionID       uint64
+	mode            PromptFormMode
+	index           int
+	queue           []model.Prompt
+	onSaved         func()
+	onClose         func()
+	onSaveAndPause  func()
+	focusables      []tview.Primitive
+	refreshing      bool
+	listHeight      int
+	fieldHeight     int
+}
+
+// PromptFormOptions configures the prompt form.
+type PromptFormOptions struct {
+	Mode           PromptFormMode
+	Index          int
+	OnClose        func()
+	OnSaved        func()
+	OnSaveAndPause func()
 }
 
 // NewPromptForm returns a prompt form for session. mode selects add or edit;
 // index is the queue index for edit mode.
-func NewPromptForm(app views.Host, session *model.Session, mode PromptFormMode, index int, onClose func(), onSaved ...func()) tview.Primitive {
+func NewPromptForm(app views.Host, session *model.Session, options PromptFormOptions) tview.Primitive {
 	if session == nil {
-		return views.ErrorModal("No session selected.", onClose)
+		return views.ErrorModal("No session selected.", options.OnClose)
 	}
 	live := app.Service().Session(session.ID())
 	if live == nil {
-		return views.ErrorModal("Session no longer exists.", onClose)
+		return views.ErrorModal("Session no longer exists.", options.OnClose)
 	}
-	if mode == PromptFormEdit && (index < 0 || index >= len(live.Queue())) {
-		return views.ErrorModal("Prompt no longer exists.", onClose)
+	if options.Mode == PromptFormEdit && (options.Index < 0 || options.Index >= len(live.Queue())) {
+		return views.ErrorModal("Prompt no longer exists.", options.OnClose)
 	}
-	var saved func()
-	if len(onSaved) > 0 {
-		saved = onSaved[0]
-	}
-	return newPromptEditor(app, live, mode, index, saved, onClose).primitive()
+	return newPromptEditor(app, live, options).primitive()
 }
 
-func newPromptEditor(app views.Host, session *model.Session, mode PromptFormMode, index int, onSaved, onClose func()) *promptEditor {
+func newPromptEditor(app views.Host, session *model.Session, options PromptFormOptions) *promptEditor {
 	queue := session.Queue()
 	initialText := ""
-	if mode == PromptFormEdit {
-		initialText = queue[index].Text()
+	if options.Mode == PromptFormEdit {
+		initialText = queue[options.Index].Text()
 	} else {
 		queue = nil
 	}
 	state := promptEditorState{
-		mode:    mode,
-		index:   index,
-		text:    initialText,
-		status:  session.Status(),
-		queue:   queue,
-		onSaved: onSaved,
-		onClose: onClose,
+		mode:           options.Mode,
+		index:          options.Index,
+		text:           initialText,
+		status:         session.Status(),
+		queue:          queue,
+		onSaved:        options.OnSaved,
+		onClose:        options.OnClose,
+		onSaveAndPause: options.OnSaveAndPause,
 	}
 	return newPromptEditorFromState(app, session, &state)
 }
@@ -135,7 +147,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 	}
 
 	label := tview.NewTextView().SetText("Prompt").SetWrap(false)
-	label.SetTextColor(tview.Styles.SecondaryTextColor)
+	label.SetTextColor(views.ColorLabel)
 	label.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
 
 	textArea := tview.NewTextArea()
@@ -149,49 +161,59 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 	clearButton := tview.NewButton("Clear")
 	copyButton := tview.NewButton("Copy")
 	sessionButton := tview.NewButton("Session")
+	savePauseButton := tview.NewButton("Save & Pause")
 	saveButton := tview.NewButton("Save")
 	cancelButton := tview.NewButton("Cancel")
 	var deleteButton *tview.Button
 	var list *tview.List
+	listHeight := 0
+	fieldHeight := promptAddFieldHeight
 	if state.mode == PromptFormEdit {
 		list = tview.NewList().ShowSecondaryText(false)
 		list.SetBorder(true)
 		list.SetTitle(" Prompts ")
 		list.SetSelectedFocusOnly(true)
 		deleteButton = tview.NewButton("Delete")
+		rows := min(len(queue), promptListMaxRows)
+		listHeight = max(rows, 1) + promptListChrome
+		fieldHeight = max(promptModalTotalHeight-9-listHeight, promptMinFieldHeight)
 	}
 
 	e := &promptEditor{
-		app:           app,
-		label:         label,
-		textArea:      textArea,
-		status:        status,
-		list:          list,
-		clearButton:   clearButton,
-		copyButton:    copyButton,
-		sessionButton: sessionButton,
-		saveButton:    saveButton,
-		cancelButton:  cancelButton,
-		deleteButton:  deleteButton,
-		email:         session.AccountKey().Email,
-		vendor:        session.AccountKey().Vendor,
-		sessionID:     session.ID(),
-		mode:          state.mode,
-		index:         index,
-		queue:         queue,
-		onSaved:       state.onSaved,
-		onClose:       state.onClose,
+		app:             app,
+		label:           label,
+		textArea:        textArea,
+		status:          status,
+		list:            list,
+		clearButton:     clearButton,
+		copyButton:      copyButton,
+		sessionButton:   sessionButton,
+		savePauseButton: savePauseButton,
+		saveButton:      saveButton,
+		cancelButton:    cancelButton,
+		deleteButton:    deleteButton,
+		email:           session.AccountKey().Email,
+		vendor:          session.AccountKey().Vendor,
+		sessionID:       session.ID(),
+		mode:            state.mode,
+		index:           index,
+		queue:           queue,
+		onSaved:         state.onSaved,
+		onClose:         state.onClose,
+		onSaveAndPause:  state.onSaveAndPause,
+		listHeight:      listHeight,
+		fieldHeight:     fieldHeight,
 	}
 	if list != nil {
-		e.focusables = []tview.Primitive{status, sessionButton, list, clearButton, copyButton, textArea, saveButton, cancelButton, deleteButton}
+		e.focusables = []tview.Primitive{status, sessionButton, list, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
 	} else {
-		e.focusables = []tview.Primitive{status, sessionButton, clearButton, copyButton, textArea, saveButton, cancelButton}
+		e.focusables = []tview.Primitive{status, sessionButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton}
 	}
 
 	buttonWidth := max(tview.TaggedStringWidth("Clear"), tview.TaggedStringWidth("Copy")) + 4
 	side := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(label, 1, 0, false).
-		AddItem(nil, promptFieldHeight-4, 0, false).
+		AddItem(nil, e.fieldHeight-4, 0, false).
 		AddItem(clearButton, 1, 0, false).
 		AddItem(nil, 1, 0, false).
 		AddItem(copyButton, 1, 0, false)
@@ -206,10 +228,13 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		AddItem(nil, 0, 1, false).
 		AddItem(sessionButton, tview.TaggedStringWidth("Session")+4, 0, false)
 
+	savePauseWidth := tview.TaggedStringWidth("Save & Pause") + 4
 	saveWidth := tview.TaggedStringWidth("Save") + 4
 	cancelWidth := tview.TaggedStringWidth("Cancel") + 4
 	buttonRow := tview.NewFlex().
 		AddItem(nil, 0, 1, false).
+		AddItem(savePauseButton, savePauseWidth, 0, false).
+		AddItem(nil, 1, 0, false).
 		AddItem(saveButton, saveWidth, 0, false).
 		AddItem(nil, 1, 0, false).
 		AddItem(cancelButton, cancelWidth, 0, false)
@@ -223,10 +248,10 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		AddItem(sessionRow, 1, 0, false).
 		AddItem(nil, 1, 0, false)
 	if list != nil {
-		flex.AddItem(list, promptListHeight, 0, false).
+		flex.AddItem(list, e.listHeight, 0, false).
 			AddItem(nil, 1, 0, false)
 	}
-	flex.AddItem(editorRow, promptFieldHeight, 0, true).
+	flex.AddItem(editorRow, e.fieldHeight, 0, true).
 		AddItem(nil, 1, 0, false).
 		AddItem(buttonRow, 1, 0, false)
 	flex.SetBorder(true).SetBorderPadding(1, 1, 1, 1).SetTitle(" " + title + " ")
@@ -236,6 +261,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 	clearButton.SetSelectedFunc(e.clear)
 	copyButton.SetSelectedFunc(e.copy)
 	sessionButton.SetSelectedFunc(e.openSession)
+	savePauseButton.SetSelectedFunc(e.saveAndPause)
 	saveButton.SetSelectedFunc(e.save)
 	cancelButton.SetSelectedFunc(e.onClose)
 	if deleteButton != nil {
@@ -316,7 +342,14 @@ func (e *promptEditor) installList() {
 		e.selectPrompt(index)
 	})
 	e.list.SetInputCapture(e.listCapture)
-	views.WirePanelFocus(e.list, func() {})
+	e.list.SetFocusFunc(func() {
+		e.list.SetBorderColor(tcell.ColorYellow)
+		e.app.SetHints(views.HintsPromptListSpecific, views.HintsFormCommon)
+	})
+	e.list.SetBlurFunc(func() {
+		e.list.SetBorderColor(tview.Styles.BorderColor)
+		e.app.SetHints(views.HintsFormSpecific, views.HintsFormCommon)
+	})
 	views.WireListDoubleClick(e.list, func() {
 		e.app.SetFocus(e.textArea)
 	})
@@ -465,7 +498,7 @@ func (e *promptEditor) deleteCurrentAndSave() {
 	if index >= len(next) {
 		index = len(next) - 1
 	}
-	nextEditor := newPromptEditor(e.app, live, PromptFormEdit, index, e.onSaved, e.onClose)
+	nextEditor := newPromptEditor(e.app, live, PromptFormOptions{Mode: PromptFormEdit, Index: index, OnSaved: e.onSaved, OnClose: e.onClose, OnSaveAndPause: e.onSaveAndPause})
 	if err := e.app.ReplaceTopModal(nextEditor.primitive()); err != nil {
 		e.app.SetError(err.Error())
 		return
@@ -525,14 +558,15 @@ func (e *promptEditor) showState(state *promptEditorState) {
 
 func (e *promptEditor) snapshot(focusList bool) promptEditorState {
 	return promptEditorState{
-		mode:      e.mode,
-		index:     e.index,
-		text:      e.textArea.GetText(),
-		status:    e.statusValue(),
-		queue:     slices.Clone(e.queue),
-		focusList: focusList,
-		onSaved:   e.onSaved,
-		onClose:   e.onClose,
+		mode:           e.mode,
+		index:          e.index,
+		text:           e.textArea.GetText(),
+		status:         e.statusValue(),
+		queue:          slices.Clone(e.queue),
+		focusList:      focusList,
+		onSaved:        e.onSaved,
+		onClose:        e.onClose,
+		onSaveAndPause: e.onSaveAndPause,
 	}
 }
 
@@ -590,10 +624,7 @@ func (e *promptEditor) primitive() tview.Primitive {
 }
 
 func (e *promptEditor) modalHeight() int {
-	if e.list == nil {
-		return promptModalHeight
-	}
-	return promptModalHeight + promptListHeight + 1
+	return promptModalTotalHeight
 }
 
 func (e *promptEditor) clear() {
@@ -645,21 +676,36 @@ func (e *promptEditor) openSession() {
 }
 
 func (e *promptEditor) save() {
+	if e.savePrompt() {
+		e.onClose()
+	}
+}
+
+func (e *promptEditor) saveAndPause() {
+	if !e.savePrompt() {
+		return
+	}
+	e.onClose()
+	if e.onSaveAndPause != nil {
+		e.onSaveAndPause()
+	}
+}
+
+func (e *promptEditor) savePrompt() bool {
 	if e.mode == PromptFormAdd {
 		text := model.NormalizeText(e.textArea.GetText())
 		if text == "" {
 			e.app.SetError(model.ErrTextRequired.Error())
-			return
+			return false
 		}
 		if err := e.mutateQueue(func(queue []model.Prompt) ([]model.Prompt, error) {
 			return append(slices.Clone(queue), model.NewPrompt(text)), nil
 		}); err != nil {
 			views.SetErrorStatus(e.app, err)
-			return
+			return false
 		}
 		e.saved()
-		e.onClose()
-		return
+		return true
 	}
 
 	e.syncDraft()
@@ -673,10 +719,10 @@ func (e *promptEditor) save() {
 		return next, nil
 	}); err != nil {
 		views.SetErrorStatus(e.app, err)
-		return
+		return false
 	}
 	e.saved()
-	e.onClose()
+	return true
 }
 
 func (e *promptEditor) saved() {

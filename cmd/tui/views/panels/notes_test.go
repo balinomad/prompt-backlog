@@ -154,6 +154,16 @@ func TestNotesPanel_Selection(t *testing.T) {
 	})
 }
 
+func TestNotesPanel_EscOpensQuitConfirmation(t *testing.T) {
+	t.Parallel()
+	f := newNotesFixture(t)
+	p := f.panel(t)
+	p.GetInputCapture()(specialKey(views.KeyCancel))
+	if f.app.Modal == nil {
+		t.Fatal("Esc did not open the quit confirmation")
+	}
+}
+
 func TestNotesPanel_Keys(t *testing.T) {
 	t.Parallel()
 
@@ -193,27 +203,6 @@ func TestNotesPanel_Keys(t *testing.T) {
 		}
 	})
 
-	t.Run("s starts a session from the note", func(t *testing.T) {
-		t.Parallel()
-		f := newNotesFixture(t)
-		p := f.panel(t)
-		var started *model.Session
-		p.SetOnSessionStart(func(sess *model.Session) { started = sess })
-		p.SetCurrentItem(0)
-		p.GetInputCapture()(runeKey(views.KeyStart))
-		form := formFromCenteredModal(t, f.app.Modal)
-		if got := form.GetTitle(); got != " Start Session " {
-			t.Errorf("title = %q, want Start Session", got)
-		}
-		pressButton(t, form.GetButton(0))
-		if started == nil {
-			t.Fatal("session start callback was not called")
-		}
-		if f.app.Svc.Note(f.n1.ID()) != nil {
-			t.Error("note still exists after a successful start")
-		}
-	})
-
 	t.Run("f advances the filter and calls the callback", func(t *testing.T) {
 		t.Parallel()
 		f := newNotesFixture(t)
@@ -245,7 +234,6 @@ func TestNotesPanel_Keys(t *testing.T) {
 		for _, key := range []*tcell.EventKey{
 			specialKey(views.KeyEdit),
 			specialKey(views.KeyDelete),
-			runeKey(views.KeyStart),
 		} {
 			p.GetInputCapture()(key)
 			if f.app.Modal != nil {

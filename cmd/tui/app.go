@@ -753,7 +753,7 @@ func (a *App) cycleMainFocus(forward bool) {
 	current := a.tv.GetFocus()
 	index := 0
 	for i, p := range order {
-		if p == current {
+		if p == current || p.HasFocus() {
 			index = i
 			break
 		}

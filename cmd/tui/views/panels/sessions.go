@@ -138,6 +138,9 @@ func (p *SessionsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 		return p.handleStart()
 	case views.KeyDelete:
 		return p.handleDeleteSession()
+	case views.KeyCancel:
+		views.ConfirmQuit(p.app, views.HintsSessionsPanelSpecific, views.HintsSessionsPanelCommon)
+		return nil
 	default:
 	}
 
@@ -161,8 +164,24 @@ func (p *SessionsPanel) handleEnter() *tcell.EventKey {
 	if len(session.Queue()) == 0 {
 		mode = forms.PromptFormAdd
 	}
-	views.ShowModal(p.app, forms.NewPromptForm(p.app, session, mode, 0, p.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, forms.NewPromptForm(p.app, session, forms.PromptFormOptions{
+		Mode:    mode,
+		Index:   0,
+		OnClose: p.closeForm,
+		OnSaveAndPause: func() {
+			p.openPauseForSession(session)
+		},
+	}), views.HintsFormSpecific, views.HintsFormCommon)
 	return nil
+}
+
+func (p *SessionsPanel) openPauseForSession(session *model.Session) {
+	account, err := p.app.Service().Account(session.AccountKey().Email, session.AccountKey().Vendor)
+	if err != nil {
+		p.app.SetError(err.Error())
+		return
+	}
+	views.ShowModal(p.app, forms.NewAccountForm(p.app, account, p.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
 }
 
 func (p *SessionsPanel) handleDeleteSession() *tcell.EventKey {
@@ -278,7 +297,10 @@ func (p *SessionsPanel) rebuild(sessions []*model.Session, prevID uint64) {
 		cells[i] = sessionRowCells(s, nameWidth)
 	}
 	lines, _ := views.FormatColumns(views.DropEmptyColumns(cells))
-	for _, line := range lines {
+	for i, line := range lines {
+		if sessions[i].Status() == model.SessionStatusClosed {
+			line = "[gray]" + line + "[-]"
+		}
 		p.AddItem(line, "", 0, nil)
 	}
 	p.refreshing = false
@@ -354,8 +376,8 @@ func sessionRowCells(s *model.Session, nameWidth int) []string {
 	}
 
 	rawName := s.Name()
-	dimName := rawName == ""
-	if dimName {
+	dimName := rawName == "" && s.Status() != model.SessionStatusClosed
+	if rawName == "" {
 		rawName = "(untitled)"
 	}
 	name := tview.Escape(views.TruncateWidth(rawName, nameWidth))
@@ -368,9 +390,9 @@ func sessionRowCells(s *model.Session, nameWidth int) []string {
 	switch s.Status() {
 	case model.SessionStatusActive:
 	case model.SessionStatusNeedsClosing:
-		marker = "[yellow]✓[-]"
+		marker = "[yellow]▲[-]"
 	case model.SessionStatusClosed:
-		marker = "[gray]✓[-]"
+		marker = "✓"
 	}
 
 	return []string{

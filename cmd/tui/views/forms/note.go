@@ -71,7 +71,7 @@ func NewNoteForm(app views.Host, note *model.Note, account *model.Account, fixed
 		initialText = note.Text()
 	}
 	form := newForm(title)
-	form.AddTextArea("Text", initialText, formFieldWidth, 4, 0, nil)
+	form.AddTextArea("Text", initialText, noteFieldWidth, noteTextHeight, 0, nil)
 	addDropDown(form, "Project", escapeAll(projectNames), projectIndex)
 	addDropDown(form, "Account", escapeAll(accountLabels), accountIndex)
 	if fixedProject != nil {
@@ -136,7 +136,7 @@ func NewNoteForm(app views.Host, note *model.Note, account *model.Account, fixed
 		onClose()
 	}
 
-	return finishForm(form, save, onClose)
+	return finishFormWithMax(form, save, onClose, noteFormMaxWidth)
 }
 
 // noteAccountOptions returns the accounts selectable in a note form. On the

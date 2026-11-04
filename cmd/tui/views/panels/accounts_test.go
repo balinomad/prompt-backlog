@@ -184,6 +184,7 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
+		{"quit esc", specialKey(views.KeyCancel), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

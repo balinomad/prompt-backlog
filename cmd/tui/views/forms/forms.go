@@ -24,6 +24,10 @@ const (
 	formPauseWidth = len(model.TimeFormat) + 1
 	// formMaxWidth caps dynamic width at the former fixed modal width.
 	formMaxWidth = 64
+	// noteFieldWidth and noteTextHeight make note editing roomier.
+	noteFieldWidth   = 60
+	noteTextHeight   = 12
+	noteFormMaxWidth = 72
 	// formChromeHeight is the border plus default vertical padding.
 	formChromeHeight = 4
 	// formButtonPadding is the horizontal padding around a button label.
@@ -35,6 +39,7 @@ func newForm(title string) *tview.Form {
 	form := tview.NewForm()
 	form.SetBorder(true)
 	form.SetTitle(" " + title + " ")
+	form.SetLabelColor(views.ColorLabel)
 	return form
 }
 
@@ -109,18 +114,26 @@ func formWidth(form *tview.Form) int {
 
 // formModal centers form at its content width and height.
 func formModal(form *tview.Form) tview.Primitive {
-	return views.NewModalState(views.CenteredModal(form, min(formWidth(form), formMaxWidth), formHeight(form)), form)
+	return formModalWithMax(form, formMaxWidth)
+}
+
+func formModalWithMax(form *tview.Form, maxWidth int) tview.Primitive {
+	return views.NewModalState(views.CenteredModal(form, min(formWidth(form), maxWidth), formHeight(form)), form)
 }
 
 // finishForm adds the shared Save/Cancel controls and returns the centred
 // modal wrapper.
 func finishForm(form *tview.Form, save, onClose func()) tview.Primitive {
+	return finishFormWithMax(form, save, onClose, formMaxWidth)
+}
+
+func finishFormWithMax(form *tview.Form, save, onClose func(), maxWidth int) tview.Primitive {
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
 	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
-	return formModal(form)
+	return formModalWithMax(form, maxWidth)
 }
 
 // addCtrlS adds Ctrl+S as an additional save trigger to a form.
@@ -167,6 +180,13 @@ func newDropDown(label string, options []string, current int) *tview.DropDown {
 	dropDown.SetCurrentOption(current)
 	dropDown.SetTextOptions("", "", "", dropDownArrow, "")
 	dropDown.SetFieldWidth(dropDownWidth(displayOptions))
+	dropDown.SetListStyles(
+		tcell.StyleDefault.Background(views.ColorPopup).Foreground(tview.Styles.PrimaryTextColor),
+		tcell.StyleDefault.Background(tview.Styles.PrimaryTextColor).Foreground(views.ColorPopup),
+	)
+	dropDown.SetDisabledStyle(
+		tcell.StyleDefault.Background(tview.Styles.PrimitiveBackgroundColor).Foreground(tcell.ColorGray),
+	)
 	return dropDown
 }
 

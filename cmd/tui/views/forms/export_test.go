@@ -42,8 +42,18 @@ type PromptForm struct {
 }
 
 // NewPromptFormForTest constructs a prompt form for black-box tests.
-func NewPromptFormForTest(app views.Host, session *model.Session, mode PromptFormMode, index int, onSaved, onClose func()) *PromptForm {
-	return &PromptForm{editor: newPromptEditor(app, session, mode, index, onSaved, onClose)}
+func NewPromptFormForTest(app views.Host, session *model.Session, mode PromptFormMode, index int, onSaved, onClose func(), onSaveAndPause ...func()) *PromptForm {
+	var pause func()
+	if len(onSaveAndPause) > 0 {
+		pause = onSaveAndPause[0]
+	}
+	return &PromptForm{editor: newPromptEditor(app, session, PromptFormOptions{
+		Mode:           mode,
+		Index:          index,
+		OnSaved:        onSaved,
+		OnClose:        onClose,
+		OnSaveAndPause: pause,
+	})}
 }
 
 // Primitive returns the form's modal primitive.
@@ -106,6 +116,11 @@ func (p *PromptForm) SaveButton() *tview.Button {
 	return p.editor.saveButton
 }
 
+// SavePauseButton returns the Save & Pause button.
+func (p *PromptForm) SavePauseButton() *tview.Button {
+	return p.editor.savePauseButton
+}
+
 // CancelButton returns the Cancel button.
 func (p *PromptForm) CancelButton() *tview.Button {
 	return p.editor.cancelButton
@@ -127,11 +142,15 @@ func promptEditorFromPrimitive(p tview.Primitive) (*promptEditor, bool) {
 	if !ok {
 		return nil, false
 	}
-	inner, ok := outer.GetItem(1).(*tview.Flex)
+	column, ok := outer.GetItem(1).(*tview.Flex)
 	if !ok {
 		return nil, false
 	}
-	content := inner.GetItem(2)
+	row, ok := column.GetItem(2).(*tview.Flex)
+	if !ok {
+		return nil, false
+	}
+	content := row.GetItem(2)
 	if frame, isFrame := content.(*tview.Frame); isFrame {
 		content = frame.GetPrimitive()
 	}

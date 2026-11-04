@@ -75,6 +75,8 @@ var (
 	hintPause    = hint{"Enter", "pause"}
 	hintAdd      = hint{"Ins", "add"}
 	hintDelete   = hint{"Del", "delete"}
+	hintFilter   = hint{string(KeyFilter), "project filter"}
+	hintSave     = hint{"Ctrl+S", "save"}
 	hintHelp     = hint{string(KeyHelp), "help"}
 	hintQuit     = hint{string(KeyQuit), "quit"}
 	hintAccounts = hint{"Esc", "accounts"}
@@ -88,37 +90,40 @@ var (
 	// HintsAccountsPanelSpecific is the context-specific hint line shown when
 	// the accounts list has focus.
 	HintsAccountsPanelSpecific = hints{
-		{"Tab", "sessions"}, hintPause, hintAdd, hintDelete,
+		{"Tab", "sessions"}, {"Shift+Tab", "notes"},
+		hintPause, hintAdd, hintDelete,
 	}.String()
 
 	// HintsAccountsPanelCommon is the common hint line shown when the
 	// accounts list has focus.
 	HintsAccountsPanelCommon = hints{
-		hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
+		hintFilter, hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
 	}.String()
 
 	// HintsSessionsPanelSpecific is the context-specific hint line shown when
 	// the Sessions pane has focus.
 	HintsSessionsPanelSpecific = hints{
 		hintEdit, {"Ins", "new session"}, {"Del", "delete"},
+		{"Tab", "notes"}, {"Shift+Tab", "accounts"},
 	}.String()
 
 	// HintsSessionsPanelCommon is the common hint line shown when the Sessions
 	// pane has focus.
 	HintsSessionsPanelCommon = hints{
-		hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
+		hintFilter, hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
 	}.String()
 
 	// HintsNotesPanelSpecific is the context-specific hint line shown when
 	// the Notes pane has focus.
 	HintsNotesPanelSpecific = hints{
-		hintEdit, hintAdd, hintDelete, {string(KeyStart), "start"},
+		hintEdit, hintAdd, hintDelete,
+		{"Tab", "accounts"}, {"Shift+Tab", "sessions"},
 	}.String()
 
 	// HintsNotesPanelCommon is the common hint line shown when the Notes pane
 	// has focus.
 	HintsNotesPanelCommon = hints{
-		hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
+		hintFilter, hintVendors, hintProjects, hintUsers, hintHelp, hintQuit,
 	}.String()
 
 	// HintsVendorsPanelSpecific is the context-specific hint line shown when
@@ -148,7 +153,8 @@ var (
 	// HintsProjectsPanelSpecific is the context-specific hint line shown when
 	// the projects list has focus.
 	HintsProjectsPanelSpecific = hints{
-		{"Tab", "project accounts"}, hintEdit, hintAdd, hintDelete,
+		{"Tab", "accounts"}, {"Shift+Tab", "notes"},
+		hintEdit, hintAdd, hintDelete,
 	}.String()
 
 	// HintsProjectsPanelCommon is the common hint line shown when the
@@ -160,7 +166,8 @@ var (
 	// HintsProjectAccountsSpecific is the context-specific hint line shown
 	// when the granted-accounts list has focus.
 	HintsProjectAccountsSpecific = hints{
-		{"Tab", "project notes"}, hintAdd, hintDelete,
+		{"Tab", "project notes"}, {"Shift+Tab", "projects"},
+		hintAdd, hintDelete,
 	}.String()
 
 	// HintsProjectAccountsCommon is the common hint line shown when the
@@ -172,7 +179,8 @@ var (
 	// HintsProjectNotesSpecific is the context-specific hint line shown when
 	// the project notes list has focus.
 	HintsProjectNotesSpecific = hints{
-		{"Tab", "projects"}, hintEdit, hintAdd, hintDelete,
+		{"Tab", "projects"}, {"Shift+Tab", "project accounts"},
+		hintEdit, hintAdd, hintDelete,
 	}.String()
 
 	// HintsProjectNotesCommon is the common hint line shown when the project
@@ -188,7 +196,13 @@ var (
 	// HintsFormCommon is the common hint line shown when a form modal is
 	// open.
 	HintsFormCommon = hints{
-		{"Tab", "next"}, hintCancel,
+		{"Tab", "next"}, hintSave, hintCancel,
+	}.String()
+
+	// HintsPromptListSpecific is the context-specific hint line shown when the
+	// prompt list in the Edit Prompt modal has focus.
+	HintsPromptListSpecific = hints{
+		{"Enter", "edit"}, hintAdd, hintDelete,
 	}.String()
 
 	// HintsConfirmModalSpecific is the context-specific hint line shown when a
@@ -361,7 +375,7 @@ func (s *StatusBar) SetNotice(msg string) {
 	s.messageText = ""
 	s.messageView.SetText("")
 	s.messageAreaText = msg
-	s.messageAreaView.SetTextColor(accentColor)
+	s.messageAreaView.SetTextColor(ColorAccent)
 	s.messageAreaView.SetText(msg)
 	s.updateLayout()
 }
@@ -463,11 +477,11 @@ func NewConfirmModal(message string, onConfirm, onCancel func()) tview.Primitive
 	return NewModalState(modal, modal)
 }
 
-// confirmQuit opens the "Quit llm-desk?" confirmation modal, shared by
+// ConfirmQuit opens the "Quit llm-desk?" confirmation modal, shared by
 // every panel's KeyQuit case. returnSpecific/returnCommon are the hint
 // lines restored if the operator cancels, so each panel returns to its
 // own hint lines rather than a neighbour's.
-func confirmQuit(app Host, returnSpecific, returnCommon string) {
+func ConfirmQuit(app Host, returnSpecific, returnCommon string) {
 	modal := NewConfirmModal(
 		"Quit "+app.AppName()+"?",
 		func() { app.Quit() },
@@ -504,18 +518,7 @@ func NewHelpOverlay(onClose func()) tview.Primitive {
 	frame.SetBorder(true)
 	frame.SetBackgroundColor(tview.Styles.ContrastBackgroundColor)
 
-	// Centre the overlay: horizontal and vertical flex spacers surround a
-	// fixed-size box (60 columns × 22 rows).
-	overlay := tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().
-			SetDirection(tview.FlexRow).
-			AddItem(nil, 0, 1, false).
-			AddItem(frame, 22, 1, true).
-			AddItem(nil, 0, 1, false),
-			60, 1, true).
-		AddItem(nil, 0, 1, false)
-	return NewModalState(overlay, frame)
+	return NewModalState(CenteredModal(frame, 60, 22), frame)
 }
 
 // showHelp opens the help overlay, shared by every panel's KeyHelp case.
@@ -539,18 +542,25 @@ func ErrorModal(message string, onClose func()) tview.Primitive {
 // CenteredModal wraps content in a flex overlay so that it appears centred on
 // screen at the given width. height is content's own height, not the overlay's.
 func CenteredModal(content tview.Primitive, width, height int) tview.Primitive {
-	const padding = 1 // rows of solid background directly touching content
-	inner := tview.NewFlex().
+	const padding = 1
+	row := tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewBox(), padding, 0, false).
+		AddItem(content, width, 1, true).
+		AddItem(tview.NewBox(), padding, 0, false).
+		AddItem(nil, 0, 1, false)
+
+	column := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewBox(), padding, 0, false).
-		AddItem(content, height, 1, true).
+		AddItem(row, height, 1, true).
 		AddItem(tview.NewBox(), padding, 0, false).
 		AddItem(nil, 0, 1, false)
 
 	return tview.NewFlex().
 		AddItem(nil, 0, 1, false).
-		AddItem(inner, width, 1, true).
+		AddItem(column, width+2, 1, true).
 		AddItem(nil, 0, 1, false)
 }
 
@@ -572,8 +582,8 @@ func (s helpSection) String() string {
 var helpSections = []helpSection{
 	{"Navigation", hints{
 		{"↑ ↓", "Move through list items"},
-		{"Tab", "Switch focus (multi-pane)"},
-		{"Shift+Tab", "Switch focus back (multi-pane)"},
+		{"Tab", "Switch to next pane"},
+		{"Shift+Tab", "Switch to previous pane"},
 	}},
 	{"Accounts list", hints{
 		{"Enter", "Pause selected account"},
@@ -591,7 +601,6 @@ var helpSections = []helpSection{
 		{"Enter", "Edit selected note"},
 		{"Ins", "Add note"},
 		{"Del", "Delete selected note"},
-		{string(KeyStart), "Start session from note"},
 		{string(KeyFilter), "Cycle project filter"},
 	}},
 	{"Vendors screen", hints{
@@ -623,6 +632,7 @@ var helpSections = []helpSection{
 	}},
 	{"Forms", hints{
 		{"Tab", "Next field"},
+		{"Ctrl+S", "Save"},
 		{"Esc", "Cancel / close"},
 	}},
 	{"Global", hints{

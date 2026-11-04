@@ -1344,13 +1344,17 @@ func formFromCenteredModal(t *testing.T, p tview.Primitive) *tview.Form {
 	if !ok {
 		t.Fatalf("expected *tview.Flex, got %T", p)
 	}
-	inner, ok := outer.GetItem(1).(*tview.Flex)
+	column, ok := outer.GetItem(1).(*tview.Flex)
 	if !ok {
-		t.Fatalf("expected inner *tview.Flex, got %T", outer.GetItem(1))
+		t.Fatalf("expected column *tview.Flex, got %T", outer.GetItem(1))
 	}
-	form, ok := inner.GetItem(2).(*tview.Form)
+	row, ok := column.GetItem(2).(*tview.Flex)
 	if !ok {
-		t.Fatalf("expected *tview.Form, got %T", inner.GetItem(2))
+		t.Fatalf("expected row *tview.Flex, got %T", column.GetItem(2))
+	}
+	form, ok := row.GetItem(2).(*tview.Form)
+	if !ok {
+		t.Fatalf("expected *tview.Form, got %T", row.GetItem(2))
 	}
 	return form
 }

@@ -1925,64 +1925,6 @@ func TestService_ProjectNotes(t *testing.T) {
 	})
 }
 
-func TestService_StartSessionFromNote(t *testing.T) {
-	t.Parallel()
-
-	t.Run("uses note text as the first prompt and deletes the note", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		n, err := svc.AddNote("note text", "", "alice@example.com", "claude")
-		must(t, err)
-
-		sess, err := svc.StartSessionFromNote("alice@example.com", "claude", n.ID(), service.SessionFields{Name: "name"})
-		must(t, err)
-		if got := sess.Queue(); len(got) != 1 || got[0].Text() != "note text" {
-			t.Errorf("Queue() = %v, want the note text", got)
-		}
-		if svc.Note(n.ID()) != nil {
-			t.Error("note still exists after a successful start")
-		}
-	})
-
-	t.Run("account not found", func(t *testing.T) {
-		t.Parallel()
-		_, err := seedService(t).StartSessionFromNote("alice@example.com", "chatgpt", 1, service.SessionFields{})
-		if !errors.Is(err, model.ErrAccountNotFound) {
-			t.Errorf("got %v, want ErrAccountNotFound", err)
-		}
-	})
-
-	t.Run("note not found", func(t *testing.T) {
-		t.Parallel()
-		_, err := seedService(t).StartSessionFromNote("alice@example.com", "claude", 99, service.SessionFields{})
-		if !errors.Is(err, model.ErrNoteNotFound) {
-			t.Errorf("got %v, want ErrNoteNotFound", err)
-		}
-	})
-
-	t.Run("project not found", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		n, err := svc.AddNote("note text", "", "alice@example.com", "claude")
-		must(t, err)
-		_, err = svc.StartSessionFromNote("alice@example.com", "claude", n.ID(), service.SessionFields{ProjectName: "Ghost"})
-		if !errors.Is(err, model.ErrProjectNotFound) {
-			t.Errorf("got %v, want ErrProjectNotFound", err)
-		}
-	})
-
-	t.Run("note project mismatch", func(t *testing.T) {
-		t.Parallel()
-		svc := seedService(t)
-		n, err := svc.AddNote("note text", "Alpha", "", "")
-		must(t, err)
-		_, err = svc.StartSessionFromNote("alice@example.com", "claude", n.ID(), service.SessionFields{ProjectName: "Beta"})
-		if err == nil {
-			t.Fatal("got nil, want error")
-		}
-	})
-}
-
 func TestService_UpdateSession(t *testing.T) {
 	t.Parallel()
 	svc := seedService(t)
