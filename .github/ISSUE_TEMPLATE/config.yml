@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/balinomad/prompt-backlog#readme
+    about: Read the installation, usage, and data model documentation before opening an issue.
+  - name: Security policy
+    url: https://github.com/balinomad/prompt-backlog/security/policy
+    about: Report security vulnerabilities privately.
