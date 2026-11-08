@@ -74,24 +74,6 @@ Removing an account requires ending all its sessions, revoking all its granted p
 
 Serialisation is handled entirely by the store layer using internal DTO types. Model structs carry no JSON tags.
 
-## Project Structure
-
-```text
-prompt-backlog/
-├── cmd/
-│   └── tui/
-│       └── views/
-│           ├── forms/
-│           └── panels/
-├── internal/
-│   ├── apperr/
-│   ├── model/
-│   ├── service/
-│   └── store/
-│       └── json/
-└── go.mod
-```
-
 ## Storage
 
 State is persisted to a single JSON file. Writes are atomic: the file is written to a temporary sibling first, then renamed into place. A SQLite backend is planned but deferred.
