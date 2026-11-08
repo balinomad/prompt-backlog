@@ -1,3 +1,9 @@
+[![GoMod](https://img.shields.io/github/go-mod/go-version/balinomad/prompt-backlog)](https://github.com/balinomad/prompt-backlog/tree)
+[![Size](https://img.shields.io/github/languages/code-size/balinomad/prompt-backlog)](https://github.com/balinomad/prompt-backlog)
+[![License](https://img.shields.io/github/license/balinomad/prompt-backlog)](./LICENSE)
+[![Go](https://github.com/balinomad/prompt-backlog/actions/workflows/go.yml/badge.svg)](https://github.com/balinomad/prompt-backlog/actions/workflows/go.yml)
+[![codecov](https://codecov.io/github/balinomad/prompt-backlog/graph/badge.svg?token=ACKJNKANVQ)](https://codecov.io/github/balinomad/prompt-backlog)
+
 # prompt-backlog
 
 `prompt-backlog` is a local, keyboard-driven terminal notebook for people who run several LLM conversations in parallel across vendors such as Claude, ChatGPT, and Gemini. It records a reset time that you enter for each account, and keeps a name and a queue of pending prompts for each session, so you can resume work where it stopped. It never contacts any vendor.
