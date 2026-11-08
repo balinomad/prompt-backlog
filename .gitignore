@@ -1,6 +1,7 @@
 data/
 
 # Binaries for programs and plugins
+dist/
 *.exe
 *.exe~
 *.dll
