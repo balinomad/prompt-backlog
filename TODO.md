@@ -4,31 +4,44 @@
 
 ## Rename
 
-- [ ] Rename the project from `llm-desk` to `prompt-backlog` (before making the repo public; apply one sub-item at a time; run after the README rewording item, or rely on the final grep to catch leftovers in the text that item adds)
-  - [ ] Decide the binary name (default `prompt-backlog`, same as the repo); the sub-items below assume the default
-  - [ ] Decide whether `go install` must produce `prompt-backlog`: it names the binary after the package directory, so `cmd/tui` installs as `tui`; default is to keep `cmd/tui` (the layout is documented as shared across frontends) and document only `go build -o prompt-backlog ./cmd/tui`
-  - [ ] `go.mod`: change the module path with the command below
-  - [ ] Rewrite every import of the old module path in the Go files (the sed form below is GNU sed; on macOS use `sed -i ''`), then run `go build ./...`
+- [ ] Rename the project from `llm-desk` to `prompt-backlog` (before making the repo public; apply one sub-item at a time; the public-release README snippets still use `llm-desk`, so replace the name in them when that section is applied)
+  - [x] Decide the binary name (default `prompt-backlog`, same as the repo); the sub-items below assume the default
+  - [x] Decide whether `go install` must produce `prompt-backlog`: it names the binary after the package directory, so `cmd/tui` installs as `tui`; default is to keep `cmd/tui` (the layout is documented as shared across frontends) and document only `go build -o prompt-backlog ./cmd/tui`
+  - [x] Decide whether to rename the local checkout directory (`llm-desk` to `prompt-backlog`); the build and the git remote do not require it, and renaming the directory under an active session may break the session's working directory, so default is to keep it for now
+  - [x] `go.mod`: change the module path:
 
     ```bash
     go mod edit -module github.com/balinomad/prompt-backlog
-    grep -rl 'github.com/balinomad/llm-desk' --include='*.go' . | xargs sed -i 's#github.com/balinomad/llm-desk#github.com/balinomad/prompt-backlog#g'
+    ```
+
+  - [x] Rewrite every import of the old module path in the Go files (the sed form below is GNU sed; on macOS use `sed -i ''`), then run `go build ./...`:
+
+    ```bash
+    grep -rlZ 'github.com/balinomad/llm-desk' --include='*.go' --exclude-dir=.git --exclude-dir=.cover . | xargs -0 -r sed -i 's#github.com/balinomad/llm-desk#github.com/balinomad/prompt-backlog#g'
+    go build ./...
     ```
 
   - [ ] `cmd/tui/app.go`: change `const AppName = "llm-desk"` to `"prompt-backlog"` (it feeds the quit dialog, the flag set name, and the error prefix)
-  - [ ] `cmd/tui/views/helpers_test.go`: change the `AppName()` return value in `mockApp` to `"prompt-backlog"`
+  - [ ] `cmd/tui/views/internal/viewtest/viewtest.go`: change the `AppName()` return value in `FakeApp` to `"prompt-backlog"`
   - [ ] `cmd/tui/main_internal_test.go`: change the expected stderr substring `Usage of llm-desk` to `Usage of prompt-backlog`
+  - [ ] `cmd/tui/views/chrome.go`: change the `"Quit llm-desk?"` comment to `"Quit prompt-backlog?"`
+  - [ ] `internal/model/model.go`: change the package comment reference `llm-desk` to `prompt-backlog`
+  - [ ] `internal/apperr/apperr.go`: change the package comment reference `llm-desk` to `prompt-backlog`
   - [ ] `.golangci.yml`: update the header comment, the `depguard` allow entry `github.com/balinomad/llm-desk`, and the `wrapcheck` glob `github.com/balinomad/llm-desk/internal/*`
-  - [ ] `README.md`: update the title, the `git clone` URL, `cd llm-desk`, `go build -o llm-desk ./cmd/tui`, the `./llm-desk --data ...` usage lines, and the root of the project-structure tree
-  - [ ] `docs/screen-layout.txt`: change the first word of the intro and the main-screen frame title `llm-desk` to `prompt-backlog`, and remove 6 `─` characters from that frame's top border so the box width is unchanged (the intro line grows by 6 columns; ask before rewrapping)
-  - [ ] GitHub: rename the repository in Settings, then run the command below; the old URL redirects only until a new repo takes the old name
+  - [ ] `README.md`: replace every `llm-desk` with `prompt-backlog` (title, first paragraph, `git clone` URL, `cd`, `go build -o ...`, the `./llm-desk --data ...` usage lines, and the root of the project-structure tree)
+  - [ ] `docs/screen-layout.txt`: change the first word of the intro and the main-screen frame title `llm-desk` to `prompt-backlog`, and remove 6 `─` characters from that frame's top border so the frame stays 75 columns wide (the title grows by 6 columns; the intro line grows from 72 to 78 columns; ask before rewrapping)
+  - [ ] GitHub: rename the repository in Settings, then update the remote; the old URL redirects only until a new repo takes the old name:
 
     ```bash
     git remote set-url origin https://github.com/balinomad/prompt-backlog.git
     ```
 
   - [ ] Verify: run `task check` and expect a clean pass
-  - [ ] Verify no leftovers: run `grep -rniE 'llm-desk|llm_desk|llmdesk' . --exclude-dir=.git` and expect no output
+  - [ ] Verify no leftovers: run the command below and expect no output; `TODO.md` and the gitignored `.cover/` artifacts still contain the old name, and `data/` is gitignored user data:
+
+    ```bash
+    grep -rniE 'llm-desk|llm_desk|llmdesk' . --exclude-dir=.git --exclude-dir=.cover --exclude-dir=data --exclude=TODO.md
+    ```
 
 ## Other issues, ideas
 

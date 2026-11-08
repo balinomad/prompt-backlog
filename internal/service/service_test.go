@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/llm-desk/internal/apperr"
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/service"
-	"github.com/balinomad/llm-desk/internal/store"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/service"
+	"github.com/balinomad/prompt-backlog/internal/store"
 )
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

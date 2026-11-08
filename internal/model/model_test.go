@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/model"
 )
 
 // ── Time helpers ──────────────────────────────────────────────────────────────

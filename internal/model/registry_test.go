@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/llm-desk/internal/apperr"
-	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
 )
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

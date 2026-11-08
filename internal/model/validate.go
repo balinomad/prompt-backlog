@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/balinomad/llm-desk/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 )
 
 // Entity-specific — wraps its category, so both checks succeed on the

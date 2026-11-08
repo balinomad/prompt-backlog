@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	tui "github.com/balinomad/llm-desk/cmd/tui"
-	"github.com/balinomad/llm-desk/cmd/tui/views"
-	"github.com/balinomad/llm-desk/internal/apperr"
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/service"
-	"github.com/balinomad/llm-desk/internal/store"
+	tui "github.com/balinomad/prompt-backlog/cmd/tui"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/service"
+	"github.com/balinomad/prompt-backlog/internal/store"
 
 	"github.com/rivo/tview"
 )

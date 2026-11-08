@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/store"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/store"
 )
 
 const (

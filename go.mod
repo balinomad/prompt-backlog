@@ -1,4 +1,4 @@
-module github.com/balinomad/llm-desk
+module github.com/balinomad/prompt-backlog
 
 go 1.26.0
 

@@ -1,6 +1,6 @@
 package panels
 
-import "github.com/balinomad/llm-desk/internal/model"
+import "github.com/balinomad/prompt-backlog/internal/model"
 
 // FormatPauseUntil exposes formatPauseUntil for black-box tests.
 var FormatPauseUntil = formatPauseUntil

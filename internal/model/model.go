@@ -1,4 +1,4 @@
-// Package model defines the domain entities for llm-desk and the
+// Package model defines the domain entities for prompt-backlog and the
 // concurrency-safe Registry that owns their lifecycle.
 //
 // Vendor, User, Project, and Account are identified by an immutable natural

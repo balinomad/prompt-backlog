@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views/panels"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/panels"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views"
-	"github.com/balinomad/llm-desk/cmd/tui/views/forms"
-	"github.com/balinomad/llm-desk/cmd/tui/views/internal/viewtest"
-	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/forms"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/internal/viewtest"
+	"github.com/balinomad/prompt-backlog/internal/model"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"

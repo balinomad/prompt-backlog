@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views"
-	"github.com/balinomad/llm-desk/cmd/tui/views/panels"
-	"github.com/balinomad/llm-desk/internal/apperr"
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/service"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/panels"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/service"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/terminfo"
@@ -26,7 +26,7 @@ import (
 
 // AppName is the application's display name, used in dialog titles and
 // CLI output.
-const AppName = "llm-desk"
+const AppName = "prompt-backlog"
 
 const savedStatusMessage = "[green]saved ✓[-]"
 

@@ -3,7 +3,7 @@ package forms_test
 import (
 	"testing"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views/forms"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/forms"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"

@@ -1,4 +1,4 @@
-llm-desk has four full-screen pages: main, vendors, users, and projects.
+prompt-backlog has four full-screen pages: main, vendors, users, and projects.
 The main screen (accounts, sessions, notes, and account info) is always one
 of the pages; vendors, users, and projects are the others, reached from the
 main screen via `v` / `u` / `p` and returned from via `Esc`. All list rows
@@ -7,7 +7,7 @@ rows use a one-cell inset on both sides that also applies to wrapped lines.
 
 ── Main screen (accounts, sessions, notes, and account info) ────────────────
 
-┌ llm-desk ───────────────────────────────────────────────────────────────┐
+┌ prompt-backlog ─────────────────────────────────────────────────────────┐
 │                                                                         │
 │  ┌ Accounts 1/3 ────────────┐  ┌ Sessions 1/5 ───────────────────────┐  │
 │  │▶ claude │ Alice │ 18:00  │  │▶ Alpha │ Architecture review│ 2 │   │  │

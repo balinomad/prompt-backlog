@@ -1,4 +1,4 @@
-# golangci-lint v2 configuration for llm-desk.
+# golangci-lint v2 configuration for prompt-backlog.
 # Run: golangci-lint run ./...
 
 version: "2"
@@ -96,7 +96,7 @@ linters:
           list-mode: strict
           allow:
             - $gostd
-            - github.com/balinomad/llm-desk
+            - github.com/balinomad/prompt-backlog
             - github.com/gdamore/tcell/v2
             - github.com/rivo/tview
             - golang.design/x/clipboard
@@ -204,7 +204,7 @@ linters:
 
     wrapcheck:
       ignore-package-globs:
-        - "github.com/balinomad/llm-desk/internal/*"
+        - "github.com/balinomad/prompt-backlog/internal/*"
 
     exhaustive:
       # A default case is accepted as exhaustive coverage.

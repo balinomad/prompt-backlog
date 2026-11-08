@@ -4,7 +4,7 @@ package views
 import (
 	"errors"
 
-	"github.com/balinomad/llm-desk/internal/service"
+	"github.com/balinomad/prompt-backlog/internal/service"
 
 	"github.com/rivo/tview"
 )

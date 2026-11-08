@@ -12,9 +12,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/balinomad/llm-desk/internal/service"
-	"github.com/balinomad/llm-desk/internal/store"
-	"github.com/balinomad/llm-desk/internal/store/json"
+	"github.com/balinomad/prompt-backlog/internal/service"
+	"github.com/balinomad/prompt-backlog/internal/store"
+	"github.com/balinomad/prompt-backlog/internal/store/json"
 )
 
 const jsonExt = ".json"

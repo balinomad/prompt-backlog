@@ -1,7 +1,7 @@
 package views_test
 
 import (
-	"github.com/balinomad/llm-desk/cmd/tui/views/internal/viewtest"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/internal/viewtest"
 )
 
 var (

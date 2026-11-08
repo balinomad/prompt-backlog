@@ -1,6 +1,6 @@
-# llm-desk
+# prompt-backlog
 
-`llm-desk` is a terminal-based session manager for operators running multiple LLM conversations in parallel across vendors such as Claude, ChatGPT, and Gemini. Rate-limit state is tracked per account, so `llm-desk` tells you when an account is available again; each session keeps its own name, an optional project, a URL, and an ordered queue of prompts to paste into the chat, so you can switch to another account immediately and lose no context.
+`prompt-backlog` is a terminal-based session manager for operators running multiple LLM conversations in parallel across vendors such as Claude, ChatGPT, and Gemini. Rate-limit state is tracked per account, so `prompt-backlog` tells you when an account is available again; each session keeps its own name, an optional project, a URL, and an ordered queue of prompts to paste into the chat, so you can switch to another account immediately and lose no context.
 
 ## Features
 
@@ -21,16 +21,16 @@
 ## Installation
 
 ```bash
-git clone https://github.com/balinomad/llm-desk.git
-cd llm-desk
-go build -o llm-desk ./cmd/tui
+git clone https://github.com/balinomad/prompt-backlog.git
+cd prompt-backlog
+go build -o prompt-backlog ./cmd/tui
 ```
 
 ## Usage
 
 ```bash
-./llm-desk --data /path/to/registry.json
-./llm-desk -d /path/to/registry.json
+./prompt-backlog --data /path/to/registry.json
+./prompt-backlog -d /path/to/registry.json
 ```
 
 The `--data` / `-d` flag is required. If the file does not exist, an empty registry is created. Parent directories are created automatically.
@@ -68,7 +68,7 @@ Serialisation is handled entirely by the store layer using internal DTO types. M
 ## Project Structure
 
 ```text
-llm-desk/
+prompt-backlog/
 ├── cmd/
 │   └── tui/
 │       └── views/

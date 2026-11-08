@@ -5,10 +5,10 @@ package viewtest
 import (
 	"testing"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views"
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/service"
-	"github.com/balinomad/llm-desk/internal/store"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/service"
+	"github.com/balinomad/prompt-backlog/internal/store"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -177,7 +177,7 @@ func (m *FakeApp) SetHints(specific, common string) {
 func (m *FakeApp) Quit() { m.Quitted = true }
 
 // AppName returns the application name.
-func (m *FakeApp) AppName() string { return "llm-desk" }
+func (m *FakeApp) AppName() string { return "prompt-backlog" }
 
 // CopyToClipboard records text and returns CopyErr.
 func (m *FakeApp) CopyToClipboard(text string) error {

@@ -3,7 +3,7 @@ package forms
 import (
 	"unicode"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"

@@ -484,7 +484,7 @@ func NewConfirmModal(message string, onConfirm, onCancel func()) tview.Primitive
 	return NewModalState(modal, modal)
 }
 
-// ConfirmQuit opens the "Quit llm-desk?" confirmation modal, shared by
+// ConfirmQuit opens the "Quit prompt-backlog?" confirmation modal, shared by
 // every panel's KeyQuit case. returnSpecific/returnCommon are the hint
 // lines restored if the operator cancels, so each panel returns to its
 // own hint lines rather than a neighbour's.

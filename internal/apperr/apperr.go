@@ -1,5 +1,5 @@
 // Package apperr defines the generic error categories shared across every
-// layer of llm-desk. These are deliberately type-free: they carry no
+// layer of prompt-backlog. These are deliberately type-free: they carry no
 // reference to model's domain types, so any layer — including ones that
 // must not depend on internal/model directly — can classify an error by
 // category with errors.Is, without importing the domain types that

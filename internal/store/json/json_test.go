@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/llm-desk/internal/apperr"
-	"github.com/balinomad/llm-desk/internal/model"
-	storejson "github.com/balinomad/llm-desk/internal/store/json"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	storejson "github.com/balinomad/prompt-backlog/internal/store/json"
 )
 
 // ── Test helpers ──────────────────────────────────────────────────────────────

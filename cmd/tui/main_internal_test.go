@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views"
-	"github.com/balinomad/llm-desk/internal/apperr"
-	"github.com/balinomad/llm-desk/internal/model"
-	"github.com/balinomad/llm-desk/internal/service"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/service"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/gdamore/tcell/v2/terminfo"
@@ -507,7 +507,7 @@ func TestRun(t *testing.T) {
 			name:       "help",
 			args:       []string{"-h"},
 			wantCode:   exitSuccess,
-			wantStderr: "Usage of llm-desk",
+			wantStderr: "Usage of prompt-backlog",
 		},
 	}
 	for _, tc := range cases {

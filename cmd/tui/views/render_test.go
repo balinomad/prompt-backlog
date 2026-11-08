@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/balinomad/llm-desk/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
 
 	"github.com/rivo/tview"
 )

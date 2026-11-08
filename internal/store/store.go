@@ -1,7 +1,7 @@
 // Package store defines the persistence contract for the registry.
 package store
 
-import "github.com/balinomad/llm-desk/internal/model"
+import "github.com/balinomad/prompt-backlog/internal/model"
 
 // Store is the persistence contract for the registry.
 // Implementations must be safe to call from a single goroutine only;

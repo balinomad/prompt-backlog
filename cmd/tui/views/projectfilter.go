@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/balinomad/llm-desk/internal/model"
+	"github.com/balinomad/prompt-backlog/internal/model"
 
 	"github.com/rivo/tview"
 )
