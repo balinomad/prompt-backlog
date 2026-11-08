@@ -3,6 +3,7 @@ package service_test
 import (
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,7 +55,15 @@ func (m *mockStore) Save(_ *model.Registry) error {
 // mockStore that never fails.
 func newService(t *testing.T) *service.Service {
 	t.Helper()
-	svc, err := service.New(&mockStore{reg: model.NewRegistry()})
+	reg := model.NewRegistry()
+	var tick atomic.Int64
+	base := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	// A monotonic clock keeps activity-order tests independent of wall-clock
+	// resolution, which can be coarse on Windows and loaded CI runners.
+	reg.SetClock(func() time.Time {
+		return base.Add(time.Duration(tick.Add(1)) * time.Second)
+	})
+	svc, err := service.New(&mockStore{reg: reg})
 	must(t, err)
 	return svc
 }
