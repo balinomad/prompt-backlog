@@ -2,9 +2,9 @@ name: Go
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
   pull_request:
-    branches: ["main"]
+    branches: ["master"]
 
 # Cancel in-progress runs on the same branch when a new push arrives.
 concurrency:
@@ -22,9 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -49,21 +49,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # golangci-lint-action manages its own cache; disable setup-go's
           # default cache to prevent interference.
           cache: false
 
-      - name: Execute golangci-lint
-        uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@v9
         with:
           # Pin to a specific v2 release for reproducibility.
           # Update deliberately; do not use 'latest' in production pipelines.
-          version: v2.12.2
+          version: v2.15.0
           args: --timeout=4m
 
   # Vulnerability scan against the Go vulnerability database.
@@ -73,20 +72,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          # govulncheck-action manages its own cache.
-          cache: false
+          cache: true
 
       - name: Run govulncheck
-        uses: golang/govulncheck-action@v1
-        with:
-          go-version-file: go.mod
-          # Pinned to v1.1.3 to prevent non-reproducible run behavior.
-          govulncheck-version: v1.3.0
+        run: |
+          # Pin version to v1.9.0 for deterministic CI
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
 
   # Verify the production binary cross-compiles cleanly for the deployment target.
   # Tests run on ubuntu-latest (linux/amd64); the deployed container runs linux/arm64.
@@ -96,9 +93,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -127,19 +124,22 @@ jobs:
         go: ["go.mod", "stable"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go (from go.mod)
         if: matrix.go == 'go.mod'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
 
       - name: Set up Go (stable)
         if: matrix.go == 'stable'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "stable"
+
+      - name: Build
+        run: go build -v ./...
 
       - name: Run tests with race detector (Linux)
         if: runner.os == 'Linux'
@@ -151,13 +151,13 @@ jobs:
         if: runner.os != 'Linux'
         run: go test -count=1 -shuffle=on ./...
 
-      # - name: Upload coveragee reports to Codecov
-      #   if: matrix.os == 'ubuntu-latest' && matrix.go == 'go.mod'
-      #   uses: codecov/codecov-action@v5
-      #   with:
-      #     files: coverage.out
-      #     token: ${{ secrets.CODECOV_TOKEN }}
-      #     fail_ci_if_error: false
+      - name: Upload coverage reports to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'go.mod'
+        uses: codecov/codecov-action@v7
+        with:
+          files: coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   # ── Branch protection gate ─────────────────────────────────────────────────
   # Require all jobs to pass. Configure this job as a required status check in
