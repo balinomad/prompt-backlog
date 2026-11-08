@@ -19,13 +19,23 @@ tasks:
   setup:
     desc: Install necessary toolchain dependencies
     cmds:
-      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
       - go install golang.org/x/vuln/cmd/govulncheck@latest
+
+  setup:release:
+    desc: Install release tooling
+    cmds:
+      - go install github.com/goreleaser/goreleaser/v2@latest
 
   tidy:
     desc: Clean and tidy dependencies
     cmds:
       - go mod tidy
+
+  mod:check:
+    desc: Verify go.mod and go.sum are tidy
+    cmds:
+      - go mod tidy -diff
 
   upgrade:
     desc: Upgrade all dependencies
@@ -42,6 +52,11 @@ tasks:
     desc: Run govulncheck
     cmds:
       - govulncheck ./...
+
+  vuln:ci:
+    desc: Run govulncheck with the go.mod toolchain
+    cmds:
+      - GOTOOLCHAIN=go$(awk '$1=="go"{print $2; exit}' go.mod) go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   build:
     desc: Build the project
@@ -74,7 +89,7 @@ tasks:
     cmds:
       - mkdir -p {{.COVER_DIR}}
       - rm -f {{.COVER_DIR}}/coverage.txt {{.COVER_DIR}}/coverage.html
-      - go test -race -covermode=atomic -coverprofile={{.COVER_DIR}}/coverage.txt ./...
+      - go test -race -count=1 -covermode=atomic -coverprofile={{.COVER_DIR}}/coverage.txt ./...
       - go tool cover -func={{.COVER_DIR}}/coverage.txt
       - go tool cover -html={{.COVER_DIR}}/coverage.txt -o {{.COVER_DIR}}/coverage.html
       - echo "HTML report generated at {{.COVER_DIR}}/coverage.html"
@@ -87,6 +102,7 @@ tasks:
   check:
     desc: Run the complete CI/CD pipeline
     cmds:
+      - task: mod:check
       - task: build
       - task: lint
       - task: vuln
@@ -97,3 +113,16 @@ tasks:
     cmds:
       - task: upgrade
       - task: check
+
+  release:check:
+    desc: Validate the GoReleaser configuration
+    cmds:
+      - goreleaser check
+
+  release:snapshot:
+    desc: Build release archives locally without publishing
+    preconditions:
+      - sh: test -z "$(git status --porcelain)"
+        msg: working tree must be clean
+    cmds:
+      - goreleaser release --snapshot --clean --skip=publish
