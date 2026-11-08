@@ -22,7 +22,7 @@
 
 ## Requirements
 
-- Go 1.26 or later
+- Go 1.26.3 or later
 - A terminal emulator with UTF-8 support
 - A terminal size of at least 80x24 characters
 - No external clipboard tool is required

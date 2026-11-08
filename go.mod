@@ -1,6 +1,6 @@
 module github.com/balinomad/prompt-backlog
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/gdamore/tcell/v2 v2.13.10
@@ -14,7 +14,7 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.design/x/x11 v0.2.0 // indirect
-	golang.org/x/exp/shiny v0.0.0-20261014143641-f0251eb4aa3e // indirect
+	golang.org/x/exp/shiny v0.0.0-20261106192419-47ce03d25ef0 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867 // indirect
 	golang.org/x/sys v0.49.0 // indirect
