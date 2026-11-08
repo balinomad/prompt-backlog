@@ -95,23 +95,8 @@ func (p *NotesPanel) SetWidth(width int) {
 func (p *NotesPanel) Refresh() {
 	svc := p.app.Service()
 
-	var acc *model.Account
-	if p.account != nil {
-		resolved, err := svc.Account(p.account.UserEmail(), p.account.VendorName())
-		if err == nil {
-			acc = resolved
-		}
-	}
+	acc := resolvePanelAccount(svc, p.account, p.filter)
 	p.account = acc
-	if acc != nil {
-		projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
-		if err != nil {
-			projects = nil
-		}
-		p.filter.SetAccount(acc.Key(), true, projects)
-	} else {
-		p.filter.SetAccount(model.AccountKey{}, false, nil)
-	}
 
 	prevID := uint64(0)
 	prevIndex := p.GetCurrentItem()
@@ -197,12 +182,12 @@ func (p *NotesPanel) handleEdit() *tcell.EventKey {
 	if note == nil {
 		return nil
 	}
-	views.ShowModal(p.app, forms.NewNoteForm(p.app, note, p.account, nil, p.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, forms.NewNoteForm(p.app, note, p.account, nil, p.closeForm), views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
 func (p *NotesPanel) handleInsert() *tcell.EventKey {
-	views.ShowModal(p.app, forms.NewNoteForm(p.app, nil, p.account, nil, p.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, forms.NewNoteForm(p.app, nil, p.account, nil, p.closeForm), views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -254,7 +239,7 @@ func noteRows(notes []*model.Note, svc *service.Service, width int) []string {
 		project := tview.Escape(views.TruncateWidth(note.ProjectName(), views.ProjectColumnWidth))
 		account := ""
 		if key, ok := note.AccountKey(); ok {
-			account = tview.Escape(views.TruncateWidth(noteAccountName(svc, key), views.NameColumnWidthCap))
+			account = tview.Escape(views.TruncateWidth(views.UserDisplayName(svc, key.Email), views.NameColumnWidthCap))
 		}
 		raw[i] = []string{project, account, tview.Escape(firstLine(note.Text()))}
 		hasProject = hasProject || project != ""
@@ -325,11 +310,4 @@ func removeNoteColumn(columns []noteColumn, remove noteColumn) []noteColumn {
 		}
 	}
 	return next
-}
-
-func noteAccountName(svc *service.Service, key model.AccountKey) string {
-	if u := svc.User(key.Email); u != nil {
-		return u.Name()
-	}
-	return key.Email
 }

@@ -1,8 +1,42 @@
 # Todo
 
+## Errors
+
+## Rename
+
+- [ ] Rename the project from `llm-desk` to `prompt-backlog` (before making the repo public; apply one sub-item at a time; run after the README rewording item, or rely on the final grep to catch leftovers in the text that item adds)
+  - [ ] Decide the binary name (default `prompt-backlog`, same as the repo); the sub-items below assume the default
+  - [ ] Decide whether `go install` must produce `prompt-backlog`: it names the binary after the package directory, so `cmd/tui` installs as `tui`; default is to keep `cmd/tui` (the layout is documented as shared across frontends) and document only `go build -o prompt-backlog ./cmd/tui`
+  - [ ] `go.mod`: change the module path with the command below
+  - [ ] Rewrite every import of the old module path in the Go files (the sed form below is GNU sed; on macOS use `sed -i ''`), then run `go build ./...`
+
+    ```bash
+    go mod edit -module github.com/balinomad/prompt-backlog
+    grep -rl 'github.com/balinomad/llm-desk' --include='*.go' . | xargs sed -i 's#github.com/balinomad/llm-desk#github.com/balinomad/prompt-backlog#g'
+    ```
+
+  - [ ] `cmd/tui/app.go`: change `const AppName = "llm-desk"` to `"prompt-backlog"` (it feeds the quit dialog, the flag set name, and the error prefix)
+  - [ ] `cmd/tui/views/helpers_test.go`: change the `AppName()` return value in `mockApp` to `"prompt-backlog"`
+  - [ ] `cmd/tui/main_internal_test.go`: change the expected stderr substring `Usage of llm-desk` to `Usage of prompt-backlog`
+  - [ ] `.golangci.yml`: update the header comment, the `depguard` allow entry `github.com/balinomad/llm-desk`, and the `wrapcheck` glob `github.com/balinomad/llm-desk/internal/*`
+  - [ ] `README.md`: update the title, the `git clone` URL, `cd llm-desk`, `go build -o llm-desk ./cmd/tui`, the `./llm-desk --data ...` usage lines, and the root of the project-structure tree
+  - [ ] `docs/screen-layout.txt`: change the first word of the intro and the main-screen frame title `llm-desk` to `prompt-backlog`, and remove 6 `─` characters from that frame's top border so the box width is unchanged (the intro line grows by 6 columns; ask before rewrapping)
+  - [ ] GitHub: rename the repository in Settings, then run the command below; the old URL redirects only until a new repo takes the old name
+
+    ```bash
+    git remote set-url origin https://github.com/balinomad/prompt-backlog.git
+    ```
+
+  - [ ] Verify: run `task check` and expect a clean pass
+  - [ ] Verify no leftovers: run `grep -rniE 'llm-desk|llm_desk|llmdesk' . --exclude-dir=.git` and expect no output
+
+## Other issues, ideas
+
+- [ ] chatbot-prompt-notebook, chatbot-prompt-organizer, chatbot-session-organizer, prompt-notebook, prompt-organizer, conversation-tracker, chatbot-conversation-tracker
 - [ ] `model.Registry`'s multi-result read getters (`ProjectSessions`, `AccountSessions`, `AccountProjects`, `ProjectAccounts`) return nil on stale/missing input by design, so callers don't error-check reads — revisit only if the service layer needs to distinguish "not found" from "found, zero results".
 - [ ] User details should show additional information (e.g. related vendors), not the email.
 - [ ] Shared data access. Enable/disable/lock/single app instance?
+- [ ] frontmatters
 
 ## Public release
 

@@ -89,6 +89,7 @@ func TestStatusBar_SetHints(t *testing.T) {
 		{"vendors panel", views.HintsVendorsPanelSpecific, views.HintsVendorsPanelCommon},
 		{"users panel", views.HintsUsersPanelSpecific, views.HintsUsersPanelCommon},
 		{"form", views.HintsFormSpecific, views.HintsFormCommon},
+		{"text form", views.HintsFormSpecific, views.HintsTextFormCommon},
 		{"confirm modal", views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 		{"help overlay", views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 	}
@@ -125,6 +126,7 @@ func TestStatusBar_CommonHintsConstantsNonEmpty(t *testing.T) {
 		{"HintsVendorsPanelCommon", views.HintsVendorsPanelCommon},
 		{"HintsUsersPanelCommon", views.HintsUsersPanelCommon},
 		{"HintsFormCommon", views.HintsFormCommon},
+		{"HintsTextFormCommon", views.HintsTextFormCommon},
 		{"HintsConfirmModalCommon", views.HintsConfirmModalCommon},
 		{"HintsHelpOverlayCommon", views.HintsHelpOverlayCommon},
 	}
@@ -315,7 +317,7 @@ func TestHintLinesExactText(t *testing.T) {
 
 func TestMinimumWidth(t *testing.T) {
 	t.Parallel()
-	if got, want := views.MinimumWidth(7), 78; got != want {
+	if got, want := views.MinimumWidth(7), 86; got != want {
 		t.Errorf("MinimumWidth(7) = %d, want %d", got, want)
 	}
 }
@@ -426,7 +428,7 @@ func TestNewHelpOverlay_EscCallsOnClose(t *testing.T) {
 // under test, not the specific string.
 func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 
 	capture := p.GetInputCapture()
@@ -459,7 +461,7 @@ func TestShowHelp_EscRestoresHintsAndHidesModal(t *testing.T) {
 // hidden, Quit not called) is what's under test, not the specific string.
 func TestConfirmQuit_EscRestoresHintsAndHidesModal(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 
 	capture := p.GetInputCapture()

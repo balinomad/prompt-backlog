@@ -11,9 +11,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-func newSessionFormFixture(t *testing.T) (*mockApp, *model.Session) {
+func newSessionFormFixture(t *testing.T) (*fakeApp, *model.Session) {
 	t.Helper()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	sess, err := app.Svc.StartSession("alice@example.com", "claude", service.SessionFields{
 		Name:        "Name",
 		ProjectName: "Alpha",
@@ -22,14 +22,14 @@ func newSessionFormFixture(t *testing.T) (*mockApp, *model.Session) {
 	return app, sess
 }
 
-func sessionFormAccount(t *testing.T, app *mockApp, email, vendor string) *model.Account {
+func sessionFormAccount(t *testing.T, app *fakeApp, email, vendor string) *model.Account {
 	t.Helper()
 	acc, err := app.Svc.Account(email, vendor)
 	must(t, err)
 	return acc
 }
 
-func sessionFormOptions(t *testing.T, app *mockApp, sess *model.Session, onClose func()) *forms.SessionFormOptions {
+func sessionFormOptions(t *testing.T, app *fakeApp, sess *model.Session, onClose func()) *forms.SessionFormOptions {
 	t.Helper()
 	return &forms.SessionFormOptions{
 		Title:       "Edit Session",
@@ -81,10 +81,10 @@ func TestNewSessionForm_InitialValues(t *testing.T) {
 	sess = app.Svc.Session(sess.ID())
 
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() {})))
-	if got := form.GetFormItemByLabel("Name").(*tview.InputField).GetText(); got != "Architecture review" {
+	if got := form.GetFormItemByLabel("Name").(*forms.InputField).GetText(); got != "Architecture review" {
 		t.Errorf("Name = %q", got)
 	}
-	if got := form.GetFormItemByLabel("URL").(*tview.InputField).GetText(); got != "https://example.com/chat/1" {
+	if got := form.GetFormItemByLabel("URL").(*forms.InputField).GetText(); got != "https://example.com/chat/1" {
 		t.Errorf("URL = %q", got)
 	}
 	dropdown := form.GetFormItemByLabel("Project").(*tview.DropDown)
@@ -120,8 +120,8 @@ func TestNewSessionForm_Save(t *testing.T) {
 	app, sess := newSessionFormFixture(t)
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() {})))
 
-	form.GetFormItemByLabel("Name").(*tview.InputField).SetText("  New Name  ")
-	form.GetFormItemByLabel("URL").(*tview.InputField).SetText("  https://example.com/chat/2  ")
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("  New Name  ", false)
+	form.GetFormItemByLabel("URL").(*forms.InputField).SetText("  https://example.com/chat/2  ", false)
 	form.GetFormItemByLabel("Project").(*tview.DropDown).SetCurrentOption(2) // Beta
 	pressButton(t, form.GetButton(0))
 
@@ -143,7 +143,7 @@ func TestNewSessionForm_ProjectFailureStopsLaterChanges(t *testing.T) {
 	app, sess := newSessionFormFixture(t)
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() {})))
 
-	form.GetFormItemByLabel("Name").(*tview.InputField).SetText("should not apply")
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("should not apply", false)
 	form.GetFormItemByLabel("Project").(*tview.DropDown).SetCurrentOption(2) // Beta
 	must(t, app.Svc.RevokeProject("alice@example.com", "claude", "Beta"))
 	pressButton(t, form.GetButton(0))
@@ -163,7 +163,7 @@ func TestNewSessionForm_CtrlSAndCancel(t *testing.T) {
 	closed := false
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() { closed = true })))
 
-	form.GetFormItemByLabel("Name").(*tview.InputField).SetText("via ctrl-s")
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("via ctrl-s", false)
 	form.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModNone), func(tview.Primitive) {})
 	if !closed {
 		t.Error("Ctrl+S did not close the form")
@@ -175,7 +175,7 @@ func TestNewSessionForm_CtrlSAndCancel(t *testing.T) {
 
 func TestNewSessionForm_StartShape(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc := sessionFormAccount(t, app, "alice@example.com", "claude")
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, &forms.SessionFormOptions{
 		Title:       "Start Session",

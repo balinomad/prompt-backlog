@@ -316,8 +316,8 @@ func (s *Session) URL() string { return s.url }
 // Status returns the session's lifecycle status.
 func (s *Session) Status() SessionStatus { return s.status }
 
-// UpdatedAt returns the time of the session's last queue change, or the zero
-// time when the session has never had a queue change.
+// UpdatedAt returns the time of the session's creation or last queue change,
+// or the zero time for a session restored without that field.
 func (s *Session) UpdatedAt() time.Time { return s.updatedAt }
 
 // Queue returns a copy of the prompts queued for this session.

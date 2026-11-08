@@ -138,10 +138,7 @@ func (p *AccountsPanel) Refresh() {
 	hasPause := false
 	hasProject := false
 	for i, a := range all {
-		userName := a.UserEmail()
-		if u := svc.User(a.UserEmail()); u != nil {
-			userName = u.Name()
-		}
+		userName := views.UserDisplayName(svc, a.UserEmail())
 		pause := pauseStatusText(a.PauseUntil(), now)
 		project := latestGrantedProject(svc, grantedProjects, a)
 		hasPause = hasPause || pause != ""
@@ -248,7 +245,7 @@ func (p *AccountsPanel) handleEdit() *tcell.EventKey {
 		p.app.SetHints(views.HintsAccountsPanelSpecific, views.HintsAccountsPanelCommon)
 		p.app.HideModal()
 	})
-	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -394,11 +391,7 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 	svc := p.app.Service()
 	email := acc.UserEmail()
 	vendor := acc.VendorName()
-
-	userName := email
-	if u := svc.User(email); u != nil {
-		userName = u.Name()
-	}
+	userName := views.UserDisplayName(svc, email)
 
 	var sb strings.Builder
 

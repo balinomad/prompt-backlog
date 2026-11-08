@@ -88,24 +88,9 @@ func (p *SessionsPanel) SetWidth(width int) {
 func (p *SessionsPanel) Refresh() {
 	svc := p.app.Service()
 
-	var acc *model.Account
-	if p.account != nil {
-		resolved, err := svc.Account(p.account.UserEmail(), p.account.VendorName())
-		if err == nil {
-			acc = resolved
-		}
-	}
+	acc := resolvePanelAccount(svc, p.account, p.filter)
 	p.account = acc
 
-	if acc != nil {
-		projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
-		if err != nil {
-			projects = nil
-		}
-		p.filter.SetAccount(acc.Key(), true, projects)
-	} else {
-		p.filter.SetAccount(model.AccountKey{}, false, nil)
-	}
 	var sessions []*model.Session
 	if acc != nil {
 		all, err := svc.AccountSessionsActivityOrder(acc.UserEmail(), acc.VendorName())
@@ -171,7 +156,7 @@ func (p *SessionsPanel) handleEnter() *tcell.EventKey {
 		OnSaveAndPause: func() {
 			p.openPauseForSession(session)
 		},
-	}), views.HintsFormSpecific, views.HintsFormCommon)
+	}), views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -181,7 +166,7 @@ func (p *SessionsPanel) openPauseForSession(session *model.Session) {
 		p.app.SetError(err.Error())
 		return
 	}
-	views.ShowModal(p.app, forms.NewAccountForm(p.app, account, p.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, forms.NewAccountForm(p.app, account, p.closeForm), views.HintsFormSpecific, views.HintsTextFormCommon)
 }
 
 func (p *SessionsPanel) handleDeleteSession() *tcell.EventKey {
@@ -237,7 +222,7 @@ func (p *SessionsPanel) handleStart() *tcell.EventKey {
 		Account:     account,
 		OnSubmit:    onSubmit,
 		OnCancel:    p.closeForm,
-	}), views.HintsFormSpecific, views.HintsFormCommon)
+	}), views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 

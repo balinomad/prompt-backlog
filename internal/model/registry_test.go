@@ -59,6 +59,18 @@ func seedRegistry(t *testing.T) *model.Registry {
 	return reg
 }
 
+// emptyAccountRegistry returns a registry with one vendor, user, and account,
+// and no sessions.
+func emptyAccountRegistry(t *testing.T) (*model.Registry, *model.Account) {
+	t.Helper()
+	reg := model.NewRegistry()
+	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
+	must(t, err)
+	return reg, acc
+}
+
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 func TestNewRegistry(t *testing.T) {
@@ -1825,15 +1837,15 @@ func TestRegistry_AddSession_UpdatedAt(t *testing.T) {
 		}
 	})
 
-	t.Run("empty queue leaves updated-at zero", func(t *testing.T) {
+	t.Run("empty queue sets updated-at from the clock", func(t *testing.T) {
 		t.Parallel()
 		reg := seedRegistry(t)
 		reg.SetClock(func() time.Time { return fixed })
 		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
 		sess, err := reg.AddSession(acc, nil, "Name", nil)
 		must(t, err)
-		if !sess.UpdatedAt().IsZero() {
-			t.Errorf("UpdatedAt() = %v, want zero", sess.UpdatedAt())
+		if !sess.UpdatedAt().Equal(fixed) {
+			t.Errorf("UpdatedAt() = %v, want %v", sess.UpdatedAt(), fixed)
 		}
 	})
 
@@ -2084,8 +2096,7 @@ func TestRegistry_LatestSession(t *testing.T) {
 
 	t.Run("greatest non-zero updated-at wins", func(t *testing.T) {
 		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
+		reg, acc := emptyAccountRegistry(t)
 		early := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 		late := early.Add(time.Hour)
 
@@ -2108,8 +2119,7 @@ func TestRegistry_LatestSession(t *testing.T) {
 
 	t.Run("equal updated-at uses the greater ID", func(t *testing.T) {
 		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
+		reg, acc := emptyAccountRegistry(t)
 		at := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 		reg.SetClock(func() time.Time { return at })
 
@@ -2125,16 +2135,15 @@ func TestRegistry_LatestSession(t *testing.T) {
 		}
 	})
 
-	t.Run("never-touched sessions are ignored", func(t *testing.T) {
+	t.Run("restored sessions without activity are ignored", func(t *testing.T) {
 		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
+		reg, acc := emptyAccountRegistry(t)
 		at := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 		reg.SetClock(func() time.Time { return at })
 
-		touched, err := reg.AddSession(acc, nil, "touched", []model.Prompt{model.NewPrompt("a")})
+		_, err := reg.RestoreSession(acc, 100, nil, "never", "", model.SessionStatusActive, time.Time{}, nil)
 		must(t, err)
-		_, err = reg.AddSession(acc, nil, "never", nil)
+		touched, err := reg.AddSession(acc, nil, "touched", []model.Prompt{model.NewPrompt("a")})
 		must(t, err)
 
 		got, ok, err := reg.LatestSession(acc)
@@ -2144,11 +2153,10 @@ func TestRegistry_LatestSession(t *testing.T) {
 		}
 	})
 
-	t.Run("no touched session", func(t *testing.T) {
+	t.Run("no session with activity", func(t *testing.T) {
 		t.Parallel()
-		reg := seedRegistry(t)
-		acc := reg.Account(reg.User("alice@example.com"), reg.Vendor("claude"))
-		_, err := reg.AddSession(acc, nil, "never", nil)
+		reg, acc := emptyAccountRegistry(t)
+		_, err := reg.RestoreSession(acc, 100, nil, "never", "", model.SessionStatusActive, time.Time{}, nil)
 		must(t, err)
 
 		got, ok, err := reg.LatestSession(acc)
@@ -2228,7 +2236,42 @@ func TestRegistry_AccountSessionsActivityOrder(t *testing.T) {
 
 		got, err := reg.AccountSessionsActivityOrder(acc)
 		must(t, err)
-		want := []uint64{s3.ID(), s2.ID(), s1.ID(), s4.ID()}
+		want := []uint64{s4.ID(), s3.ID(), s2.ID(), s1.ID()}
+		if len(got) != len(want) {
+			t.Fatalf("got %d sessions, want %d", len(got), len(want))
+		}
+		for i, id := range want {
+			if got[i].ID() != id {
+				t.Errorf("got[%d] = %d, want %d", i, got[i].ID(), id)
+			}
+		}
+	})
+
+	t.Run("closed sessions after non-closed", func(t *testing.T) {
+		t.Parallel()
+		reg := model.NewRegistry()
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
+		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
+		must(t, err)
+		at1 := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+
+		reg.SetClock(func() time.Time { return at1 })
+		s1, err := reg.AddSession(acc, nil, "one", nil)
+		must(t, err)
+		reg.SetClock(func() time.Time { return at1.Add(time.Hour) })
+		s2, err := reg.AddSession(acc, nil, "two", nil)
+		must(t, err)
+		reg.SetClock(func() time.Time { return at1.Add(2 * time.Hour) })
+		s3, err := reg.AddSession(acc, nil, "three", nil)
+		must(t, err)
+
+		must(t, reg.UpdateSessionStatus(s1, model.SessionStatusClosed))
+		must(t, reg.UpdateSessionStatus(reg.Session(s2.ID()), model.SessionStatusClosed))
+
+		got, err := reg.AccountSessionsActivityOrder(acc)
+		must(t, err)
+		want := []uint64{s3.ID(), s2.ID(), s1.ID()}
 		if len(got) != len(want) {
 			t.Fatalf("got %d sessions, want %d", len(got), len(want))
 		}
@@ -3132,6 +3175,8 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 			beforeID = max(beforeID, session.ID())
 		}
 
+		at := time.Date(2026, 10, 30, 9, 15, 0, 0, time.UTC)
+		reg.SetClock(func() time.Time { return at })
 		sess, err := reg.StartSessionAtomic(acc, nil, "name", "", "", nil)
 		must(t, err)
 		if sess.ID() != beforeID+1 {
@@ -3149,8 +3194,8 @@ func TestRegistry_StartSessionAtomic(t *testing.T) {
 		if len(sess.Queue()) != 0 {
 			t.Errorf("Queue() = %v, want empty", sess.Queue())
 		}
-		if !sess.UpdatedAt().IsZero() {
-			t.Errorf("UpdatedAt() = %v, want zero", sess.UpdatedAt())
+		if !sess.UpdatedAt().Equal(at) {
+			t.Errorf("UpdatedAt() = %v, want %v", sess.UpdatedAt(), at)
 		}
 	})
 

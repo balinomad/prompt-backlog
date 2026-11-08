@@ -31,7 +31,7 @@ func vendorsPanelParts(t *testing.T, p *panels.VendorsPanel) (*tview.List, *tvie
 
 func TestNewVendorsPanel(t *testing.T) {
 	t.Parallel()
-	p := panels.NewVendorsPanel(newMockApp(t))
+	p := panels.NewVendorsPanel(newFakeApp(t))
 	if p == nil {
 		t.Fatal("expected non-nil VendorsPanel")
 	}
@@ -48,19 +48,19 @@ func TestVendorsPanel_Refresh(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(*testing.T, *mockApp)
+		setup     func(*testing.T, *fakeApp)
 		wantCount int
 	}{
-		{"two vendors", func(_ *testing.T, _ *mockApp) {}, 2},
-		{"empty registry", func(t *testing.T, app *mockApp) {
+		{"two vendors", func(_ *testing.T, _ *fakeApp) {}, 2},
+		{"empty registry", func(t *testing.T, app *fakeApp) {
 			t.Helper()
-			app.Svc = newTestService(t, model.NewRegistry())
+			app.Svc = newService(t, model.NewRegistry())
 		}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			tc.setup(t, app)
 			p := panels.NewVendorsPanel(app)
 			p.Refresh()
@@ -74,7 +74,7 @@ func TestVendorsPanel_Refresh(t *testing.T) {
 
 func TestVendorsPanel_Refresh_SortedByName(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	list, _ := vendorsPanelParts(t, p)
@@ -94,7 +94,7 @@ func TestVendorsPanel_Refresh_SortedByName(t *testing.T) {
 
 func TestVendorsPanel_Refresh_PreservesSelection(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	list, _ := vendorsPanelParts(t, p)
@@ -111,7 +111,7 @@ func TestVendorsPanel_Refresh_PreservesSelection(t *testing.T) {
 
 func TestVendorsPanel_Keys_SwitchToMain(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	list, _ := vendorsPanelParts(t, p)
@@ -134,7 +134,7 @@ func TestVendorsPanel_Keys_NoHiddenAliases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			p := panels.NewVendorsPanel(app)
 			p.Refresh()
 			list, _ := vendorsPanelParts(t, p)
@@ -159,8 +159,8 @@ func TestVendorsPanel_Keys_ShowModal(t *testing.T) {
 		wantSpecific string
 		wantCommon   string
 	}{
-		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon},
-		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsTextFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsTextFormCommon},
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
@@ -168,7 +168,7 @@ func TestVendorsPanel_Keys_ShowModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			p := panels.NewVendorsPanel(app)
 			p.Refresh()
 			list, _ := vendorsPanelParts(t, p)
@@ -197,8 +197,8 @@ func TestVendorsPanel_EmptyList_NoModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
-			app.Svc = newTestService(t, model.NewRegistry())
+			app := newFakeApp(t)
+			app.Svc = newService(t, model.NewRegistry())
 			p := panels.NewVendorsPanel(app)
 			p.Refresh()
 			list, _ := vendorsPanelParts(t, p)
@@ -216,7 +216,7 @@ func TestVendorsPanel_EmptyList_NoModal(t *testing.T) {
 // completing the form hands control back to the panel correctly.
 func TestVendorsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	list, _ := vendorsPanelParts(t, p)
@@ -241,7 +241,7 @@ func TestVendorsPanel_New_SaveReturnsToPanel(t *testing.T) {
 // closure.
 func TestVendorsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewVendorsPanel(app)
 	p.Refresh() // selects "chatgpt" first (sorted by name)
 	list, _ := vendorsPanelParts(t, p)
@@ -267,7 +267,7 @@ func TestVendorsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 // so this covers the reachable half.
 func TestVendorsPanel_Delete_Cancel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	list, _ := vendorsPanelParts(t, p)
@@ -309,7 +309,7 @@ func TestVendorsPanel_RowText(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
 			must(t, reg.AddVendor(model.NewVendor("test", tc.hasProjects, tc.hasDeepResearch)))
-			app := &mockApp{Svc: newTestService(t, reg)}
+			app := &fakeApp{Svc: newService(t, reg)}
 			p := panels.NewVendorsPanel(app)
 			p.Refresh()
 			list, _ := vendorsPanelParts(t, p)
@@ -333,7 +333,7 @@ func TestVendorsPanel_RowText_EscapesName(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddVendor(model.NewVendor("claude[red]", true, false)))
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	list, _ := vendorsPanelParts(t, p)
@@ -361,7 +361,7 @@ func TestVendorsPanel_InfoPanel_CapabilityDisplay(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
 			must(t, reg.AddVendor(model.NewVendor("test", tc.hasProjects, tc.hasDeepResearch)))
-			app := &mockApp{Svc: newTestService(t, reg)}
+			app := &fakeApp{Svc: newService(t, reg)}
 			p := panels.NewVendorsPanel(app)
 			p.Refresh()
 			_, info := vendorsPanelParts(t, p)
@@ -393,7 +393,7 @@ func TestVendorsPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
 	t.Parallel()
 	reg := model.NewRegistry()
 	must(t, reg.AddVendor(model.NewVendor("test", true, true)))
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewVendorsPanel(app)
 	p.Refresh()
 	_, info := vendorsPanelParts(t, p)

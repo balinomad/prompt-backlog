@@ -1,6 +1,7 @@
 package panels_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 type sessionsFixture struct {
-	app *mockApp
+	app *fakeApp
 	reg *model.Registry
 	acc *model.Account
 	s1  *model.Session
@@ -58,7 +59,7 @@ func newSessionsFixture(t *testing.T) sessionsFixture {
 	must(t, err)
 
 	return sessionsFixture{
-		app: &mockApp{Svc: newTestService(t, reg)},
+		app: &fakeApp{Svc: newService(t, reg)},
 		reg: reg,
 		acc: acc,
 		s1:  s1,
@@ -83,15 +84,15 @@ func TestSessionsPanel_Rows(t *testing.T) {
 		t.Fatalf("rows = %d, want 3", got)
 	}
 	first := itemText(t, p, 0)
-	if !strings.Contains(first, "Beta") || !strings.Contains(first, "Beta session") || !strings.Contains(first, "2") {
+	if !strings.Contains(first, "(untitled)") || !strings.Contains(first, "0") {
 		t.Errorf("first row = %q", first)
 	}
 	second := itemText(t, p, 1)
-	if !strings.Contains(second, "Alpha") || !strings.Contains(second, "Alpha session") || !strings.Contains(second, "1") {
+	if !strings.Contains(second, "Beta") || !strings.Contains(second, "Beta session") || !strings.Contains(second, "2") {
 		t.Errorf("second row = %q", second)
 	}
 	third := itemText(t, p, 2)
-	if !strings.Contains(third, "(untitled)") || !strings.Contains(third, "0") {
+	if !strings.Contains(third, "Alpha") || !strings.Contains(third, "Alpha session") || !strings.Contains(third, "1") {
 		t.Errorf("third row = %q", third)
 	}
 	if got := p.GetTitle(); !strings.Contains(got, "Sessions") || !strings.Contains(got, "1/3") {
@@ -103,14 +104,26 @@ func TestSessionsPanel_ActivityOrder(t *testing.T) {
 	t.Parallel()
 	f := newSessionsFixture(t)
 	p := f.panel(t)
-	if !strings.Contains(itemText(t, p, 0), "Beta session") {
-		t.Errorf("first row = %q, want Beta", itemText(t, p, 0))
+	if !strings.Contains(itemText(t, p, 0), "(untitled)") {
+		t.Errorf("first row = %q, want untitled", itemText(t, p, 0))
 	}
-	if !strings.Contains(itemText(t, p, 1), "Alpha session") {
-		t.Errorf("second row = %q, want Alpha", itemText(t, p, 1))
+	if !strings.Contains(itemText(t, p, 1), "Beta session") {
+		t.Errorf("second row = %q, want Beta", itemText(t, p, 1))
 	}
-	if !strings.Contains(itemText(t, p, 2), "(untitled)") {
-		t.Errorf("third row = %q, want untitled", itemText(t, p, 2))
+	if !strings.Contains(itemText(t, p, 2), "Alpha session") {
+		t.Errorf("third row = %q, want Alpha", itemText(t, p, 2))
+	}
+}
+
+func TestSessionsPanel_PromptSaveMovesSessionToTop(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	f.reg.SetClock(func() time.Time { return time.Date(2026, 10, 30, 11, 0, 0, 0, time.UTC) })
+	must(t, f.app.Svc.UpdateSessionPrompts("alice@example.com", "claude", f.s1.ID(), []model.Prompt{model.NewPrompt("saved")}))
+
+	p := f.panel(t)
+	if row := itemText(t, p, 0); !strings.Contains(row, "Alpha session") {
+		t.Errorf("first row = %q, want Alpha session", row)
 	}
 }
 
@@ -123,18 +136,19 @@ func TestSessionsPanel_StatusMarkers(t *testing.T) {
 	p.Refresh()
 
 	first := itemText(t, p, 0)
-	if !strings.Contains(first, "2") || !strings.Contains(first, "[yellow]▲[-]") {
-		t.Errorf("needs-closing row = %q, want count and yellow triangle", first)
-	}
-	if strings.Index(first, "▲") < strings.Index(first, "2") {
-		t.Errorf("status marker = %q, want marker after count", first)
+	if strings.Contains(first, "▲") || strings.Contains(first, "✓") {
+		t.Errorf("active row = %q, want no marker", first)
 	}
 	second := itemText(t, p, 1)
-	if !strings.HasPrefix(second, "[gray]") || !strings.HasSuffix(second, "[-]") || !strings.Contains(second, "✓") {
-		t.Errorf("closed row = %q, want the whole row gray with a check marker", second)
+	if !strings.Contains(second, "2") || !strings.Contains(second, "[yellow]▲[-]") {
+		t.Errorf("needs-closing row = %q, want count and yellow triangle", second)
 	}
-	if strings.Contains(itemText(t, p, 2), "▲") || strings.Contains(itemText(t, p, 2), "✓") {
-		t.Errorf("active row = %q, want no marker", itemText(t, p, 2))
+	if strings.Index(second, "▲") < strings.Index(second, "2") {
+		t.Errorf("status marker = %q, want marker after count", second)
+	}
+	third := itemText(t, p, 2)
+	if !strings.HasPrefix(third, "[gray]") || !strings.HasSuffix(third, "[-]") || !strings.Contains(third, "✓") {
+		t.Errorf("closed row = %q, want the whole row gray with a check marker", third)
 	}
 }
 
@@ -146,12 +160,12 @@ func TestSessionsPanel_SessionNameUsesAvailableWidth(t *testing.T) {
 
 	p := f.panel(t)
 	p.SetWidth(80)
-	if row := itemText(t, p, 1); !strings.Contains(row, long) {
+	if row := itemText(t, p, 2); !strings.Contains(row, long) {
 		t.Errorf("row = %q, want the full session name at width 80", row)
 	}
 
 	p.SetWidth(30)
-	row := itemText(t, p, 1)
+	row := itemText(t, p, 2)
 	if strings.Contains(row, long) {
 		t.Errorf("row = %q, want the session name truncated at width 30", row)
 	}
@@ -246,7 +260,7 @@ func TestSessionsPanel_Enter(t *testing.T) {
 		t.Parallel()
 		f := newSessionsFixture(t)
 		p := f.panel(t)
-		p.SetCurrentItem(1)
+		p.SetCurrentItem(2)
 		p.GetInputCapture()(specialKey(views.KeyEdit))
 		if f.app.Modal == nil {
 			t.Fatal("Enter did not open the prompt form")
@@ -257,7 +271,7 @@ func TestSessionsPanel_Enter(t *testing.T) {
 		t.Parallel()
 		f := newSessionsFixture(t)
 		p := f.panel(t)
-		p.SetCurrentItem(2)
+		p.SetCurrentItem(0)
 		p.GetInputCapture()(specialKey(views.KeyEdit))
 		if f.app.Modal == nil {
 			t.Fatal("Enter did not open the add prompt form")
@@ -268,7 +282,7 @@ func TestSessionsPanel_Enter(t *testing.T) {
 		t.Parallel()
 		f := newSessionsFixture(t)
 		p := f.panel(t)
-		p.SetCurrentItem(0)
+		p.SetCurrentItem(1)
 		p.GetInputCapture()(specialKey(views.KeyEdit))
 		if f.app.Modal == nil {
 			t.Fatal("Enter did not open the head prompt form")
@@ -321,7 +335,7 @@ func TestSessionsPanel_Delete(t *testing.T) {
 	t.Parallel()
 	f := newSessionsFixture(t)
 	p := f.panel(t)
-	p.SetCurrentItem(1)
+	p.SetCurrentItem(2)
 	p.GetInputCapture()(specialKey(views.KeyDelete))
 	confirmModal(t, f.app)
 	p.Refresh()
@@ -386,6 +400,159 @@ func TestSessionsPanel_DoubleClickOpensPromptForm(t *testing.T) {
 	}
 }
 
+func TestSessionsPanel_SelectedSession(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	p := f.panel(t)
+	p.SetCurrentItem(2)
+	if got := p.SelectedSession(); got == nil || got.ID() != f.s1.ID() {
+		t.Errorf("SelectedSession() = %v, want session %d", got, f.s1.ID())
+	}
+}
+
+func TestSessionsPanel_EnterWithoutSelection(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	p := panels.NewSessionsPanel(f.app)
+	p.SetAccount(nil)
+	p.GetInputCapture()(specialKey(views.KeyEdit))
+	if f.app.Modal != nil {
+		t.Error("Enter opened a modal without a selected session")
+	}
+}
+
+func TestSessionsPanel_DeleteWithoutSelection(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	p := panels.NewSessionsPanel(f.app)
+	p.SetAccount(nil)
+	p.GetInputCapture()(specialKey(views.KeyDelete))
+	if f.app.Modal != nil {
+		t.Error("Delete opened a modal without a selected session")
+	}
+}
+
+func TestSessionsPanel_StartSession(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	p := f.panel(t)
+	before := len(f.app.Svc.Sessions())
+
+	p.GetInputCapture()(specialKey(views.KeyInsert))
+	form := formFromCenteredModal(t, f.app.Modal)
+	triggerSave(t, form)
+
+	if got := len(f.app.Svc.Sessions()); got != before+1 {
+		t.Errorf("session count = %d, want %d", got, before+1)
+	}
+	if f.app.Modal != nil {
+		t.Error("start form stayed open after a successful start")
+	}
+	if p.SelectedSession() == nil {
+		t.Error("started session was not selected")
+	}
+}
+
+func TestSessionsPanel_StartSessionFailure(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	f.app.MutateErr = errors.New("save failed")
+	p := f.panel(t)
+
+	p.GetInputCapture()(specialKey(views.KeyInsert))
+	form := formFromCenteredModal(t, f.app.Modal)
+	triggerSave(t, form)
+
+	if f.app.ErrorStatus == "" {
+		t.Error("expected a status message reporting the start failure")
+	}
+	if f.app.Modal == nil {
+		t.Error("start form closed after a failed start")
+	}
+}
+
+func TestSessionsPanel_DeleteFailure(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	f.app.MutateErr = errors.New("delete failed")
+	p := f.panel(t)
+	p.SetCurrentItem(2)
+
+	p.GetInputCapture()(specialKey(views.KeyDelete))
+	confirmModal(t, f.app)
+
+	if f.app.ErrorStatus == "" {
+		t.Error("expected a status message reporting the delete failure")
+	}
+	if f.app.Modal != nil {
+		t.Error("confirm modal stayed open after the delete failure")
+	}
+}
+
+func TestSessionsPanel_ShowSession(t *testing.T) {
+	t.Parallel()
+	f := newSessionsFixture(t)
+	p := f.panel(t)
+
+	p.ShowSession(f.s1)
+	if got := p.SelectedSession(); got == nil || got.ID() != f.s1.ID() {
+		t.Errorf("ShowSession selected %v, want session %d", got, f.s1.ID())
+	}
+
+	p.ShowSession(nil)
+	if got := p.SelectedSession(); got == nil || got.ID() != f.s1.ID() {
+		t.Errorf("ShowSession(nil) selected %v, want session %d", got, f.s1.ID())
+	}
+
+	must(t, f.reg.DeleteSession(f.s1))
+	p.ShowSession(f.s1)
+	if got := p.SelectedSession(); got != nil && got.ID() == f.s1.ID() {
+		t.Errorf("ShowSession selected deleted session %d", f.s1.ID())
+	}
+}
+
+func TestSessionsPanel_OpenPauseForSession(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success opens the account form", func(t *testing.T) {
+		t.Parallel()
+		f := newSessionsFixture(t)
+		p := f.panel(t)
+
+		panels.OpenPauseForSession(p, f.s1)
+
+		if f.app.Modal == nil {
+			t.Fatal("pause did not open the account form")
+		}
+		if got := formFromCenteredModal(t, f.app.Modal).GetTitle(); got != " Pause Account " {
+			t.Errorf("title = %q, want Pause Account", got)
+		}
+	})
+
+	t.Run("missing account reports an error", func(t *testing.T) {
+		t.Parallel()
+		f := newSessionsFixture(t)
+		p := f.panel(t)
+
+		reg := model.NewRegistry()
+		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
+		must(t, reg.AddUser(model.NewUser("ghost@example.com", "Ghost")))
+		acc, err := reg.AddAccount(reg.User("ghost@example.com"), reg.Vendor("claude"))
+		must(t, err)
+		session, err := reg.AddSession(acc, nil, "", nil)
+		must(t, err)
+
+		panels.OpenPauseForSession(p, session)
+
+		if f.app.ErrorStatus == "" {
+			t.Error("expected a status message for the missing account")
+		}
+		if f.app.Modal != nil {
+			t.Error("pause opened a modal for a missing account")
+		}
+	})
+}
+
 func TestDeleteSessionMessage(t *testing.T) {
 	t.Parallel()
 
@@ -397,7 +564,7 @@ func TestDeleteSessionMessage(t *testing.T) {
 	}
 }
 
-func confirmModal(t *testing.T, app *mockApp) {
+func confirmModal(t *testing.T, app *fakeApp) {
 	t.Helper()
 	modal := confirmModalFrom(t, app.Modal)
 	modal.SetFocus(1)

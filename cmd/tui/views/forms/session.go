@@ -40,13 +40,12 @@ func NewSessionForm(app views.Host, options *SessionFormOptions) tview.Primitive
 	}
 	addDropDown(form, "Project", escapeAll(projectNames), projectIndex)
 
-	form.AddInputField("Name", options.Values.Name, formFieldWidth, nil, nil)
-	form.AddInputField("URL", options.Values.URL, formFieldWidth, nil, nil)
+	addInputField(form, "Name", options.Values.Name, formFieldWidth)
+	addInputField(form, "URL", options.Values.URL, formFieldWidth)
 
 	submit := func() {
-		dropDown, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
+		dropDown, ok := formField[*tview.DropDown](app, form, "Project", "Project dropdown")
 		if !ok {
-			app.SetError("internal error: Project dropdown missing")
 			return
 		}
 		projectName := ""
@@ -55,14 +54,12 @@ func NewSessionForm(app views.Host, options *SessionFormOptions) tview.Primitive
 			projectName = projectNames[index]
 		}
 
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		nameField, ok := formField[*InputField](app, form, "Name", "Name field")
 		if !ok {
-			app.SetError("internal error: Name field missing")
 			return
 		}
-		urlField, ok := form.GetFormItemByLabel("URL").(*tview.InputField)
+		urlField, ok := formField[*InputField](app, form, "URL", "URL field")
 		if !ok {
-			app.SetError("internal error: URL field missing")
 			return
 		}
 
@@ -81,5 +78,6 @@ func NewSessionForm(app views.Host, options *SessionFormOptions) tview.Primitive
 	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(options.OnCancel)
 	addCtrlS(form, submit)
+	installFormClipboard(app, form)
 	return formModal(form)
 }

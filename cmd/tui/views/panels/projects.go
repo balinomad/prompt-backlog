@@ -371,7 +371,7 @@ func (p *ProjectsPanel) handleNewNote() *tcell.EventKey {
 		p.app.SetHints(views.HintsProjectNotesSpecific, views.HintsProjectNotesCommon)
 		p.app.HideModal()
 	})
-	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -385,7 +385,7 @@ func (p *ProjectsPanel) handleEditNote() *tcell.EventKey {
 		p.app.SetHints(views.HintsProjectNotesSpecific, views.HintsProjectNotesCommon)
 		p.app.HideModal()
 	})
-	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -506,7 +506,7 @@ func (p *ProjectsPanel) handleNew() *tcell.EventKey {
 		p.app.SetHints(views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
-	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -519,7 +519,7 @@ func (p *ProjectsPanel) handleEdit() *tcell.EventKey {
 		p.app.SetHints(views.HintsProjectsPanelSpecific, views.HintsProjectsPanelCommon)
 		p.app.HideModal()
 	})
-	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(p.app, modal, views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 

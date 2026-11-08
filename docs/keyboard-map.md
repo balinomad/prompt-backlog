@@ -11,6 +11,9 @@
 | `Tab`       | projects screen, project notes list      | switch to projects                          |
 | `Tab`       | form                                     | next field                                  |
 | `Ctrl+S`    | form                                     | save / submit                               |
+| `Ctrl+Q`    | note, prompt, project text field         | copy selected text                          |
+| `Ctrl+X`    | note, prompt, project text field         | cut selected text                           |
+| `Ctrl+V`    | note, prompt, project text field         | paste system clipboard                      |
 | `Shift+Tab` | accounts list                            | switch to notes                             |
 | `Shift+Tab` | sessions pane                            | switch to accounts                          |
 | `Shift+Tab` | notes pane                               | switch to sessions                          |

@@ -25,9 +25,8 @@ const (
 	// formMaxWidth caps dynamic width at the former fixed modal width.
 	formMaxWidth = 64
 	// noteFieldWidth and noteTextHeight make note editing roomier.
-	noteFieldWidth   = 60
-	noteTextHeight   = 12
-	noteFormMaxWidth = 72
+	noteFieldWidth = 60
+	noteTextHeight = 12
 	// formChromeHeight is the border plus default vertical padding.
 	formChromeHeight = 4
 	// formButtonPadding is the horizontal padding around a button label.
@@ -123,16 +122,17 @@ func formModalWithMax(form *tview.Form, maxWidth int) tview.Primitive {
 
 // finishForm adds the shared Save/Cancel controls and returns the centred
 // modal wrapper.
-func finishForm(form *tview.Form, save, onClose func()) tview.Primitive {
-	return finishFormWithMax(form, save, onClose, formMaxWidth)
+func finishForm(app views.Host, form *tview.Form, save, onClose func()) tview.Primitive {
+	return finishFormWithMax(app, form, save, onClose, formMaxWidth)
 }
 
-func finishFormWithMax(form *tview.Form, save, onClose func(), maxWidth int) tview.Primitive {
+func finishFormWithMax(app views.Host, form *tview.Form, save, onClose func(), maxWidth int) tview.Primitive {
 	form.AddButton("Save", save)
 	form.AddButton("Cancel", onClose)
 	form.SetButtonsAlign(tview.AlignCenter)
 	form.SetCancelFunc(onClose)
 	addCtrlS(form, save)
+	installFormClipboard(app, form)
 	return formModalWithMax(form, maxWidth)
 }
 
@@ -194,6 +194,17 @@ func addDropDown(form *tview.Form, label string, options []string, current int) 
 	form.AddFormItem(newDropDown(label, options, current))
 }
 
+// formField returns the form item with label as type T. It reports a missing
+// item through app and returns false so the caller can abort the save.
+func formField[T tview.FormItem](app views.Host, form *tview.Form, label, missing string) (T, bool) {
+	field, ok := form.GetFormItemByLabel(label).(T)
+	if !ok {
+		app.SetError("internal error: " + missing + " missing")
+		return field, false
+	}
+	return field, true
+}
+
 func dropDownWidth(options []string) int {
 	width := 0
 	for _, option := range options {
@@ -243,28 +254,25 @@ func NewProjectForm(app views.Host, project *model.Project, onClose func()) tvie
 	}
 	form := newForm(title)
 
-	form.AddInputField("Name", initName, formFieldWidth, nil, nil)
+	addInputField(form, "Name", initName, formFieldWidth)
 	form.AddTextArea("Description", initDesc, formFieldWidth, 2, 0, nil)
 	form.AddTextArea("Instructions", initInstr, formFieldWidth, 2, 0, nil)
 
 	save := func() {
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		nameField, ok := formField[*InputField](app, form, "Name", "Name field")
 		if !ok {
-			app.SetError("internal error: Name field missing")
 			return
 		}
 		nameVal := strings.TrimSpace(nameField.GetText())
 
-		descField, ok := form.GetFormItemByLabel("Description").(*tview.TextArea)
+		descField, ok := formField[*tview.TextArea](app, form, "Description", "Description field")
 		if !ok {
-			app.SetError("internal error: Description field missing")
 			return
 		}
 		descVal := strings.TrimSpace(descField.GetText())
 
-		instrField, ok := form.GetFormItemByLabel("Instructions").(*tview.TextArea)
+		instrField, ok := formField[*tview.TextArea](app, form, "Instructions", "Instructions field")
 		if !ok {
-			app.SetError("internal error: Instructions field missing")
 			return
 		}
 		instrVal := strings.TrimSpace(instrField.GetText())
@@ -298,7 +306,7 @@ func NewProjectForm(app views.Host, project *model.Project, onClose func()) tvie
 		onClose()
 	}
 
-	return finishForm(form, save, onClose)
+	return finishForm(app, form, save, onClose)
 }
 
 // ── Vendor form ─────────────────────────────────────────────────────────────
@@ -323,12 +331,12 @@ func NewVendorForm(app views.Host, vendor *model.Vendor, onClose func()) tview.P
 	}
 	form := newForm(title)
 
-	form.AddInputField("Name", initName, formNameWidth, nil, nil)
+	addInputField(form, "Name", initName, formNameWidth)
 	form.AddCheckbox("Supports projects", initHasProjects, nil)
 	form.AddCheckbox("Supports deep research", initHasDeepResearch, nil)
 
 	if isEdit {
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		nameField, ok := form.GetFormItemByLabel("Name").(*InputField)
 		if !ok {
 			return views.ErrorModal("Internal error: failed to initialize form fields.", onClose)
 		}
@@ -336,16 +344,14 @@ func NewVendorForm(app views.Host, vendor *model.Vendor, onClose func()) tview.P
 	}
 
 	save := func() {
-		projectCheckbox, ok := form.GetFormItemByLabel("Supports projects").(*tview.Checkbox)
+		projectCheckbox, ok := formField[*tview.Checkbox](app, form, "Supports projects", "project checkbox")
 		if !ok {
-			app.SetError("internal error: project checkbox missing")
 			return
 		}
 		hasProjects := projectCheckbox.IsChecked()
 
-		researchCheckbox, ok := form.GetFormItemByLabel("Supports deep research").(*tview.Checkbox)
+		researchCheckbox, ok := formField[*tview.Checkbox](app, form, "Supports deep research", "deep research checkbox")
 		if !ok {
-			app.SetError("internal error: deep research checkbox missing")
 			return
 		}
 		hasDeepResearch := researchCheckbox.IsChecked()
@@ -359,9 +365,8 @@ func NewVendorForm(app views.Host, vendor *model.Vendor, onClose func()) tview.P
 				return
 			}
 		} else {
-			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+			nameField, ok := formField[*InputField](app, form, "Name", "Name field")
 			if !ok {
-				app.SetError("internal error: Name field missing")
 				return
 			}
 			nameVal := strings.TrimSpace(nameField.GetText())
@@ -380,7 +385,7 @@ func NewVendorForm(app views.Host, vendor *model.Vendor, onClose func()) tview.P
 		onClose()
 	}
 
-	return finishForm(form, save, onClose)
+	return finishForm(app, form, save, onClose)
 
 }
 
@@ -407,10 +412,7 @@ func NewAccountForm(app views.Host, account *model.Account, onClose func()) tvie
 func accountEditForm(app views.Host, account *model.Account, onClose func()) tview.Primitive {
 	email := account.UserEmail()
 	vendor := account.VendorName()
-	userName := email
-	if u := app.Service().User(email); u != nil && u.Name() != "" {
-		userName = u.Name()
-	}
+	userName := views.UserDisplayName(app.Service(), email)
 	var initPause string
 	if !account.PauseUntil().IsZero() {
 		initPause = model.FormatTime(account.PauseUntil())
@@ -419,9 +421,9 @@ func accountEditForm(app views.Host, account *model.Account, onClose func()) tvi
 	form := newForm("Pause Account")
 
 	form.AddFormItem(newCenteredFormLabel(vendor + " · " + userName))
-	form.AddInputField("Pause until", initPause, formPauseWidth, nil, nil)
+	addInputField(form, "Pause until", initPause, formPauseWidth)
 
-	pauseField, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+	pauseField, ok := form.GetFormItemByLabel("Pause until").(*InputField)
 	if !ok {
 		return views.ErrorModal("Internal error: failed to initialize form fields.", onClose)
 	}
@@ -432,9 +434,8 @@ func accountEditForm(app views.Host, account *model.Account, onClose func()) tvi
 		Dim(true))
 
 	save := func() {
-		field, ok := form.GetFormItemByLabel("Pause until").(*tview.InputField)
+		field, ok := formField[*InputField](app, form, "Pause until", "Pause until field")
 		if !ok {
-			app.SetError("internal error: Pause until field missing")
 			return
 		}
 		val := strings.TrimSpace(field.GetText())
@@ -458,7 +459,7 @@ func accountEditForm(app views.Host, account *model.Account, onClose func()) tvi
 		onClose()
 	}
 
-	return finishForm(form, save, onClose)
+	return finishForm(app, form, save, onClose)
 }
 
 // accountCreateForm builds the create-mode account form. The caller ensures
@@ -484,7 +485,7 @@ func accountCreateForm(app views.Host, initialVendor, initialUserEmail string, o
 	// the dropdown only sees an escaped display copy.
 	addDropDown(form, "Vendor", escapeAll(vendorNames), accountVendorIndex(vendorNames, initialVendor))
 
-	return finishForm(form, func() {
+	return finishForm(app, form, func() {
 		saveAccountCreate(app, form, users, vendorNames, onClose)
 	}, onClose)
 }
@@ -508,9 +509,8 @@ func accountVendorIndex(vendors []string, name string) int {
 }
 
 func saveAccountCreate(app views.Host, form *tview.Form, users []*model.User, vendorNames []string, onClose func()) {
-	userDropDown, ok := form.GetFormItemByLabel("User").(*tview.DropDown)
+	userDropDown, ok := formField[*tview.DropDown](app, form, "User", "User dropdown")
 	if !ok {
-		app.SetError("internal error: User dropdown missing")
 		return
 	}
 	userIdx, _ := userDropDown.GetCurrentOption()
@@ -520,9 +520,8 @@ func saveAccountCreate(app views.Host, form *tview.Form, users []*model.User, ve
 	}
 	u := users[userIdx]
 
-	vendorDropDown, ok := form.GetFormItemByLabel("Vendor").(*tview.DropDown)
+	vendorDropDown, ok := formField[*tview.DropDown](app, form, "Vendor", "Vendor dropdown")
 	if !ok {
-		app.SetError("internal error: Vendor dropdown missing")
 		return
 	}
 	vendorIdx, _ := vendorDropDown.GetCurrentOption()
@@ -564,10 +563,10 @@ func NewUserForm(app views.Host, user *model.User, onClose func()) tview.Primiti
 	}
 	form := newForm(title)
 
-	form.AddInputField("Email", initEmail, formFieldWidth, nil, nil)
-	form.AddInputField("Name", initName, formFieldWidth, nil, nil)
+	addInputField(form, "Email", initEmail, formFieldWidth)
+	addInputField(form, "Name", initName, formFieldWidth)
 
-	emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+	emailField, ok := form.GetFormItemByLabel("Email").(*InputField)
 	if !ok {
 		return views.ErrorModal("Internal error: failed to initialize form fields.", onClose)
 	}
@@ -576,9 +575,8 @@ func NewUserForm(app views.Host, user *model.User, onClose func()) tview.Primiti
 	}
 
 	save := func() {
-		nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+		nameField, ok := formField[*InputField](app, form, "Name", "Name field")
 		if !ok {
-			app.SetError("internal error: Name field missing")
 			return
 		}
 		nameVal := strings.TrimSpace(nameField.GetText())
@@ -607,7 +605,7 @@ func NewUserForm(app views.Host, user *model.User, onClose func()) tview.Primiti
 		onClose()
 	}
 
-	return finishForm(form, save, onClose)
+	return finishForm(app, form, save, onClose)
 }
 
 // ── Grant form ───────────────────────────────────────────────────────────────
@@ -639,9 +637,8 @@ func NewGrantForm(app views.Host, project *model.Project, onClose func()) tview.
 	addDropDown(form, "Account", escapeAll(labels), 0)
 
 	save := func() {
-		dropDown, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
+		dropDown, ok := formField[*tview.DropDown](app, form, "Account", "Account dropdown")
 		if !ok {
-			app.SetError("internal error: Account dropdown missing")
 			return
 		}
 		idx, _ := dropDown.GetCurrentOption()
@@ -662,7 +659,7 @@ func NewGrantForm(app views.Host, project *model.Project, onClose func()) tview.
 		onClose()
 	}
 
-	return finishForm(form, save, onClose)
+	return finishForm(app, form, save, onClose)
 }
 
 // grantCandidates returns the accounts eligible for a new grant to project:

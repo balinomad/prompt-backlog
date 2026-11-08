@@ -199,6 +199,12 @@ var (
 		{"Tab", "next"}, hintSave, hintCancel,
 	}.String()
 
+	// HintsTextFormCommon is the common hint line shown when a form modal
+	// contains a multiline text field.
+	HintsTextFormCommon = hints{
+		{"Tab", "next"}, {"Ctrl+Q", "copy"}, {"Ctrl+X", "cut"}, {"Ctrl+V", "paste"}, hintSave, hintCancel,
+	}.String()
+
 	// HintsPromptListSpecific is the context-specific hint line shown when the
 	// prompt list in the Edit Prompt modal has focus.
 	HintsPromptListSpecific = hints{
@@ -256,6 +262,7 @@ func MinimumWidth(maxInlineMessageWidth int) int {
 		HintsProjectAccountsCommon,
 		HintsProjectNotesCommon,
 		HintsFormCommon,
+		HintsTextFormCommon,
 		HintsConfirmModalCommon,
 		HintsHelpOverlayCommon,
 	}

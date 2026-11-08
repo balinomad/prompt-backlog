@@ -28,7 +28,7 @@ func usersPanelParts(t *testing.T, p *panels.UsersPanel) (*tview.List, *tview.Te
 
 func TestNewUsersPanel(t *testing.T) {
 	t.Parallel()
-	p := panels.NewUsersPanel(newMockApp(t))
+	p := panels.NewUsersPanel(newFakeApp(t))
 	if p == nil {
 		t.Fatal("expected non-nil UsersPanel")
 	}
@@ -40,7 +40,7 @@ func TestNewUsersPanel(t *testing.T) {
 
 func TestUsersPanel_Refresh_SortedByName(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewUsersPanel(app)
 	p.Refresh()
 	list, _ := usersPanelParts(t, p)
@@ -91,7 +91,7 @@ func TestUsersPanel_RowText(t *testing.T) {
 			t.Parallel()
 			reg := model.NewRegistry()
 			must(t, reg.AddUser(model.NewUser(tc.email, tc.userName)))
-			app := &mockApp{Svc: newTestService(t, reg)}
+			app := &fakeApp{Svc: newService(t, reg)}
 			p := panels.NewUsersPanel(app)
 			p.Refresh()
 			list, _ := usersPanelParts(t, p)
@@ -110,7 +110,7 @@ func TestUsersPanel_RowText(t *testing.T) {
 
 func TestUsersPanel_InfoPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewUsersPanel(app)
 	p.Refresh()
 	_, info := usersPanelParts(t, p)
@@ -124,7 +124,7 @@ func TestUsersPanel_InfoPanel(t *testing.T) {
 
 func TestUsersPanel_New_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewUsersPanel(app)
 	p.Refresh()
 	list, _ := usersPanelParts(t, p)
@@ -146,7 +146,7 @@ func TestUsersPanel_New_SaveReturnsToPanel(t *testing.T) {
 
 func TestUsersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewUsersPanel(app)
 	p.Refresh()
 	list, _ := usersPanelParts(t, p)
@@ -167,7 +167,7 @@ func TestUsersPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 
 func TestUsersPanel_Delete_Cancel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewUsersPanel(app)
 	p.Refresh()
 	list, _ := usersPanelParts(t, p)
@@ -186,9 +186,32 @@ func TestUsersPanel_Delete_Cancel(t *testing.T) {
 	}
 }
 
+func TestUsersPanel_Delete(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	must(t, app.Svc.AddUser("carol@example.com", "Carol"))
+	p := panels.NewUsersPanel(app)
+	p.Refresh()
+	list, _ := usersPanelParts(t, p)
+	list.SetCurrentItem(2)
+
+	list.GetInputCapture()(specialKey(views.KeyDelete))
+	confirmModal := confirmModalFrom(t, app.Modal)
+	confirmModal.SetFocus(1)
+	confirmModal.InputHandler()(specialKey(tcell.KeyEnter), func(tview.Primitive) {})
+
+	if app.Svc.User("carol@example.com") != nil {
+		t.Error("user still exists after confirming deletion")
+	}
+	if app.Modal != nil {
+		t.Error("expected modal to be hidden after deletion")
+	}
+	assertHints(t, app, views.HintsUsersPanelSpecific, views.HintsUsersPanelCommon)
+}
+
 func TestUsersPanel_Keys_NoHiddenAliases(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewUsersPanel(app)
 	p.Refresh()
 	list, _ := usersPanelParts(t, p)

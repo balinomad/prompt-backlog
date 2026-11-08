@@ -97,4 +97,8 @@ type Host interface {
 
 	// CopyToClipboard writes text to the system clipboard.
 	CopyToClipboard(text string) error
+
+	// ReadFromClipboard returns the current text from the system clipboard.
+	// It returns an empty string when the clipboard holds no text.
+	ReadFromClipboard() (string, error)
 }

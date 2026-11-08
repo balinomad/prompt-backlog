@@ -22,6 +22,12 @@ const FormFieldWidth = formFieldWidth
 // PromptSideWidth is the exported promptSideWidth constant for black-box tests.
 const PromptSideWidth = promptSideWidth
 
+// NormalizeClipboardKey exposes normalizeClipboardKey for black-box tests.
+var NormalizeClipboardKey = normalizeClipboardKey
+
+// PromptPreview exposes promptPreview for black-box tests.
+var PromptPreview = promptPreview
+
 // DropDownArrow is the exported dropDownArrow constant for black-box tests.
 const DropDownArrow = dropDownArrow
 
@@ -106,6 +112,11 @@ func (p *PromptForm) CopyButton() *tview.Button {
 	return p.editor.copyButton
 }
 
+// PasteButton returns the Paste button.
+func (p *PromptForm) PasteButton() *tview.Button {
+	return p.editor.pasteButton
+}
+
 // SessionButton returns the Session button.
 func (p *PromptForm) SessionButton() *tview.Button {
 	return p.editor.sessionButton
@@ -134,6 +145,75 @@ func (p *PromptForm) DeleteButton() *tview.Button {
 // FocusEditor focuses the prompt editor as the application would.
 func (p *PromptForm) FocusEditor() {
 	p.editor.app.SetFocus(p.editor.textArea)
+}
+
+// NoteForm wraps the note editor for black-box tests.
+type NoteForm struct {
+	editor *noteEditor
+}
+
+// NoteFormFromPrimitive returns the note editor inside a modal primitive.
+func NoteFormFromPrimitive(p tview.Primitive) (*NoteForm, bool) {
+	p = views.UnwrapModal(p)
+	outer, ok := p.(*tview.Flex)
+	if !ok {
+		return nil, false
+	}
+	column, ok := outer.GetItem(1).(*tview.Flex)
+	if !ok {
+		return nil, false
+	}
+	row, ok := column.GetItem(2).(*tview.Flex)
+	if !ok {
+		return nil, false
+	}
+	content := row.GetItem(2)
+	if frame, isFrame := content.(*tview.Frame); isFrame {
+		content = frame.GetPrimitive()
+	}
+	editor, ok := content.(*noteEditor)
+	if !ok {
+		return nil, false
+	}
+	return &NoteForm{editor: editor}, true
+}
+
+// Title returns the editor title.
+func (n *NoteForm) Title() string {
+	return n.editor.GetTitle()
+}
+
+// TextArea returns the note text area.
+func (n *NoteForm) TextArea() *tview.TextArea {
+	return n.editor.textArea
+}
+
+// Project returns the Project dropdown.
+func (n *NoteForm) Project() *tview.DropDown {
+	return n.editor.project
+}
+
+// Account returns the Account dropdown.
+func (n *NoteForm) Account() *tview.DropDown {
+	return n.editor.account
+}
+
+// Button returns the button with label, or nil.
+func (n *NoteForm) Button(label string) *tview.Button {
+	switch label {
+	case "Clear":
+		return n.editor.clearButton
+	case "Copy":
+		return n.editor.copyButton
+	case "Paste":
+		return n.editor.pasteButton
+	case "Save":
+		return n.editor.saveButton
+	case "Cancel":
+		return n.editor.cancelButton
+	default:
+		return nil
+	}
 }
 
 func promptEditorFromPrimitive(p tview.Primitive) (*promptEditor, bool) {

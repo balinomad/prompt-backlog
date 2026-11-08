@@ -18,14 +18,14 @@ import (
 
 func TestNewAccountsPanel(t *testing.T) {
 	t.Parallel()
-	if p := panels.NewAccountsPanel(newMockApp(t)); p == nil {
+	if p := panels.NewAccountsPanel(newFakeApp(t)); p == nil {
 		t.Fatal("expected non-nil AccountsPanel")
 	}
 }
 
 func TestAccountsPanel_SelectedBeforeRefresh(t *testing.T) {
 	t.Parallel()
-	p := panels.NewAccountsPanel(newMockApp(t))
+	p := panels.NewAccountsPanel(newFakeApp(t))
 	if a := p.Selected(); a != nil {
 		t.Errorf("expected nil Selected before Refresh, got %v", a)
 	}
@@ -37,21 +37,21 @@ func TestAccountsPanel_Refresh(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(*testing.T, *mockApp)
+		setup     func(*testing.T, *fakeApp)
 		wantCount int
 	}{
 		{
 			name:      "two accounts",
-			setup:     func(_ *testing.T, _ *mockApp) {},
+			setup:     func(_ *testing.T, _ *fakeApp) {},
 			wantCount: 2,
 		},
 		{
 			name: "empty registry",
-			setup: func(t *testing.T, app *mockApp) {
+			setup: func(t *testing.T, app *fakeApp) {
 				t.Helper()
 				reg := model.NewRegistry()
 				must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
-				app.Svc = newTestService(t, reg)
+				app.Svc = newService(t, reg)
 			},
 			wantCount: 0,
 		},
@@ -59,7 +59,7 @@ func TestAccountsPanel_Refresh(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			tc.setup(t, app)
 			p := panels.NewAccountsPanel(app)
 			p.Refresh()
@@ -72,7 +72,7 @@ func TestAccountsPanel_Refresh(t *testing.T) {
 
 func TestAccountsPanel_Refresh_SelectedNotNil(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 	if p.Selected() == nil {
@@ -82,7 +82,7 @@ func TestAccountsPanel_Refresh_SelectedNotNil(t *testing.T) {
 
 func TestAccountsPanel_Refresh_PreservesSelection(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 	p.SetCurrentItem(1)
@@ -108,7 +108,7 @@ func TestAccountsPanel_Refresh_PreservesSelection(t *testing.T) {
 
 func TestAccountsPanel_Refresh_CallsOnSelect(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	var called bool
 	p.SetOnSelect(func(_ *model.Account) { called = true })
@@ -129,7 +129,7 @@ func TestAccountsPanel_Refresh_ClearsAccountInfoOnLastAccountDeleted(t *testing.
 	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	accounts := panels.NewAccountsPanel(app)
 	accountInfo := panels.NewAccountInfoPanel(app)
 	accounts.SetOnSelect(func(acc *model.Account) {
@@ -153,7 +153,7 @@ func TestAccountsPanel_Refresh_ClearsAccountInfoOnLastAccountDeleted(t *testing.
 
 func TestAccountsPanel_Keys_NoHiddenAliases(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 	capture := p.GetInputCapture()
@@ -180,7 +180,7 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 		wantCommon   string
 	}{
 		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon},
-		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsTextFormCommon},
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
@@ -189,7 +189,7 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			p := panels.NewAccountsPanel(app)
 			p.Refresh()
 			capture := p.GetInputCapture()
@@ -207,7 +207,7 @@ func TestAccountsPanel_Keys_ShowModal(t *testing.T) {
 
 func TestAccountsPanel_F2NoModal(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -234,10 +234,10 @@ func TestAccountsPanel_EmptyList_NoModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			reg := model.NewRegistry()
 			must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
-			app.Svc = newTestService(t, reg)
+			app.Svc = newService(t, reg)
 			p := panels.NewAccountsPanel(app)
 			p.Refresh()
 			capture := p.GetInputCapture()
@@ -264,7 +264,7 @@ func TestAccountsPanel_RowText_EscapesVendorAndUserName(t *testing.T) {
 	_, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude]blue"))
 	must(t, err)
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -292,7 +292,7 @@ func TestAccountsPanel_RowText_DynamicColumnWidths(t *testing.T) {
 	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Vendor("wxyz"))
 	must(t, err)
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -324,7 +324,7 @@ func TestAccountsPanel_RowText_ColumnWidthCap(t *testing.T) {
 	_, err = reg.AddAccount(reg.User("user2@x.com"), reg.Vendor("cd"))
 	must(t, err)
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -340,7 +340,7 @@ func TestAccountsPanel_RowText_ColumnWidthCap(t *testing.T) {
 
 // newProjectAccountsTestApp returns a mock app with one account, ready for
 // project and session setup in latest-project tests.
-func newProjectAccountsTestApp(t *testing.T) (*mockApp, *model.Registry, *model.Account) {
+func newProjectAccountsTestApp(t *testing.T) (*fakeApp, *model.Registry, *model.Account) {
 	t.Helper()
 	reg := model.NewRegistry()
 	now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
@@ -352,7 +352,7 @@ func newProjectAccountsTestApp(t *testing.T) (*mockApp, *model.Registry, *model.
 	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 	acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 	must(t, err)
-	return &mockApp{Svc: newTestService(t, reg)}, reg, acc
+	return &fakeApp{Svc: newService(t, reg)}, reg, acc
 }
 
 // addProjectSession grants projectName to acc when needed and adds a session
@@ -481,7 +481,7 @@ func TestAccountsPanel_RequiredWidth_UsesRenderedRowsOnly(t *testing.T) {
 	must(t, err)
 	must(t, reg.AddProject(model.NewProject("project-long-name", "", "")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -583,7 +583,7 @@ func TestSortAccountsByAvailability(t *testing.T) {
 				must(t, reg.PauseAccount(secondAcc, tc.secondPauseAt))
 			}
 
-			app := &mockApp{Svc: newTestService(t, reg)}
+			app := &fakeApp{Svc: newService(t, reg)}
 			p := panels.NewAccountsPanel(app)
 			p.Refresh()
 
@@ -604,7 +604,7 @@ func TestSortAccountsByAvailability(t *testing.T) {
 // own onSelect != nil / index-bounds guard worth verifying independently.
 func TestAccountsPanel_SetCurrentItem_TriggersOnSelect(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh() // populates the list; selection starts at index 0
 
@@ -627,7 +627,7 @@ func TestAccountsPanel_SetCurrentItem_TriggersOnSelect(t *testing.T) {
 // addCtrlS being tested through one form for all eight callers.
 func TestAccountsPanel_NonRuneKey_PassesThrough(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -645,7 +645,7 @@ func TestAccountsPanel_NonRuneKey_PassesThrough(t *testing.T) {
 // otherwise never actually invoked by any existing test.
 func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -671,7 +671,7 @@ func TestAccountsPanel_New_SaveReturnsToPanel(t *testing.T) {
 // closure.
 func TestAccountsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh() // selects alice|claude first (sorted by key, both unpaused)
 
@@ -695,7 +695,7 @@ func TestAccountsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 // account untouched and hands control back to the panel.
 func TestAccountsPanel_Delete_Cancel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -782,7 +782,7 @@ func TestFormatPauseUntil(t *testing.T) {
 
 func TestAccountsPanel_DoubleClickOpensPauseForm(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -796,7 +796,7 @@ func TestAccountsPanel_DoubleClickOpensPauseForm(t *testing.T) {
 
 func TestListTitles_AccountsPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewAccountsPanel(app)
 	p.Refresh()
 
@@ -808,7 +808,7 @@ func TestListTitles_AccountsPanel(t *testing.T) {
 		t.Errorf("selected title = %q, want %q", got, want)
 	}
 
-	app.Svc = newTestService(t, model.NewRegistry())
+	app.Svc = newService(t, model.NewRegistry())
 	p.Refresh()
 	if got, want := p.GetTitle(), " Accounts 0/0 "; got != want {
 		t.Errorf("empty title = %q, want %q", got, want)
@@ -819,7 +819,7 @@ func TestListTitles_AccountsPanel(t *testing.T) {
 
 func TestNewAccountInfoPanel(t *testing.T) {
 	t.Parallel()
-	p := panels.NewAccountInfoPanel(newMockApp(t))
+	p := panels.NewAccountInfoPanel(newFakeApp(t))
 	if p == nil {
 		t.Fatal("expected non-nil AccountInfoPanel")
 	}
@@ -830,7 +830,7 @@ func TestNewAccountInfoPanel(t *testing.T) {
 
 func TestAccountInfoPanel_SetAccount_Nil(t *testing.T) {
 	t.Parallel()
-	p := panels.NewAccountInfoPanel(newMockApp(t))
+	p := panels.NewAccountInfoPanel(newFakeApp(t))
 	p.SetAccount(nil)
 
 	if got := p.GetText(false); !strings.Contains(got, "no account selected") {
@@ -843,7 +843,7 @@ func TestAccountInfoPanel_SetAccount_Nil(t *testing.T) {
 
 func TestAccountInfoPanel_RendersDetailsWithoutPaused(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc, err := app.Svc.Account("alice@example.com", "claude")
 	must(t, err)
 
@@ -866,7 +866,7 @@ func TestAccountInfoPanel_RendersDetailsWithoutPaused(t *testing.T) {
 
 func TestAccountInfoPanel_AlignedDetailRows(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc, err := app.Svc.Account("alice@example.com", "claude")
 	must(t, err)
 
@@ -896,7 +896,7 @@ func TestAccountInfoPanel_WrappedLinesKeepInsets(t *testing.T) {
 	must(t, reg.AddProject(project))
 	must(t, reg.AddProjectToAccount(acc, project))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewAccountInfoPanel(app)
 	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Vendor("claude")))
 
@@ -929,7 +929,7 @@ func TestAccountInfoPanel_WrappedLinesKeepInsets(t *testing.T) {
 
 func TestAccountInfoPanel_NoProjects(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc, err := app.Svc.Account("bob@example.com", "chatgpt")
 	must(t, err)
 
@@ -952,7 +952,7 @@ func TestAccountInfoPanel_RequiredHeight_Wraps(t *testing.T) {
 	must(t, reg.AddProject(project))
 	must(t, reg.AddProjectToAccount(acc, project))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewAccountInfoPanel(app)
 	p.SetAccount(reg.Account(reg.User("alice@example.com"), reg.Vendor("claude")))
 

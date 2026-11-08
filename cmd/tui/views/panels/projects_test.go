@@ -62,7 +62,7 @@ func projectsNoteList(t *testing.T, p *panels.ProjectsPanel) *tview.List {
 
 func TestNewProjectsPanel(t *testing.T) {
 	t.Parallel()
-	p := panels.NewProjectsPanel(newMockApp(t))
+	p := panels.NewProjectsPanel(newFakeApp(t))
 	if p == nil {
 		t.Fatal("expected non-nil ProjectsPanel")
 	}
@@ -80,19 +80,19 @@ func TestProjectsPanel_Refresh(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(*testing.T, *mockApp)
+		setup     func(*testing.T, *fakeApp)
 		wantCount int
 	}{
-		{"three projects", func(_ *testing.T, _ *mockApp) {}, 3},
-		{"empty registry", func(t *testing.T, app *mockApp) {
+		{"three projects", func(_ *testing.T, _ *fakeApp) {}, 3},
+		{"empty registry", func(t *testing.T, app *fakeApp) {
 			t.Helper()
-			app.Svc = newTestService(t, model.NewRegistry())
+			app.Svc = newService(t, model.NewRegistry())
 		}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			tc.setup(t, app)
 			p := panels.NewProjectsPanel(app)
 			p.Refresh()
@@ -106,7 +106,7 @@ func TestProjectsPanel_Refresh(t *testing.T) {
 
 func TestProjectsPanel_Refresh_SortedByName(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -125,7 +125,7 @@ func TestProjectsPanel_Refresh_SortedByName(t *testing.T) {
 
 func TestProjectsPanel_Refresh_PreservesProjectSelection(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -142,7 +142,7 @@ func TestProjectsPanel_Refresh_PreservesProjectSelection(t *testing.T) {
 
 func TestProjectsPanel_AccountList_GrantedOnly(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, accountList, _ := projectsPanelParts(t, p)
@@ -180,7 +180,7 @@ func TestProjectsPanel_AccountList_Format(t *testing.T) {
 	must(t, reg.AddProjectToAccount(alice, reg.Project("Alpha")))
 	must(t, reg.AddProjectToAccount(bob, reg.Project("Alpha")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, accountList, _ := projectsPanelParts(t, p)
@@ -226,7 +226,7 @@ func TestProjectsPanel_AccountList_OrderByVendorThenUser(t *testing.T) {
 		must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha")))
 	}
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, accountList, _ := projectsPanelParts(t, p)
@@ -262,7 +262,7 @@ func TestProjectsPanel_Refresh_PreservesAccountSelection(t *testing.T) {
 	must(t, reg.AddProjectToAccount(alice, reg.Project("Alpha")))
 	must(t, reg.AddProjectToAccount(bob, reg.Project("Alpha")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, accountList, _ := projectsPanelParts(t, p)
@@ -281,7 +281,7 @@ func TestProjectsPanel_Refresh_PreservesAccountSelection(t *testing.T) {
 // and that cancelling leaves the grant and account list untouched.
 func TestProjectsPanel_Revoke_Cancel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, accountList, _ := projectsPanelParts(t, p)
@@ -324,7 +324,7 @@ func TestProjectsPanel_Revoke_Cancel(t *testing.T) {
 
 func TestProjectsPanel_ProjectEsc_SwitchesToMain(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -337,7 +337,7 @@ func TestProjectsPanel_ProjectEsc_SwitchesToMain(t *testing.T) {
 
 func TestProjectsPanel_AccountEsc_SwitchesToMain(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, accountList, _ := projectsPanelParts(t, p)
@@ -350,7 +350,7 @@ func TestProjectsPanel_AccountEsc_SwitchesToMain(t *testing.T) {
 
 func TestProjectsPanel_Keys_NoHiddenAliases(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, accountList, _ := projectsPanelParts(t, p)
@@ -368,7 +368,7 @@ func TestProjectsPanel_Keys_NoHiddenAliases(t *testing.T) {
 
 func TestProjectsPanel_Keys_TabSwitchesFocus(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, accountList, _ := projectsPanelParts(t, p)
@@ -416,8 +416,8 @@ func TestProjectsPanel_ProjectKeys_ShowModal(t *testing.T) {
 		wantSpecific string
 		wantCommon   string
 	}{
-		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsFormCommon},
-		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsFormCommon},
+		{"new", specialKey(views.KeyInsert), views.HintsFormSpecific, views.HintsTextFormCommon},
+		{"edit", specialKey(views.KeyEdit), views.HintsFormSpecific, views.HintsTextFormCommon},
 		{"delete", specialKey(views.KeyDelete), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
 		{"help", runeKey(views.KeyHelp), views.HintsHelpOverlaySpecific, views.HintsHelpOverlayCommon},
 		{"quit", runeKey(views.KeyQuit), views.HintsConfirmModalSpecific, views.HintsConfirmModalCommon},
@@ -425,7 +425,7 @@ func TestProjectsPanel_ProjectKeys_ShowModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			p := panels.NewProjectsPanel(app)
 			p.Refresh()
 			projectList, _, _ := projectsPanelParts(t, p)
@@ -458,7 +458,7 @@ func TestProjectsPanel_AccountKeys_ShowModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			p := panels.NewProjectsPanel(app)
 			p.Refresh()
 			_, accountList, _ := projectsPanelParts(t, p)
@@ -489,8 +489,8 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
-			app.Svc = newTestService(t, model.NewRegistry())
+			app := newFakeApp(t)
+			app.Svc = newService(t, model.NewRegistry())
 			p := panels.NewProjectsPanel(app)
 			p.Refresh()
 			projectList, accountList, _ := projectsPanelParts(t, p)
@@ -516,7 +516,7 @@ func TestProjectsPanel_EmptyList_NoModal(t *testing.T) {
 // the form hands control back to the panel correctly.
 func TestProjectsPanel_New_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -545,7 +545,7 @@ func TestProjectsPanel_New_SaveReturnsToPanel(t *testing.T) {
 // closure.
 func TestProjectsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh() // selects "Alpha" first (sorted by name)
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -575,7 +575,7 @@ func TestProjectsPanel_Edit_SaveReturnsToPanel(t *testing.T) {
 // reachable half.
 func TestProjectsPanel_Delete_Cancel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh() // selects "Alpha" first; Alpha is granted, cancelling must leave it untouched
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -617,7 +617,7 @@ func TestProjectsPanel_GrantFromAccounts_SaveReturnsToAccountHints(t *testing.T)
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 	must(t, reg.AddProjectToAccount(alice, reg.Project("Alpha")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, accountList, _ := projectsPanelParts(t, p)
@@ -648,7 +648,7 @@ func TestProjectsPanel_GrantFromAccounts_SaveReturnsToAccountHints(t *testing.T)
 
 func TestProjectsPanel_FocusFuncs_SetHints(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	projectList, accountList, _ := projectsPanelParts(t, p)
 
@@ -666,7 +666,7 @@ func TestProjectsPanel_RowText(t *testing.T) {
 	reg := model.NewRegistry()
 	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -681,7 +681,7 @@ func TestProjectsPanel_InfoPanel_AlignedDetailRows(t *testing.T) {
 	reg := model.NewRegistry()
 	must(t, reg.AddProject(model.NewProject("Alpha", "Backend rewrite", "Use Go interfaces")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	_, _, info := projectsPanelParts(t, p)
@@ -708,7 +708,7 @@ func TestProjectsPanel_RowText_EscapesName(t *testing.T) {
 	must(t, reg.AddProject(model.NewProject("Alpha[red]", "", "")))
 	must(t, reg.AddProjectToAccount(acc, reg.Project("Alpha[red]")))
 
-	app := &mockApp{Svc: newTestService(t, reg)}
+	app := &fakeApp{Svc: newService(t, reg)}
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -721,7 +721,7 @@ func TestProjectsPanel_RowText_EscapesName(t *testing.T) {
 
 func TestProjectsPanel_ProjectNotes(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	n1, err := app.Svc.AddNote("alpha one", "Alpha", "alice@example.com", "claude")
 	must(t, err)
 	n2, err := app.Svc.AddNote("alpha two", "Alpha", "", "")
@@ -758,7 +758,7 @@ func TestProjectsPanel_ProjectNotes(t *testing.T) {
 
 func TestProjectsPanel_ProjectNotes_FollowProjectSelection(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	_, err := app.Svc.AddNote("alpha note", "Alpha", "alice@example.com", "claude")
 	must(t, err)
 	_, err = app.Svc.AddNote("beta note", "Beta", "alice@example.com", "claude")
@@ -786,7 +786,7 @@ func TestProjectsPanel_ProjectNotes_FollowProjectSelection(t *testing.T) {
 
 func TestProjectsPanel_ProjectNotes_PreservesSelection(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	_, err := app.Svc.AddNote("one", "Alpha", "", "")
 	must(t, err)
 	n2, err := app.Svc.AddNote("two", "Alpha", "", "")
@@ -808,16 +808,18 @@ func TestProjectsPanel_ProjectNotes_Keys(t *testing.T) {
 
 	t.Run("Ins opens the add form with the project fixed", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		p := panels.NewProjectsPanel(app)
 		p.Refresh()
 		noteList := projectsNoteList(t, p)
 		noteList.GetInputCapture()(specialKey(views.KeyInsert))
-		form := formFromCenteredModal(t, app.Modal)
-		if got := form.GetTitle(); got != " New Note " {
+		if got := centeredModalTitle(t, app.Modal); got != " New Note " {
 			t.Errorf("title = %q, want New Note", got)
 		}
-		project := form.GetFormItemByLabel("Project").(*tview.DropDown) //nolint:errcheck // The item type is known.
+		project := findDropDownByLabel(centeredModalContent(t, app.Modal), "Project")
+		if project == nil {
+			t.Fatal("Project dropdown not found")
+		}
 		if got := dropdownOption(t, project, 0); got != "Alpha" {
 			t.Errorf("project option = %q, want Alpha", got)
 		}
@@ -825,7 +827,7 @@ func TestProjectsPanel_ProjectNotes_Keys(t *testing.T) {
 
 	t.Run("Enter opens the edit form", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		_, err := app.Svc.AddNote("note", "Alpha", "alice@example.com", "claude")
 		must(t, err)
 		p := panels.NewProjectsPanel(app)
@@ -833,15 +835,14 @@ func TestProjectsPanel_ProjectNotes_Keys(t *testing.T) {
 		noteList := projectsNoteList(t, p)
 		noteList.SetCurrentItem(0)
 		noteList.GetInputCapture()(specialKey(views.KeyEdit))
-		form := formFromCenteredModal(t, app.Modal)
-		if got := form.GetTitle(); got != " Edit Note " {
+		if got := centeredModalTitle(t, app.Modal); got != " Edit Note " {
 			t.Errorf("title = %q, want Edit Note", got)
 		}
 	})
 
 	t.Run("Del confirms and deletes", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		note, err := app.Svc.AddNote("note", "Alpha", "alice@example.com", "claude")
 		must(t, err)
 		p := panels.NewProjectsPanel(app)
@@ -859,7 +860,7 @@ func TestProjectsPanel_ProjectNotes_Keys(t *testing.T) {
 
 func TestProjectsPanel_Refresh_PreservesSelectionByIDAfterRename(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -882,7 +883,7 @@ func TestProjectsPanel_Refresh_PreservesSelectionByIDAfterRename(t *testing.T) {
 
 func TestProjectsPanel_DoubleClickProjectOpensEditForm(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, _, _ := projectsPanelParts(t, p)
@@ -897,7 +898,7 @@ func TestProjectsPanel_DoubleClickProjectOpensEditForm(t *testing.T) {
 
 func TestProjectsPanel_DoubleClickNoteOpensEditForm(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	_, err := app.Svc.AddNote("alpha note", "Alpha", "alice@example.com", "claude")
 	must(t, err)
 
@@ -911,15 +912,14 @@ func TestProjectsPanel_DoubleClickNoteOpensEditForm(t *testing.T) {
 
 	doubleClickList(t, noteList)
 
-	form := formFromCenteredModal(t, app.Modal)
-	if got := form.GetTitle(); got != " Edit Note " {
+	if got := centeredModalTitle(t, app.Modal); got != " Edit Note " {
 		t.Errorf("title = %q, want Edit Note", got)
 	}
 }
 
 func TestListTitles_ProjectsPanel(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	p := panels.NewProjectsPanel(app)
 	p.Refresh()
 	projectList, accountList, _ := projectsPanelParts(t, p)

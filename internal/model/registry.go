@@ -848,8 +848,9 @@ func (r *Registry) AccountSessions(acc *Account) ([]*Session, error) {
 }
 
 // AccountSessionsActivityOrder returns all sessions for a given account in
-// activity order: updated-at descending, then ID descending. Sessions with a
-// zero updated-at follow all other sessions.
+// activity order: non-closed sessions before closed sessions, then updated-at
+// descending, then ID descending within each group. Sessions with a zero
+// updated-at follow all sessions with a non-zero updated-at in their group.
 // Returns ErrAccountNil, ErrAccountNotFound, or ErrAccountStale if acc
 // does not resolve.
 func (r *Registry) AccountSessionsActivityOrder(acc *Account) ([]*Session, error) {
@@ -869,6 +870,12 @@ func (r *Registry) AccountSessionsActivityOrder(acc *Account) ([]*Session, error
 	r.mu.RUnlock()
 
 	slices.SortFunc(result, func(a, b *Session) int {
+		if aClosed, bClosed := a.status == SessionStatusClosed, b.status == SessionStatusClosed; aClosed != bClosed {
+			if aClosed {
+				return 1
+			}
+			return -1
+		}
 		if c := b.updatedAt.Compare(a.updatedAt); c != 0 {
 			return c
 		}
@@ -968,10 +975,7 @@ func (r *Registry) AddSession(acc *Account, project *Project, name string, queue
 
 	r.lastSessionID++
 	id := r.lastSessionID
-	updatedAt := time.Time{}
-	if len(queue) > 0 {
-		updatedAt = r.now().UTC()
-	}
+	updatedAt := r.now().UTC()
 	sess := newSession(acc.key, acc.id, projID, id, projName, name, "", SessionStatusActive, updatedAt, queue)
 
 	r.sessions[id] = sess
@@ -1104,11 +1108,6 @@ func (r *Registry) applyStartSession(plan startSessionPlan) *Session {
 	if plan.promptText != "" {
 		queue = []Prompt{NewPrompt(plan.promptText)}
 	}
-	updatedAt := time.Time{}
-	if len(queue) > 0 {
-		updatedAt = r.now().UTC()
-	}
-
 	var projectID uint64
 	var projectName string
 	if plan.project != nil {
@@ -1116,7 +1115,7 @@ func (r *Registry) applyStartSession(plan startSessionPlan) *Session {
 		projectName = plan.project.name
 	}
 	r.lastSessionID++
-	sess := newSession(plan.acc.key, plan.acc.id, projectID, r.lastSessionID, projectName, plan.name, plan.url, SessionStatusActive, updatedAt, queue)
+	sess := newSession(plan.acc.key, plan.acc.id, projectID, r.lastSessionID, projectName, plan.name, plan.url, SessionStatusActive, r.now().UTC(), queue)
 	r.sessions[sess.id] = sess
 	addIndex(r.accountSessions, plan.acc.key, sess.id)
 	if projectID != 0 {

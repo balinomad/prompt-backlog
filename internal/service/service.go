@@ -469,7 +469,8 @@ func (s *Service) LatestSession(userEmail, vendorName string) (*model.Session, b
 }
 
 // AccountSessionsActivityOrder returns the account's sessions in activity
-// order: updated-at descending, then ID descending.
+// order: non-closed before closed, then updated-at descending, then ID
+// descending within each group.
 func (s *Service) AccountSessionsActivityOrder(userEmail, vendorName string) ([]*model.Session, error) {
 	acc, err := s.resolveAccount(userEmail, vendorName)
 	if err != nil {

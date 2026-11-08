@@ -8,13 +8,22 @@ import (
 
 	"github.com/balinomad/llm-desk/cmd/tui/views"
 	"github.com/balinomad/llm-desk/cmd/tui/views/forms"
+	"github.com/balinomad/llm-desk/cmd/tui/views/internal/viewtest"
 	"github.com/gdamore/tcell/v2"
 
 	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
-	"github.com/balinomad/llm-desk/internal/store"
 
 	"github.com/rivo/tview"
+)
+
+type fakeApp = viewtest.FakeApp
+
+var (
+	must       = viewtest.Must
+	newService = viewtest.NewService
+	newFakeApp = viewtest.NewFakeApp
+	runeKey    = viewtest.RuneKey
 )
 
 // ── Dropdown helper ───────────────────────────────────────────────────────────
@@ -103,7 +112,7 @@ func TestEditSessionForm_ProjectNames(t *testing.T) {
 			must(t, err)
 			tc.setup(t, reg, acc)
 
-			app := &mockApp{Svc: newTestService(t, reg)}
+			app := &fakeApp{Svc: newService(t, reg)}
 			form := formFromCenteredModal(t, forms.NewSessionForm(app, &forms.SessionFormOptions{
 				Title:       "Edit Session",
 				SubmitLabel: "Save",
@@ -145,7 +154,7 @@ func TestNewProjectForm_ReturnsForm(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			var proj *model.Project
 			if tc.projectName != "" {
 				proj = app.Svc.Project(tc.projectName)
@@ -158,7 +167,7 @@ func TestNewProjectForm_ReturnsForm(t *testing.T) {
 
 func TestNewProjectForm_NameField(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 
 	cases := []struct {
 		name        string
@@ -183,9 +192,9 @@ func TestNewProjectForm_NameField(t *testing.T) {
 				}
 				return
 			}
-			nameField, ok := item.(*tview.InputField)
+			nameField, ok := item.(*forms.InputField)
 			if !ok {
-				t.Fatal("expected Name *tview.InputField")
+				t.Fatal("expected Name *forms.InputField")
 			}
 			if tc.projectName != "" && nameField.GetText() != tc.projectName {
 				t.Errorf("Name = %q, want %q", nameField.GetText(), tc.projectName)
@@ -199,11 +208,11 @@ func TestNewProjectForm_NameField(t *testing.T) {
 
 func TestNewProjectForm_Rename(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	project := app.Svc.Project("Alpha")
 	form := formFromCenteredModal(t, forms.NewProjectForm(app, project, func() {}))
 
-	form.GetFormItemByLabel("Name").(*tview.InputField).SetText("Renamed") //nolint:errcheck // The item type is known.
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("Renamed", false) //nolint:errcheck // The item type is known.
 	pressButton(t, form.GetButton(0))
 
 	if app.Svc.Project("Alpha") != nil {
@@ -220,7 +229,7 @@ func TestNewProjectForm_Rename(t *testing.T) {
 
 func TestNewProjectForm_MultilineFields(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 
 	cases := []struct {
 		name        string
@@ -260,7 +269,7 @@ func TestNewProjectForm_Save_Edit(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddProject(model.NewProject("Alpha", "old desc", "old inst")))
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		form := formFromCenteredModal(t, forms.NewProjectForm(app, app.Svc.Project("Alpha"), func() {}))
 
 		setTextArea(t, form, "Description", "new desc")
@@ -277,7 +286,7 @@ func TestNewProjectForm_Save_Edit(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		proj := app.Svc.Project("Alpha")
 		form := formFromCenteredModal(t, forms.NewProjectForm(app, proj, func() {}))
 
@@ -300,7 +309,7 @@ func TestNewProjectForm_Save_Create(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewProjectForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "Gamma")
@@ -319,7 +328,7 @@ func TestNewProjectForm_Save_Create(t *testing.T) {
 
 	t.Run("validation failure: empty name never mutates", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		before := len(app.Svc.Projects())
 		form := formFromCenteredModal(t, forms.NewProjectForm(app, nil, func() {}))
 
@@ -336,7 +345,7 @@ func TestNewProjectForm_Save_Create(t *testing.T) {
 
 	t.Run("failure: duplicate name", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // already has "Alpha"
+		app := newFakeApp(t) // already has "Alpha"
 		form := formFromCenteredModal(t, forms.NewProjectForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "Alpha")
@@ -362,7 +371,7 @@ func TestNewVendorForm_ReturnsForm(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			var prov *model.Vendor
 			if tc.vendorName != "" {
 				prov = app.Svc.Vendor(tc.vendorName)
@@ -375,7 +384,7 @@ func TestNewVendorForm_ReturnsForm(t *testing.T) {
 
 func TestNewVendorForm_NameFieldDisabledState(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 
 	cases := []struct {
 		name        string
@@ -393,9 +402,9 @@ func TestNewVendorForm_NameFieldDisabledState(t *testing.T) {
 				prov = app.Svc.Vendor(tc.vendorName)
 			}
 			form := formFromCenteredModal(t, forms.NewVendorForm(app, prov, func() {}))
-			nameField, ok := form.GetFormItemByLabel("Name").(*tview.InputField)
+			nameField, ok := form.GetFormItemByLabel("Name").(*forms.InputField)
 			if !ok {
-				t.Fatal("expected Name *tview.InputField")
+				t.Fatal("expected Name *forms.InputField")
 			}
 			if got := inputFieldAcceptsText(nameField); got != tc.wantAccepts {
 				t.Errorf("accepts text: got %v, want %v", got, tc.wantAccepts)
@@ -413,7 +422,7 @@ func TestNewVendorForm_Save_Edit(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		form := formFromCenteredModal(t, forms.NewVendorForm(app, app.Svc.Vendor("claude"), func() {}))
 
 		setCheckbox(t, form, "Supports projects")
@@ -430,7 +439,7 @@ func TestNewVendorForm_Save_Edit(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddVendor(model.NewVendor("claude", false, false)))
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		prov := app.Svc.Vendor("claude")
 		form := formFromCenteredModal(t, forms.NewVendorForm(app, prov, func() {}))
 
@@ -452,7 +461,7 @@ func TestNewVendorForm_Save_Create(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewVendorForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "gemini")
@@ -470,7 +479,7 @@ func TestNewVendorForm_Save_Create(t *testing.T) {
 
 	t.Run("validation failure: empty name never mutates", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		before := len(app.Svc.Vendors())
 		form := formFromCenteredModal(t, forms.NewVendorForm(app, nil, func() {}))
 
@@ -487,7 +496,7 @@ func TestNewVendorForm_Save_Create(t *testing.T) {
 
 	t.Run("failure: duplicate name", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // already has "claude"
+		app := newFakeApp(t) // already has "claude"
 		form := formFromCenteredModal(t, forms.NewVendorForm(app, nil, func() {}))
 
 		setInputField(t, form, "Name", "claude")
@@ -505,32 +514,32 @@ func TestNewAccountForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(t *testing.T) (*mockApp, *model.Account)
+		setup     func(t *testing.T) (*fakeApp, *model.Account)
 		wantModal bool
 	}{
 		{
 			name: "no vendors",
-			setup: func(t *testing.T) (*mockApp, *model.Account) {
+			setup: func(t *testing.T) (*fakeApp, *model.Account) {
 				t.Helper()
-				app := newMockApp(t)
-				app.Svc = newTestService(t, model.NewRegistry())
+				app := newFakeApp(t)
+				app.Svc = newService(t, model.NewRegistry())
 				return app, nil
 			},
 			wantModal: true,
 		},
 		{
 			name: "create mode",
-			setup: func(t *testing.T) (*mockApp, *model.Account) {
+			setup: func(t *testing.T) (*fakeApp, *model.Account) {
 				t.Helper()
-				return newMockApp(t), nil
+				return newFakeApp(t), nil
 			},
 			wantModal: false,
 		},
 		{
 			name: "edit mode",
-			setup: func(t *testing.T) (*mockApp, *model.Account) {
+			setup: func(t *testing.T) (*fakeApp, *model.Account) {
 				t.Helper()
-				app := newMockApp(t)
+				app := newFakeApp(t)
 				acc, err := app.Svc.Account("alice@example.com", "claude")
 				must(t, err)
 				return app, acc
@@ -550,7 +559,7 @@ func TestNewAccountForm(t *testing.T) {
 
 func TestAccountEditForm_Layout(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc, err := app.Svc.Account("alice@example.com", "claude")
 	must(t, err)
 
@@ -593,7 +602,7 @@ func TestAccountEditForm_Save(t *testing.T) {
 
 	t.Run("sets pause time", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		acc, err := app.Svc.Account("alice@example.com", "claude")
 		must(t, err)
 		form := formFromCenteredModal(t, forms.NewAccountForm(app, acc, func() {}))
@@ -612,7 +621,7 @@ func TestAccountEditForm_Save(t *testing.T) {
 
 	t.Run("empty clears an existing pause", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		must(t, app.Svc.PauseAccount("alice@example.com", "claude", time.Now().Add(time.Hour)))
 		acc, err := app.Svc.Account("alice@example.com", "claude") // read after pausing: PauseAccount replaces the account via Copy-on-Write
 		must(t, err)
@@ -630,7 +639,7 @@ func TestAccountEditForm_Save(t *testing.T) {
 
 	t.Run("invalid format never mutates", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		acc, err := app.Svc.Account("alice@example.com", "claude")
 		must(t, err)
 		before := acc.PauseUntil()
@@ -656,7 +665,7 @@ func TestAccountEditForm_Save(t *testing.T) {
 		must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
 		acc, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
 		must(t, err)
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		form := formFromCenteredModal(t, forms.NewAccountForm(app, acc, func() {}))
 
 		must(t, app.Svc.DeleteAccount("alice@example.com", "claude"))
@@ -677,7 +686,7 @@ func TestAccountCreateForm_Save(t *testing.T) {
 
 	t.Run("success: existing user selected from dropdown", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewAccountForm(app, nil, func() {}))
 
 		setDropDown(t, form, "User", 0)   // alice
@@ -693,7 +702,7 @@ func TestAccountCreateForm_Save(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		prim := forms.NewAccountForm(app, nil, func() {})
 		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
 			t.Errorf("got %T, want error modal", prim)
@@ -702,7 +711,7 @@ func TestAccountCreateForm_Save(t *testing.T) {
 
 	t.Run("failure: account already exists", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // alice|claude already exists
+		app := newFakeApp(t) // alice|claude already exists
 		form := formFromCenteredModal(t, forms.NewAccountForm(app, nil, func() {}))
 
 		setDropDown(t, form, "User", 0)   // alice
@@ -721,31 +730,31 @@ func TestNewUserForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(t *testing.T) (*mockApp, *model.User)
+		setup     func(t *testing.T) (*fakeApp, *model.User)
 		wantModal bool
 	}{
 		{
 			name: "nil user creates form",
-			setup: func(t *testing.T) (*mockApp, *model.User) {
+			setup: func(t *testing.T) (*fakeApp, *model.User) {
 				t.Helper()
-				return newMockApp(t), nil
+				return newFakeApp(t), nil
 			},
 			wantModal: false,
 		},
 		{
 			name: "user no longer exists",
-			setup: func(t *testing.T) (*mockApp, *model.User) {
+			setup: func(t *testing.T) (*fakeApp, *model.User) {
 				t.Helper()
-				app := newMockApp(t)
+				app := newFakeApp(t)
 				return app, model.NewUser("ghost@example.com", "Ghost")
 			},
 			wantModal: true,
 		},
 		{
 			name: "edit mode",
-			setup: func(t *testing.T) (*mockApp, *model.User) {
+			setup: func(t *testing.T) (*fakeApp, *model.User) {
 				t.Helper()
-				app := newMockApp(t)
+				app := newFakeApp(t)
 				return app, app.Svc.User("alice@example.com")
 			},
 			wantModal: false,
@@ -774,11 +783,11 @@ func TestNewUserForm_FieldState(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			app := newMockApp(t)
+			app := newFakeApp(t)
 			form := formFromCenteredModal(t, forms.NewUserForm(app, tc.user, func() {}))
-			emailField, ok := form.GetFormItemByLabel("Email").(*tview.InputField)
+			emailField, ok := form.GetFormItemByLabel("Email").(*forms.InputField)
 			if !ok {
-				t.Fatal("expected Email *tview.InputField")
+				t.Fatal("expected Email *forms.InputField")
 			}
 			if got := inputFieldAcceptsText(emailField); got != tc.wantEmailOK {
 				t.Errorf("email accepts text: got %v, want %v", got, tc.wantEmailOK)
@@ -793,7 +802,7 @@ func TestNewUserForm_Save(t *testing.T) {
 
 	t.Run("create success", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewUserForm(app, nil, func() {}))
 
 		setInputField(t, form, "Email", "carol@example.com")
@@ -811,7 +820,7 @@ func TestNewUserForm_Save(t *testing.T) {
 
 	t.Run("edit success", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewUserForm(app, app.Svc.User("alice@example.com"), func() {}))
 
 		setInputField(t, form, "Name", "Alice Smith")
@@ -825,7 +834,7 @@ func TestNewUserForm_Save(t *testing.T) {
 
 	t.Run("create failure: invalid email", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewUserForm(app, nil, func() {}))
 
 		setInputField(t, form, "Email", "not-an-email")
@@ -842,7 +851,7 @@ func TestNewUserForm_Save(t *testing.T) {
 
 	t.Run("create failure: duplicate email", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t)
+		app := newFakeApp(t)
 		form := formFromCenteredModal(t, forms.NewUserForm(app, nil, func() {}))
 
 		setInputField(t, form, "Email", "alice@example.com")
@@ -858,7 +867,7 @@ func TestNewUserForm_Save(t *testing.T) {
 		t.Parallel()
 		reg := model.NewRegistry()
 		must(t, reg.AddUser(model.NewUser("solo@example.com", "Solo")))
-		app := &mockApp{Svc: newTestService(t, reg)}
+		app := &fakeApp{Svc: newService(t, reg)}
 		form := formFromCenteredModal(t, forms.NewUserForm(app, app.Svc.User("solo@example.com"), func() {}))
 
 		must(t, app.Svc.DeleteUser("solo@example.com"))
@@ -877,43 +886,43 @@ func TestNewGrantForm(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name      string
-		setup     func(t *testing.T) (*mockApp, *model.Project)
+		setup     func(t *testing.T) (*fakeApp, *model.Project)
 		wantModal bool
 	}{
 		{
 			name: "nil project",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
+			setup: func(t *testing.T) (*fakeApp, *model.Project) {
 				t.Helper()
-				return newMockApp(t), nil
+				return newFakeApp(t), nil
 			},
 			wantModal: true,
 		},
 		{
 			name: "no accounts exist",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
+			setup: func(t *testing.T) (*fakeApp, *model.Project) {
 				t.Helper()
 				reg := model.NewRegistry()
 				must(t, reg.AddProject(model.NewProject("Solo", "", "")))
-				app := newMockApp(t)
-				app.Svc = newTestService(t, reg)
+				app := newFakeApp(t)
+				app.Svc = newService(t, reg)
 				return app, app.Svc.Project("Solo")
 			},
 			wantModal: true,
 		},
 		{
 			name: "accounts available",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
+			setup: func(t *testing.T) (*fakeApp, *model.Project) {
 				t.Helper()
-				app := newMockApp(t)
+				app := newFakeApp(t)
 				return app, app.Svc.Project("Orphan")
 			},
 			wantModal: false,
 		},
 		{
 			name: "no eligible accounts",
-			setup: func(t *testing.T) (*mockApp, *model.Project) {
+			setup: func(t *testing.T) (*fakeApp, *model.Project) {
 				t.Helper()
-				app := newMockApp(t)
+				app := newFakeApp(t)
 				return app, app.Svc.Project("Alpha")
 			},
 			wantModal: true,
@@ -934,7 +943,7 @@ func TestNewGrantForm(t *testing.T) {
 // projects.
 func TestNewGrantForm_FiltersCandidates(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	proj := app.Svc.Project("Orphan")
 	form := formFromCenteredModal(t, forms.NewGrantForm(app, proj, func() {}))
 
@@ -961,7 +970,7 @@ func TestNewGrantForm_Save(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // Orphan is granted to no one
+		app := newFakeApp(t) // Orphan is granted to no one
 		proj := app.Svc.Project("Orphan")
 		form := formFromCenteredModal(t, forms.NewGrantForm(app, proj, func() {}))
 
@@ -983,7 +992,7 @@ func TestNewGrantForm_Save(t *testing.T) {
 
 	t.Run("failure: mutate error", func(t *testing.T) {
 		t.Parallel()
-		app := newMockApp(t) // Orphan is granted to no one
+		app := newFakeApp(t) // Orphan is granted to no one
 		app.MutateErr = errors.New("save failed")
 		proj := app.Svc.Project("Orphan")
 		form := formFromCenteredModal(t, forms.NewGrantForm(app, proj, func() {}))
@@ -1004,7 +1013,7 @@ func TestNewGrantForm_Save(t *testing.T) {
 // one of them (NewProjectForm, arbitrarily) covers every caller.
 func TestAddCtrlS_NonSaveKeyPassesThrough(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	before := len(app.Svc.Projects())
 	form := formFromCenteredModal(t, forms.NewProjectForm(app, nil, func() {}))
 
@@ -1123,203 +1132,6 @@ func TestFormWidth(t *testing.T) {
 	}
 }
 
-// must fails the test immediately when err is non-nil.
-func must(t *testing.T, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// mockStore is a minimal in-memory store.Store.
-var _ store.Store = (*mockStore)(nil)
-
-type mockStore struct {
-	reg *model.Registry
-}
-
-// Load returns the stored registry.
-func (s *mockStore) Load() (*model.Registry, error) {
-	if s.reg == nil {
-		return model.NewRegistry(), nil
-	}
-	return s.reg, nil
-}
-
-// Save stores reg.
-func (s *mockStore) Save(reg *model.Registry) error {
-	s.reg = reg
-	return nil
-}
-
-// newTestService wraps reg in a service backed by an in-memory store.
-func newTestService(t *testing.T, reg *model.Registry) *service.Service {
-	t.Helper()
-	svc, err := service.New(&mockStore{reg: reg})
-	if err != nil {
-		t.Fatalf("service.New: %v", err)
-	}
-	return svc
-}
-
-// mockApp implements views.Host and records calls for assertions.
-type mockApp struct {
-	Svc           *service.Service
-	MutateErr     error
-	ShowModalErr  error
-	Modal         tview.Primitive
-	Modals        []tview.Primitive
-	Focused       tview.Primitive
-	SwitchedTo    string
-	Status        string
-	Notice        string
-	ErrorStatus   string
-	HintsSpecific string
-	HintsCommon   string
-	CopiedText    string
-	CopyErr       error
-	Quitted       bool
-}
-
-var _ views.Host = (*mockApp)(nil)
-
-// Service returns the mock service.
-func (m *mockApp) Service() *service.Service { return m.Svc }
-
-// Mutate applies fn unless MutateErr is set.
-func (m *mockApp) Mutate(fn func(*service.Service) error) error {
-	if m.MutateErr != nil {
-		return m.MutateErr
-	}
-	return fn(m.Svc)
-}
-
-// ShowModal records p unless ShowModalErr is set.
-func (m *mockApp) ShowModal(p tview.Primitive) error {
-	if m.ShowModalErr != nil {
-		return m.ShowModalErr
-	}
-	m.Modals = append(m.Modals, p)
-	m.Modal = p
-	return nil
-}
-
-// HideModal pops the recorded modal.
-func (m *mockApp) HideModal() {
-	if len(m.Modals) == 0 {
-		m.Modal = nil
-		return
-	}
-	m.Modals = m.Modals[:len(m.Modals)-1]
-	if len(m.Modals) == 0 {
-		m.Modal = nil
-		return
-	}
-	m.Modal = m.Modals[len(m.Modals)-1]
-}
-
-// ReplaceTopModal replaces the recorded top modal.
-func (m *mockApp) ReplaceTopModal(p tview.Primitive) error {
-	if len(m.Modals) == 0 {
-		m.Modals = append(m.Modals, p)
-		m.Modal = p
-		return nil
-	}
-	m.Modals[len(m.Modals)-1] = p
-	m.Modal = p
-	return nil
-}
-
-// SetFocus records p as the focused primitive.
-func (m *mockApp) SetFocus(p tview.Primitive) {
-	if m.Focused != nil && m.Focused != p {
-		m.Focused.Blur()
-	}
-	m.Focused = p
-	if p != nil {
-		p.Focus(func(tview.Primitive) {})
-	}
-}
-
-// SwitchToMain records the main screen.
-func (m *mockApp) SwitchToMain() { m.SwitchedTo = "main" }
-
-// SwitchToVendors records the vendors screen.
-func (m *mockApp) SwitchToVendors() { m.SwitchedTo = "vendors" }
-
-// SwitchToProjects records the projects screen.
-func (m *mockApp) SwitchToProjects() { m.SwitchedTo = "projects" }
-
-// SwitchToUsers records the users screen.
-func (m *mockApp) SwitchToUsers() { m.SwitchedTo = "users" }
-
-// SetStatus records msg and clears notice and error state.
-func (m *mockApp) SetStatus(msg string) {
-	m.Status = msg
-	m.Notice = ""
-	m.ErrorStatus = ""
-}
-
-// SetNotice records msg and clears status and error state.
-func (m *mockApp) SetNotice(msg string) {
-	m.Status = msg
-	m.Notice = msg
-	m.ErrorStatus = ""
-}
-
-// SetError records msg and clears status and notice state.
-func (m *mockApp) SetError(msg string) {
-	m.Status = msg
-	m.Notice = ""
-	m.ErrorStatus = msg
-}
-
-// SetHints records the hint lines.
-func (m *mockApp) SetHints(specific, common string) {
-	m.HintsSpecific = specific
-	m.HintsCommon = common
-}
-
-// Quit records that quit was requested.
-func (m *mockApp) Quit() { m.Quitted = true }
-
-// AppName returns the application name.
-func (m *mockApp) AppName() string { return "llm-desk" }
-
-// CopyToClipboard records text and returns CopyErr.
-func (m *mockApp) CopyToClipboard(text string) error {
-	m.CopiedText = text
-	return m.CopyErr
-}
-
-// newMockApp returns a mock wired with the shared populated registry.
-func newMockApp(t *testing.T) *mockApp {
-	t.Helper()
-	reg := model.NewRegistry()
-	must(t, reg.AddVendor(model.NewVendor("claude", true, false)))
-	must(t, reg.AddVendor(model.NewVendor("chatgpt", false, false)))
-	must(t, reg.AddUser(model.NewUser("alice@example.com", "Alice")))
-	must(t, reg.AddUser(model.NewUser("bob@example.com", "Bob")))
-
-	aliceClaude, err := reg.AddAccount(reg.User("alice@example.com"), reg.Vendor("claude"))
-	must(t, err)
-	_, err = reg.AddAccount(reg.User("bob@example.com"), reg.Vendor("chatgpt"))
-	must(t, err)
-
-	must(t, reg.AddProject(model.NewProject("Alpha", "", "")))
-	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Alpha")))
-	must(t, reg.AddProject(model.NewProject("Beta", "", "")))
-	must(t, reg.AddProjectToAccount(aliceClaude, reg.Project("Beta")))
-	must(t, reg.AddProject(model.NewProject("Orphan", "", "")))
-
-	return &mockApp{Svc: newTestService(t, reg)}
-}
-
-// runeKey returns a key event for a printable rune.
-func runeKey(r rune) *tcell.EventKey {
-	return tcell.NewEventKey(tcell.KeyRune, r, tcell.ModNone)
-}
-
 // assertFormOrModal checks that result is a modal or a centered form.
 func assertFormOrModal(t *testing.T, result tview.Primitive, wantModal bool) {
 	t.Helper()
@@ -1360,7 +1172,7 @@ func formFromCenteredModal(t *testing.T, p tview.Primitive) *tview.Form {
 }
 
 // inputFieldAcceptsText reports whether typing changes field's text.
-func inputFieldAcceptsText(field *tview.InputField) bool {
+func inputFieldAcceptsText(field *forms.InputField) bool {
 	before := field.GetText()
 	field.InputHandler()(runeKey('z'), func(tview.Primitive) {})
 	return field.GetText() != before
@@ -1385,11 +1197,11 @@ func dropDownOptions(t *testing.T, d *tview.DropDown) []string {
 func setInputField(t *testing.T, form *tview.Form, label, text string) {
 	t.Helper()
 	item := form.GetFormItemByLabel(label)
-	field, ok := item.(*tview.InputField)
+	field, ok := item.(*forms.InputField)
 	if !ok {
-		t.Fatalf("expected %q to be *tview.InputField, got %T", label, item)
+		t.Fatalf("expected %q to be *forms.InputField, got %T", label, item)
 	}
-	field.SetText(text)
+	field.SetText(text, false)
 }
 
 // setTextArea sets a text area's text.

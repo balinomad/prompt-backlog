@@ -12,7 +12,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-func newPromptFormApp(t *testing.T, queue []model.Prompt) (*mockApp, *model.Session) {
+func newPromptFormApp(t *testing.T, queue []model.Prompt) (*fakeApp, *model.Session) {
 	t.Helper()
 	reg := model.NewRegistry()
 	if err := reg.AddVendor(model.NewVendor("claude", true, false)); err != nil {
@@ -35,7 +35,7 @@ func newPromptFormApp(t *testing.T, queue []model.Prompt) (*mockApp, *model.Sess
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &mockApp{Svc: newTestService(t, reg)}, sess
+	return &fakeApp{Svc: newService(t, reg)}, sess
 }
 
 func drawPromptForm(t *testing.T, pf *forms.PromptForm) {
@@ -51,7 +51,7 @@ func drawPromptForm(t *testing.T, pf *forms.PromptForm) {
 	modal.Draw(screen)
 }
 
-func confirmModalFrom(t *testing.T, app *mockApp) *tview.Modal {
+func confirmModalFrom(t *testing.T, app *fakeApp) *tview.Modal {
 	t.Helper()
 	modal, ok := views.UnwrapModal(app.Modal).(*tview.Modal)
 	if !ok {
@@ -106,6 +106,7 @@ func TestPromptForm_Layout(t *testing.T) {
 			tx, ty, tw, th := pf.TextArea().GetRect()
 			cx, cy, cw, ch := pf.ClearButton().GetRect()
 			px, py, pw, ph := pf.CopyButton().GetRect()
+			ax, ay, aw, ah := pf.PasteButton().GetRect()
 			sx, sy, sw, sh := pf.SessionButton().GetRect()
 			fx, fy, fw, fh := pf.Status().GetRect()
 			ppx, _, ppw, _ := pf.SavePauseButton().GetRect()
@@ -120,6 +121,7 @@ func TestPromptForm_Layout(t *testing.T) {
 				"text":    {tx, ty, tw, th},
 				"clear":   {cx, cy, cw, ch},
 				"copy":    {px, py, pw, ph},
+				"paste":   {ax, ay, aw, ah},
 				"session": {sx, sy, sw, sh},
 				"status":  {fx, fy, fw, fh},
 				"save":    {vx, vy, vw, vh},
@@ -129,14 +131,17 @@ func TestPromptForm_Layout(t *testing.T) {
 					t.Errorf("%s rect %v is outside the editor width %d", name, r, editorW)
 				}
 			}
-			if cw != pw {
-				t.Errorf("Clear width = %d, Copy width = %d, want equal", cw, pw)
+			if cw != pw || cw != aw {
+				t.Errorf("Clear width = %d, Copy width = %d, Paste width = %d, want equal", cw, pw, aw)
 			}
 			if py != cy+ch+1 {
 				t.Errorf("Clear bottom = %d, Copy top = %d, want one blank row", cy+ch, py)
 			}
-			if py+ph != ty+th {
-				t.Errorf("Copy bottom = %d, Text bottom = %d, want aligned", py+ph, ty+th)
+			if ay != py+ph+1 {
+				t.Errorf("Copy bottom = %d, Paste top = %d, want one blank row", py+ph, ay)
+			}
+			if ay+ah != ty+th {
+				t.Errorf("Paste bottom = %d, Text bottom = %d, want aligned", ay+ah, ty+th)
 			}
 			if sy >= ty {
 				t.Errorf("Session row y = %d, want above the prompt field y = %d", sy, ty)
@@ -213,6 +218,19 @@ func TestPromptForm_PromptFieldStyle(t *testing.T) {
 	}
 }
 
+func TestPromptForm_EditStartsAtTop(t *testing.T) {
+	t.Parallel()
+	text := "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt(text)})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	drawPromptForm(t, pf)
+
+	row, column := pf.TextArea().GetOffset()
+	if row != 0 || column != 0 {
+		t.Errorf("initial offset = (%d, %d), want (0, 0)", row, column)
+	}
+}
+
 func TestPromptForm_Focus(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
@@ -258,6 +276,7 @@ func TestPromptForm_Focus(t *testing.T) {
 	step(pf.PromptList())
 	step(pf.ClearButton())
 	step(pf.CopyButton())
+	step(pf.PasteButton())
 	step(pf.TextArea())
 }
 
@@ -305,6 +324,136 @@ func TestPromptForm_Clear(t *testing.T) {
 	}
 	if app.Focused != pf.TextArea() {
 		t.Errorf("focus = %T, want prompt field", app.Focused)
+	}
+}
+
+func TestPromptForm_Paste(t *testing.T) {
+	t.Parallel()
+
+	t.Run("replaces the selection", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app.ClipboardText = "second"
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf.TextArea().Select(0, 5)
+		pressButton(t, pf.PasteButton())
+		if got := pf.TextArea().GetText(); got != "second" {
+			t.Errorf("prompt = %q, want second", got)
+		}
+		if app.Status != "pasted" {
+			t.Errorf("status = %q, want pasted", app.Status)
+		}
+	})
+
+	t.Run("failure shows an error", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app.ReadErr = errors.New("no clipboard")
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pressButton(t, pf.PasteButton())
+		if app.ErrorStatus != "paste failed: no clipboard" {
+			t.Errorf("error = %q, want paste failed: no clipboard", app.ErrorStatus)
+		}
+	})
+
+	t.Run("empty clipboard leaves the text unchanged", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf.TextArea().Select(0, 5)
+		pressButton(t, pf.PasteButton())
+		if got := pf.TextArea().GetText(); got != "first" {
+			t.Errorf("prompt = %q, want first", got)
+		}
+		if app.Status != "" {
+			t.Errorf("status = %q, want empty", app.Status)
+		}
+	})
+}
+
+func TestPromptForm_ClipboardHotkeys(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	textArea := pf.TextArea()
+	textArea.SetText("first", false)
+	textArea.Select(0, 5)
+	textArea.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlQ, 0, tcell.ModNone), func(tview.Primitive) {})
+	if app.CopiedText != "first" {
+		t.Errorf("copied = %q, want first", app.CopiedText)
+	}
+
+	app.ClipboardText = "second"
+	textArea.Select(0, 5)
+	textArea.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlV, 0, tcell.ModNone), func(tview.Primitive) {})
+	if got := textArea.GetText(); got != "second" {
+		t.Errorf("text = %q, want second", got)
+	}
+}
+
+func TestPromptForm_ClipboardHotkeyErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("copy failure sets an error", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app.CopyErr = errors.New("no clipboard")
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf.TextArea().Select(0, 5)
+		pf.TextArea().InputHandler()(tcell.NewEventKey(tcell.KeyCtrlQ, 0, tcell.ModNone), func(tview.Primitive) {})
+		if app.ErrorStatus != "copy: no clipboard" {
+			t.Errorf("error = %q, want copy: no clipboard", app.ErrorStatus)
+		}
+	})
+
+	t.Run("paste failure sets an error", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app.ReadErr = errors.New("no clipboard")
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf.TextArea().Select(0, 5)
+		pf.TextArea().InputHandler()(tcell.NewEventKey(tcell.KeyCtrlV, 0, tcell.ModNone), func(tview.Primitive) {})
+		if app.ErrorStatus != "paste: no clipboard" {
+			t.Errorf("error = %q, want paste: no clipboard", app.ErrorStatus)
+		}
+	})
+}
+
+func TestNormalizeClipboardKey(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		event   *tcell.EventKey
+		wantKey tcell.Key
+		wantNil bool
+	}{
+		{"nil event", nil, 0, true},
+		{"non-rune event", tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), tcell.KeyEnter, false},
+		{"rune without control", tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModNone), tcell.KeyRune, false},
+		{"control q", tcell.NewEventKey(tcell.KeyRune, 'q', tcell.ModCtrl|tcell.ModAlt), tcell.KeyCtrlQ, false},
+		{"control x", tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModCtrl|tcell.ModAlt), tcell.KeyCtrlX, false},
+		{"control v", tcell.NewEventKey(tcell.KeyRune, 'v', tcell.ModCtrl|tcell.ModAlt), tcell.KeyCtrlV, false},
+		{"uppercase control q", tcell.NewEventKey(tcell.KeyRune, 'Q', tcell.ModCtrl|tcell.ModAlt), tcell.KeyCtrlQ, false},
+		{"unrelated control rune", tcell.NewEventKey(tcell.KeyRune, '1', tcell.ModCtrl|tcell.ModAlt), tcell.KeyRune, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := forms.NormalizeClipboardKey(tc.event)
+			if tc.wantNil {
+				if got != nil {
+					t.Errorf("got %v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("got nil, want an event")
+			}
+			if got.Key() != tc.wantKey {
+				t.Errorf("key = %v, want %v", got.Key(), tc.wantKey)
+			}
+		})
 	}
 }
 
@@ -740,6 +889,249 @@ func TestPromptForm_SessionModal(t *testing.T) {
 	}
 	if status != model.SessionStatusNeedsClosing {
 		t.Errorf("status = %v, want Needs closing", status)
+	}
+}
+
+func TestNewPromptForm_Guards(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil session", func(t *testing.T) {
+		t.Parallel()
+		app, _ := newPromptFormApp(t, nil)
+		prim := forms.NewPromptForm(app, nil, forms.PromptFormOptions{Mode: forms.PromptFormAdd})
+		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
+			t.Errorf("got %T, want error modal", views.UnwrapModal(prim))
+		}
+	})
+
+	t.Run("missing session", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, nil)
+		must(t, app.Svc.DeleteSession("alice@example.com", "claude", sess.ID()))
+		prim := forms.NewPromptForm(app, sess, forms.PromptFormOptions{Mode: forms.PromptFormAdd})
+		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
+			t.Errorf("got %T, want error modal", views.UnwrapModal(prim))
+		}
+	})
+
+	t.Run("invalid edit index", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		prim := forms.NewPromptForm(app, sess, forms.PromptFormOptions{Mode: forms.PromptFormEdit, Index: -1})
+		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
+			t.Errorf("got %T, want error modal", views.UnwrapModal(prim))
+		}
+	})
+}
+
+func TestPromptForm_AddModeGuards(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() {})
+
+	pf.AddPrompt()
+	pf.DeletePrompt()
+
+	if pf.PromptList() != nil {
+		t.Error("Add form gained a prompt list")
+	}
+	if app.Modal != nil {
+		t.Error("Add form opened a modal")
+	}
+}
+
+func TestPromptForm_SaveFailures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add empty text", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() {})
+		pf.TextArea().SetText("   ", true)
+		pressButton(t, pf.SaveButton())
+		if app.ErrorStatus == "" {
+			t.Error("expected a validation error")
+		}
+	})
+
+	t.Run("add mutation failure", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app.MutateErr = errors.New("save failed")
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() {})
+		pf.TextArea().SetText("second", true)
+		pressButton(t, pf.SaveButton())
+		if app.ErrorStatus == "" {
+			t.Error("expected a status message reporting the save failure")
+		}
+	})
+
+	t.Run("edit mutation failure", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app.MutateErr = errors.New("save failed")
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pressButton(t, pf.SaveButton())
+		if app.ErrorStatus == "" {
+			t.Error("expected a status message reporting the save failure")
+		}
+	})
+
+	t.Run("session deleted before save", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		must(t, app.Svc.DeleteSession("alice@example.com", "claude", sess.ID()))
+		pf.TextArea().SetText("changed", true)
+		pressButton(t, pf.SaveButton())
+		if app.ErrorStatus == "" {
+			t.Error("expected a status message for the deleted session")
+		}
+	})
+}
+
+func TestPromptForm_DeleteMutationFailure(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
+
+	pressButton(t, pf.DeleteButton())
+	modal := confirmModalFrom(t, app)
+	app.MutateErr = errors.New("delete failed")
+	pressConfirm(t, modal)
+
+	if app.ErrorStatus == "" {
+		t.Error("expected a status message reporting the delete failure")
+	}
+	if app.Modal == nil {
+		t.Error("prompt form closed after the delete failure")
+	}
+}
+
+func TestPromptForm_StatusOutOfRange(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf.Status().SetCurrentOption(-1)
+
+	forms.SavePromptFromPrimitive(pf.Primitive())
+
+	if got := app.Svc.Session(sess.ID()).Status(); got != model.SessionStatusActive {
+		t.Errorf("status = %v, want Active", got)
+	}
+}
+
+func TestPromptForm_OpenSessionErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing session", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
+		must(t, app.Svc.DeleteSession("alice@example.com", "claude", sess.ID()))
+
+		pressButton(t, pf.SessionButton())
+
+		if app.ErrorStatus != "session no longer exists" {
+			t.Errorf("error = %q, want session no longer exists", app.ErrorStatus)
+		}
+	})
+
+	t.Run("session save failure", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
+
+		pressButton(t, pf.SessionButton())
+		form := formFromCenteredModal(t, app.Modal)
+		app.MutateErr = errors.New("save failed")
+		triggerSave(t, form)
+
+		if app.ErrorStatus == "" {
+			t.Error("expected a status message reporting the session save failure")
+		}
+	})
+}
+
+func TestPromptForm_ListCaptureKeys(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
+	closed := false
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+	capture := pf.PromptList().GetInputCapture()
+
+	if got := capture(tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)); got != nil {
+		t.Error("Backtab was not consumed")
+	}
+	capture(tcell.NewEventKey(views.KeySave, 0, tcell.ModNone))
+	capture(tcell.NewEventKey(views.KeyCancel, 0, tcell.ModNone))
+
+	if !closed {
+		t.Error("Cancel did not close the form")
+	}
+}
+
+func TestPromptForm_TextAreaCaptureKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("backtab moves focus", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf.FocusEditor()
+		capture := pf.TextArea().GetInputCapture()
+		if got := capture(tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)); got != nil {
+			t.Error("Backtab was not consumed")
+		}
+		if app.Focused != pf.PasteButton() {
+			t.Errorf("focus = %T, want Paste button", app.Focused)
+		}
+	})
+
+	t.Run("save closes", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		closed := false
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+		pf.TextArea().GetInputCapture()(tcell.NewEventKey(views.KeySave, 0, tcell.ModNone))
+		if !closed {
+			t.Error("Save did not close the form")
+		}
+	})
+
+	t.Run("cancel closes", func(t *testing.T) {
+		t.Parallel()
+		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		closed := false
+		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+		pf.TextArea().GetInputCapture()(tcell.NewEventKey(views.KeyCancel, 0, tcell.ModNone))
+		if !closed {
+			t.Error("Cancel did not close the form")
+		}
+	})
+}
+
+func TestPromptPreview(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"single line", "hello", "hello"},
+		{"multiline", "first\nsecond", "first"},
+		{"blank", "   ", "(empty)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := forms.PromptPreview(tc.text); got != tc.want {
+				t.Errorf("Preview(%q) = %q, want %q", tc.text, got, tc.want)
+			}
+		})
 	}
 }
 

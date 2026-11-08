@@ -786,6 +786,27 @@ func TestSave_WriteTempFileFails(t *testing.T) {
 	}
 }
 
+func TestSave_WriteFails(t *testing.T) {
+	t.Parallel()
+	// /dev/full accepts an open but fails every write. A symlink at the temp
+	// path makes the store's write hit ENOSPC without needing write access to
+	// the device node itself.
+	if _, err := os.Stat("/dev/full"); err != nil {
+		t.Skip("/dev/full is not available")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "registry.json")
+	must(t, os.Symlink("/dev/full", path+".tmp"))
+
+	err := storejson.New(path).Save(model.NewRegistry())
+	if err == nil {
+		t.Fatal("expected an error writing to /dev/full")
+	}
+	if !strings.Contains(err.Error(), "write") {
+		t.Errorf("error = %v, want a write error", err)
+	}
+}
+
 func TestSave_RenameFails_RemovesTempFile(t *testing.T) {
 	t.Parallel()
 	// Pre-creating the destination as an existing directory makes

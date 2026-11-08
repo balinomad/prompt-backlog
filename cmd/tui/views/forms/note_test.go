@@ -10,27 +10,41 @@ import (
 	"github.com/rivo/tview"
 )
 
-func noteFormAccount(t *testing.T, app *mockApp) *model.Account {
+func noteFormAccount(t *testing.T, app *fakeApp) *model.Account {
 	t.Helper()
 	acc, err := app.Svc.Account("alice@example.com", "claude")
 	must(t, err)
 	return acc
 }
 
-//nolint:cyclop // Form test with independent assertions.
+func noteFormFromModal(t *testing.T, p tview.Primitive) *forms.NoteForm {
+	t.Helper()
+	form, ok := forms.NoteFormFromPrimitive(p)
+	if !ok {
+		t.Fatalf("expected note form, got %T", p)
+	}
+	return form
+}
+
+func noteFormButton(t *testing.T, form *forms.NoteForm, label string) *tview.Button {
+	t.Helper()
+	button := form.Button(label)
+	if button == nil {
+		t.Fatalf("button %q not found", label)
+	}
+	return button
+}
+
 func TestNewNoteForm_MainAdd(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc := noteFormAccount(t, app)
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, nil, acc, nil, func() {}))
+	form := noteFormFromModal(t, forms.NewNoteForm(app, nil, acc, nil, func() {}))
 
-	if got := form.GetTitle(); got != " New Note " {
+	if got := form.Title(); got != " New Note " {
 		t.Errorf("title = %q, want New Note", got)
 	}
-	project, ok := form.GetFormItemByLabel("Project").(*tview.DropDown)
-	if !ok {
-		t.Fatal("Project is not a dropdown")
-	}
+	project := form.Project()
 	wantProjects := []string{"none", "Alpha", "Beta", "Orphan"}
 	if got := project.GetOptionCount(); got != len(wantProjects) {
 		t.Fatalf("project options = %d, want %d", got, len(wantProjects))
@@ -41,10 +55,7 @@ func TestNewNoteForm_MainAdd(t *testing.T) {
 		}
 	}
 
-	account, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
-	if !ok {
-		t.Fatal("Account is not a dropdown")
-	}
+	account := form.Account()
 	if got := account.GetOptionCount(); got != 2 {
 		t.Fatalf("account options = %d, want 2", got)
 	}
@@ -59,9 +70,9 @@ func TestNewNoteForm_MainAdd(t *testing.T) {
 		t.Errorf("account option 1 = %q, want claude · Alice", got)
 	}
 
-	form.GetFormItemByLabel("Text").(*tview.TextArea).SetText("note text", true) //nolint:errcheck // The item type is known.
-	form.GetFormItemByLabel("Project").(*tview.DropDown).SetCurrentOption(2)     //nolint:errcheck // The item type is known.
-	pressButton(t, form.GetButton(0))
+	form.TextArea().SetText("note text", true)
+	form.Project().SetCurrentOption(2)
+	pressButton(t, noteFormButton(t, form, "Save"))
 
 	notes := app.Svc.Notes()
 	if len(notes) != 1 {
@@ -77,57 +88,167 @@ func TestNewNoteForm_MainAdd(t *testing.T) {
 
 func TestNewNoteForm_MainEdit(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc := noteFormAccount(t, app)
 	note, err := app.Svc.AddNote("old text", "Beta", "alice@example.com", "claude")
 	must(t, err)
 
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, note, acc, nil, func() {}))
-	if got := form.GetTitle(); got != " Edit Note " {
+	form := noteFormFromModal(t, forms.NewNoteForm(app, note, acc, nil, func() {}))
+	if got := form.Title(); got != " Edit Note " {
 		t.Errorf("title = %q, want Edit Note", got)
 	}
-	if got := form.GetFormItemByLabel("Text").(*tview.TextArea).GetText(); got != "old text" { //nolint:errcheck // The item type is known.
+	if got := form.TextArea().GetText(); got != "old text" {
 		t.Errorf("Text = %q, want old text", got)
 	}
-	idx, _ := form.GetFormItemByLabel("Project").(*tview.DropDown).GetCurrentOption() //nolint:errcheck // The item type is known.
+	idx, _ := form.Project().GetCurrentOption()
 	if idx != 2 {
 		t.Errorf("project preselection = %d, want 2 (Beta)", idx)
 	}
-	idx, _ = form.GetFormItemByLabel("Account").(*tview.DropDown).GetCurrentOption() //nolint:errcheck // The item type is known.
+	idx, _ = form.Account().GetCurrentOption()
 	if idx != 1 {
 		t.Errorf("account preselection = %d, want 1", idx)
 	}
 
-	form.GetFormItemByLabel("Text").(*tview.TextArea).SetText("new text", true) //nolint:errcheck // The item type is known.
-	pressButton(t, form.GetButton(0))
+	form.TextArea().SetText("new text", true)
+	pressButton(t, noteFormButton(t, form, "Save"))
 	if got := app.Svc.Note(note.ID()).Text(); got != "new text" {
 		t.Errorf("Text() = %q, want new text", got)
 	}
 }
 
-//nolint:errcheck // The form item types are known.
+func TestNewNoteForm_EditStartsAtTop(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	acc := noteFormAccount(t, app)
+	text := "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
+	note, err := app.Svc.AddNote(text, "Beta", "alice@example.com", "claude")
+	must(t, err)
+
+	form := noteFormFromModal(t, forms.NewNoteForm(app, note, acc, nil, func() {}))
+	row, column := form.TextArea().GetOffset()
+	if row != 0 || column != 0 {
+		t.Errorf("initial offset = (%d, %d), want (0, 0)", row, column)
+	}
+}
+
+func TestNewNoteForm_ClipboardActionsLayout(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	acc := noteFormAccount(t, app)
+	modal := forms.NewNoteForm(app, nil, acc, nil, func() {})
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	modal.SetRect(0, 0, 80, 24)
+	modal.Draw(screen)
+
+	form := noteFormFromModal(t, modal)
+	tx, ty, _, th := form.TextArea().GetRect()
+	cx, cy, cw, ch := noteFormButton(t, form, "Clear").GetRect()
+	px, py, pw, ph := noteFormButton(t, form, "Copy").GetRect()
+	ax, ay, aw, ah := noteFormButton(t, form, "Paste").GetRect()
+
+	if cx >= tx {
+		t.Errorf("Clear x = %d, want left of text x = %d", cx, tx)
+	}
+	if cx != px || cx != ax {
+		t.Errorf("clipboard button x = %d, %d, %d, want equal", cx, px, ax)
+	}
+	if cw != pw || cw != aw {
+		t.Errorf("clipboard button width = %d, %d, %d, want equal", cw, pw, aw)
+	}
+	if py != cy+ch+1 {
+		t.Errorf("Clear bottom = %d, Copy top = %d, want one blank row", cy+ch, py)
+	}
+	if ay != py+ph+1 {
+		t.Errorf("Copy bottom = %d, Paste top = %d, want one blank row", py+ph, ay)
+	}
+	if ay+ah != ty+th {
+		t.Errorf("Paste bottom = %d, Text bottom = %d, want aligned", ay+ah, ty+th)
+	}
+}
+
+func TestNewNoteForm_DropDownSpacing(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	acc := noteFormAccount(t, app)
+	modal := forms.NewNoteForm(app, nil, acc, nil, func() {})
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	modal.SetRect(0, 0, 80, 24)
+	modal.Draw(screen)
+
+	form := noteFormFromModal(t, modal)
+	_, py, _, ph := form.Project().GetRect()
+	_, ay, _, ah := form.Account().GetRect()
+	if ay != py+ph+1 {
+		t.Errorf("Project bottom = %d, Account top = %d, want one blank row", py+ph, ay)
+	}
+	_, sy, _, _ := noteFormButton(t, form, "Save").GetRect()
+	if sy != ay+ah+1 {
+		t.Errorf("Account bottom = %d, Save top = %d, want one blank row", ay+ah, sy)
+	}
+}
+
+func TestNewNoteForm_ClipboardButtons(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	acc := noteFormAccount(t, app)
+	form := noteFormFromModal(t, forms.NewNoteForm(app, nil, acc, nil, func() {}))
+	textArea := form.TextArea()
+	textArea.SetText("first", false)
+
+	pressButton(t, noteFormButton(t, form, "Copy"))
+	if app.CopiedText != "first" {
+		t.Errorf("copied = %q, want first", app.CopiedText)
+	}
+
+	app.ClipboardText = "second"
+	textArea.Select(0, 5)
+	pressButton(t, noteFormButton(t, form, "Paste"))
+	if got := textArea.GetText(); got != "second" {
+		t.Errorf("text = %q, want second", got)
+	}
+
+	pressButton(t, noteFormButton(t, form, "Clear"))
+	if got := textArea.GetText(); got != "" {
+		t.Errorf("text = %q, want empty", got)
+	}
+	if app.Focused != textArea {
+		t.Errorf("focus = %T, want text area", app.Focused)
+	}
+}
+
 func TestNewNoteForm_MainEditWithoutAccount(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc := noteFormAccount(t, app)
 	note, err := app.Svc.AddNote("text", "Alpha", "", "")
 	must(t, err)
 
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, note, acc, nil, func() {}))
-	idx, _ := form.GetFormItemByLabel("Account").(*tview.DropDown).GetCurrentOption()
+	form := noteFormFromModal(t, forms.NewNoteForm(app, note, acc, nil, func() {}))
+	idx, _ := form.Account().GetCurrentOption()
 	if idx != 0 {
 		t.Errorf("account preselection = %d, want 0 (none)", idx)
 	}
 }
 
-//nolint:errcheck // The form item types are known.
 func TestNewNoteForm_ProjectsAdd(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	project := app.Svc.Project("Alpha")
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, nil, nil, project, func() {}))
+	form := noteFormFromModal(t, forms.NewNoteForm(app, nil, nil, project, func() {}))
 
-	projectDropdown := form.GetFormItemByLabel("Project").(*tview.DropDown)
+	projectDropdown := form.Project()
 	projectDropdown.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 	if projectDropdown.IsOpen() {
 		t.Error("Project dropdown opened despite being disabled")
@@ -136,10 +257,7 @@ func TestNewNoteForm_ProjectsAdd(t *testing.T) {
 		t.Errorf("project option = %q, want Alpha", got)
 	}
 
-	account, ok := form.GetFormItemByLabel("Account").(*tview.DropDown)
-	if !ok {
-		t.Fatal("Account is not a dropdown")
-	}
+	account := form.Account()
 	if got := account.GetOptionCount(); got != 2 {
 		t.Fatalf("account options = %d, want 2", got)
 	}
@@ -151,9 +269,9 @@ func TestNewNoteForm_ProjectsAdd(t *testing.T) {
 		t.Errorf("account option 1 = %q, want claude · Alice", got)
 	}
 
-	form.GetFormItemByLabel("Text").(*tview.TextArea).SetText("project note", true)
+	form.TextArea().SetText("project note", true)
 	account.SetCurrentOption(1)
-	pressButton(t, form.GetButton(0))
+	pressButton(t, noteFormButton(t, form, "Save"))
 
 	notes, err := app.Svc.ProjectNotes("Alpha")
 	must(t, err)
@@ -165,32 +283,30 @@ func TestNewNoteForm_ProjectsAdd(t *testing.T) {
 	}
 }
 
-//nolint:errcheck // The form item types are known.
 func TestNewNoteForm_ProjectsEdit(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	project := app.Svc.Project("Alpha")
 	note, err := app.Svc.AddNote("text", "Alpha", "alice@example.com", "claude")
 	must(t, err)
 
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, note, nil, project, func() {}))
-	idx, _ := form.GetFormItemByLabel("Account").(*tview.DropDown).GetCurrentOption()
+	form := noteFormFromModal(t, forms.NewNoteForm(app, note, nil, project, func() {}))
+	idx, _ := form.Account().GetCurrentOption()
 	if idx != 1 {
 		t.Errorf("account preselection = %d, want 1", idx)
 	}
 }
 
-//nolint:errcheck // The form item types are known.
 func TestNewNoteForm_SaveError(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc := noteFormAccount(t, app)
 	closed := false
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, nil, acc, nil, func() { closed = true }))
+	form := noteFormFromModal(t, forms.NewNoteForm(app, nil, acc, nil, func() { closed = true }))
 
-	form.GetFormItemByLabel("Text").(*tview.TextArea).SetText("text", true)
-	form.GetFormItemByLabel("Project").(*tview.DropDown).SetCurrentOption(3) // Orphan, not granted
-	pressButton(t, form.GetButton(0))
+	form.TextArea().SetText("text", true)
+	form.Project().SetCurrentOption(3) // Orphan, not granted
+	pressButton(t, noteFormButton(t, form, "Save"))
 
 	if app.ErrorStatus == "" {
 		t.Error("expected an error status")
@@ -203,14 +319,13 @@ func TestNewNoteForm_SaveError(t *testing.T) {
 	}
 }
 
-//nolint:errcheck // The form item types are known.
 func TestNewNoteForm_EmptyText(t *testing.T) {
 	t.Parallel()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc := noteFormAccount(t, app)
-	form := formFromCenteredModal(t, forms.NewNoteForm(app, nil, acc, nil, func() {}))
-	form.GetFormItemByLabel("Text").(*tview.TextArea).SetText("   ", true)
-	pressButton(t, form.GetButton(0))
+	form := noteFormFromModal(t, forms.NewNoteForm(app, nil, acc, nil, func() {}))
+	form.TextArea().SetText("   ", true)
+	pressButton(t, noteFormButton(t, form, "Save"))
 	if app.ErrorStatus == "" {
 		t.Error("expected a validation error")
 	}

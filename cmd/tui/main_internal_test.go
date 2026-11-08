@@ -14,8 +14,71 @@ import (
 	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/rivo/tview"
 )
+
+func TestWin32InputModeDisable(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		goos string
+		want string
+	}{
+		{"linux", "linux", "\x1b[?9001l"},
+		{"darwin", "darwin", "\x1b[?9001l"},
+		{"windows keeps protocol", "windows", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := win32InputModeDisable(tc.goos); got != tc.want {
+				t.Errorf("win32InputModeDisable(%q) = %q, want %q", tc.goos, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNumericKeypadTerminfo(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		enterKeypad string
+		want        string
+	}{
+		{"removes deckpam", "\x1b[?1h\x1b=", "\x1b[?1h"},
+		{"keeps sequence without deckpam", "\x1b[?1h", "\x1b[?1h"},
+		{"empty stays empty", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ti := &terminfo.Terminfo{
+				EnterKeypad: tc.enterKeypad,
+				ExitKeypad:  "\x1b[?1l\x1b>",
+			}
+			got := numericKeypadTerminfo(ti)
+			if got == ti {
+				t.Fatal("numericKeypadTerminfo returned the original pointer")
+			}
+			if got.EnterKeypad != tc.want {
+				t.Errorf("EnterKeypad = %q, want %q", got.EnterKeypad, tc.want)
+			}
+			if got.ExitKeypad != ti.ExitKeypad {
+				t.Errorf("ExitKeypad = %q, want %q", got.ExitKeypad, ti.ExitKeypad)
+			}
+		})
+	}
+
+	t.Run("nil terminfo", func(t *testing.T) {
+		t.Parallel()
+		if got := numericKeypadTerminfo(nil); got != nil {
+			t.Errorf("got %v, want nil", got)
+		}
+	})
+}
 
 // layoutStore is an in-memory store for layout tests.
 type layoutStore struct{ reg *model.Registry }
@@ -798,6 +861,26 @@ func TestApp_CopyToClipboard(t *testing.T) {
 
 	app.copyFn = nil
 	if err := app.CopyToClipboard("x"); !errors.Is(err, apperr.ErrNil) {
+		t.Errorf("error = %v, want ErrNil", err)
+	}
+}
+
+func TestApp_ReadFromClipboard(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+
+	app.readFn = func() (string, error) { return "hello", nil }
+	if got, err := app.ReadFromClipboard(); err != nil || got != "hello" {
+		t.Errorf("ReadFromClipboard() = %q, %v; want hello, nil", got, err)
+	}
+
+	app.readFn = func() (string, error) { return "", errors.New("boom") }
+	if _, err := app.ReadFromClipboard(); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error = %v, want boom", err)
+	}
+
+	app.readFn = nil
+	if _, err := app.ReadFromClipboard(); !errors.Is(err, apperr.ErrNil) {
 		t.Errorf("error = %v, want ErrNil", err)
 	}
 }

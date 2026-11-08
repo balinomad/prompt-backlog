@@ -1550,13 +1550,13 @@ func TestService_LatestSession(t *testing.T) {
 		}
 	})
 
-	t.Run("no touched session", func(t *testing.T) {
+	t.Run("session created without prompts", func(t *testing.T) {
 		t.Parallel()
 		svc := seedService(t)
 		sess, ok, err := svc.LatestSession("bob@example.com", "chatgpt")
 		must(t, err)
-		if ok || sess != nil {
-			t.Errorf("LatestSession() = %v, %v; want nil, false", sess, ok)
+		if !ok || sess == nil || sess.ID() != 2 {
+			t.Errorf("LatestSession() = %v, %v; want session 2, true", sess, ok)
 		}
 	})
 

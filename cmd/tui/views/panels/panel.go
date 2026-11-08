@@ -5,11 +5,34 @@ import (
 
 	"strings"
 
+	"github.com/balinomad/llm-desk/internal/model"
 	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+// resolvePanelAccount resolves account and synchronises filter with its
+// granted projects. A stale or deleted account resolves to nil.
+func resolvePanelAccount(svc *service.Service, account *model.Account, filter *views.ProjectFilterState) *model.Account {
+	var acc *model.Account
+	if account != nil {
+		resolved, err := svc.Account(account.UserEmail(), account.VendorName())
+		if err == nil {
+			acc = resolved
+		}
+	}
+	if acc != nil {
+		projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
+		if err != nil {
+			projects = nil
+		}
+		filter.SetAccount(acc.Key(), true, projects)
+	} else {
+		filter.SetAccount(model.AccountKey{}, false, nil)
+	}
+	return acc
+}
 
 // panelSpec configures a single-pane list and detail panel.
 type panelSpec[T any] struct {
@@ -176,7 +199,7 @@ func (s *panel[T]) handleKey(event *tcell.EventKey) *tcell.EventKey {
 
 func (s *panel[T]) handleNew() *tcell.EventKey {
 	var zero T
-	views.ShowModal(s.app, s.spec.form(s.app, zero, s.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(s.app, s.spec.form(s.app, zero, s.closeForm), views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 
@@ -185,7 +208,7 @@ func (s *panel[T]) handleEdit() *tcell.EventKey {
 	if !ok {
 		return nil
 	}
-	views.ShowModal(s.app, s.spec.form(s.app, item, s.closeForm), views.HintsFormSpecific, views.HintsFormCommon)
+	views.ShowModal(s.app, s.spec.form(s.app, item, s.closeForm), views.HintsFormSpecific, views.HintsTextFormCommon)
 	return nil
 }
 

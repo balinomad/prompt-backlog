@@ -5,7 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 	"github.com/balinomad/llm-desk/internal/service"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/terminfo"
 	"github.com/rivo/tview"
 	"golang.design/x/clipboard"
 )
@@ -26,6 +30,11 @@ const AppName = "llm-desk"
 
 const savedStatusMessage = "[green]saved ✓[-]"
 
+// win32InputModeOff disables win32-input-mode. tcell enables the protocol on
+// xterm-like terminals, but Konsole reports keypad keys through it in a form
+// that tcell does not decode into digits.
+const win32InputModeOff = "\x1b[?9001l"
+
 // statusMessageTimeout is how long non-error status and notice messages stay
 // visible before they clear automatically.
 const statusMessageTimeout = 5 * time.Second
@@ -33,8 +42,6 @@ const statusMessageTimeout = 5 * time.Second
 // pauseStatusRefreshInterval is how often the accounts list re-evaluates
 // pause-time status so an account's colour flips without a mutation.
 const pauseStatusRefreshInterval = time.Minute
-
-const numericKeypadMode = "\x1b>"
 
 // minTerminalHeight is the smallest supported terminal height.
 const minTerminalHeight = 24
@@ -80,6 +87,7 @@ type App struct {
 	tooSmall  bool
 
 	copyFn        func(string) error
+	readFn        func() (string, error)
 	clipboardInit sync.Once
 	clipboardErr  error
 
@@ -114,8 +122,67 @@ func New(svc *service.Service) (*App, error) {
 		statusTimeout: statusMessageTimeout,
 	}
 	a.copyFn = a.writeClipboard
+	a.readFn = a.readClipboard
 	a.build()
 	return a, nil
+}
+
+// useNumericKeypadScreen replaces the default screen with one whose terminfo
+// enters numeric keypad mode (DECKPNM) instead of application keypad mode
+// (DECKPAM). tcell cannot decode the SS3 keypad sequences that DECKPAM
+// produces, so without this the numeric keypad is silently ignored.
+//
+// The call is best effort: an unknown terminal keeps the default screen.
+func (a *App) useNumericKeypadScreen() {
+	ti, err := tcell.LookupTerminfo(os.Getenv("TERM"))
+	if err != nil {
+		return
+	}
+	screen, err := tcell.NewTerminfoScreenFromTtyTerminfo(nil, numericKeypadTerminfo(ti))
+	if err != nil {
+		return
+	}
+	a.tv.SetScreen(screen)
+	// tview only applies EnableMouse when it creates the screen itself.
+	screen.EnableMouse()
+	a.disableWin32InputMode(screen)
+}
+
+// disableWin32InputMode turns off win32-input-mode after tcell enables its
+// advanced keyboard protocols. It is skipped on Windows, where win32-input-mode
+// is the preferred protocol.
+func (a *App) disableWin32InputMode(screen tcell.Screen) {
+	sequence := win32InputModeDisable(runtime.GOOS)
+	if sequence == "" {
+		return
+	}
+	tty, ok := screen.Tty()
+	if !ok {
+		return
+	}
+	if _, err := tty.Write([]byte(sequence)); err != nil {
+		a.SetError(fmt.Sprintf("disable win32 input mode: %v", err))
+	}
+}
+
+// win32InputModeDisable returns the win32-input-mode disable sequence for goos,
+// or an empty string when the protocol must remain enabled.
+func win32InputModeDisable(goos string) string {
+	if goos == "windows" {
+		return ""
+	}
+	return win32InputModeOff
+}
+
+// numericKeypadTerminfo returns a copy of ti whose keypad entry sequence does
+// not enable DECKPAM. DECCKM is preserved so cursor keys keep their SS3 form.
+func numericKeypadTerminfo(ti *terminfo.Terminfo) *terminfo.Terminfo {
+	if ti == nil {
+		return nil
+	}
+	clone := *ti
+	clone.EnterKeypad = strings.ReplaceAll(clone.EnterKeypad, "\x1b=", "")
+	return &clone
 }
 
 // Run starts the tview event loop and blocks until the application stops or
@@ -129,23 +196,8 @@ func (a *App) Run(ctx context.Context) error {
 		a.cancelStatusTimer()
 	}()
 
-	// tcell switches the terminal to application keypad mode at startup. In
-	// that mode most terminals send the numeric keypad as SS3 sequences
-	// (ESC O p..y) that tcell v2 cannot decode as digits, so numpad digits
-	// never reach an input field. Switch back to numeric keypad mode
-	// (DECKPNM) once the screen is up. Best effort: a screen without a tty
-	// is left untouched.
-	var numericKeypad sync.Once
-	a.tv.SetAfterDrawFunc(func(screen tcell.Screen) {
-		numericKeypad.Do(func() {
-			tty, ok := screen.Tty()
-			if !ok {
-				return
-			}
-			if _, err := tty.Write([]byte(numericKeypadMode)); err != nil {
-				a.SetError(fmt.Sprintf("numeric keypad: %v", err))
-			}
-		})
+	a.useNumericKeypadScreen()
+	a.tv.SetAfterDrawFunc(func(tcell.Screen) {
 		// Stop here as well in case ctx was cancelled before Run created the
 		// screen; Stop is a no-op until a screen exists.
 		if ctx.Err() != nil {
@@ -205,18 +257,54 @@ func (a *App) CopyToClipboard(text string) error {
 	return nil
 }
 
+// ReadFromClipboard returns the current system clipboard text through the
+// replaceable read function.
+func (a *App) ReadFromClipboard() (string, error) {
+	if a.readFn == nil {
+		return "", fmt.Errorf("read from clipboard: function %w", apperr.ErrNil)
+	}
+	text, err := a.readFn()
+	if err != nil {
+		return "", fmt.Errorf("read from clipboard: %w", err)
+	}
+	return text, nil
+}
+
 // writeClipboard initialises the clipboard once and writes text to it.
 func (a *App) writeClipboard(text string) error {
-	a.clipboardInit.Do(func() {
-		a.clipboardErr = clipboard.Init()
-	})
-	if a.clipboardErr != nil {
-		return fmt.Errorf("init clipboard: %w", a.clipboardErr)
+	if err := a.initClipboard(); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if _, err := clipboard.Write(ctx, clipboard.FmtText, []byte(text)); err != nil {
 		return fmt.Errorf("write clipboard: %w", err)
+	}
+	return nil
+}
+
+// readClipboard initialises the clipboard once and reads its text.
+func (a *App) readClipboard() (string, error) {
+	if err := a.initClipboard(); err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	text, err := clipboard.Read(ctx, clipboard.FmtText)
+	if err != nil {
+		return "", fmt.Errorf("read clipboard: %w", err)
+	}
+	return string(text), nil
+}
+
+// initClipboard initialises the system clipboard once and returns any
+// initialisation error.
+func (a *App) initClipboard() error {
+	a.clipboardInit.Do(func() {
+		a.clipboardErr = clipboard.Init()
+	})
+	if a.clipboardErr != nil {
+		return fmt.Errorf("init clipboard: %w", a.clipboardErr)
 	}
 	return nil
 }

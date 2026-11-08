@@ -254,15 +254,19 @@ func DimText(s string) string {
 	return "[::d]" + s + "[-::-]"
 }
 
-// ── Package-level helpers ─────────────────────────────────────────────────────
+// UserDisplayName returns the user's name for email, falling back to the
+// email when the user record is missing or the name is empty.
+func UserDisplayName(svc *service.Service, email string) string {
+	if u := svc.User(email); u != nil && u.Name() != "" {
+		return u.Name()
+	}
+	return email
+}
 
 // ProjectAccountUserName returns the account's user display name, falling
 // back to the email when the user record is missing.
 func ProjectAccountUserName(svc *service.Service, acc *model.Account) string {
-	if u := svc.User(acc.UserEmail()); u != nil {
-		return u.Name()
-	}
-	return acc.UserEmail()
+	return UserDisplayName(svc, acc.UserEmail())
 }
 
 // ProjectAccountText formats one granted account as Vendor │ User for the
@@ -324,8 +328,5 @@ func SortProjectAccounts(svc *service.Service, accounts []*model.Account) {
 // ProjectAccountUserNameForKey returns the user display name for key, falling
 // back to the email when the user record is missing.
 func ProjectAccountUserNameForKey(svc *service.Service, key model.AccountKey) string {
-	if u := svc.User(key.Email); u != nil {
-		return u.Name()
-	}
-	return key.Email
+	return UserDisplayName(svc, key.Email)
 }

@@ -60,6 +60,7 @@ type promptEditor struct {
 	list            *tview.List
 	clearButton     *tview.Button
 	copyButton      *tview.Button
+	pasteButton     *tview.Button
 	sessionButton   *tview.Button
 	savePauseButton *tview.Button
 	saveButton      *tview.Button
@@ -160,6 +161,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 
 	clearButton := tview.NewButton("Clear")
 	copyButton := tview.NewButton("Copy")
+	pasteButton := tview.NewButton("Paste")
 	sessionButton := tview.NewButton("Session")
 	savePauseButton := tview.NewButton("Save & Pause")
 	saveButton := tview.NewButton("Save")
@@ -187,6 +189,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		list:            list,
 		clearButton:     clearButton,
 		copyButton:      copyButton,
+		pasteButton:     pasteButton,
 		sessionButton:   sessionButton,
 		savePauseButton: savePauseButton,
 		saveButton:      saveButton,
@@ -205,18 +208,20 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		fieldHeight:     fieldHeight,
 	}
 	if list != nil {
-		e.focusables = []tview.Primitive{status, sessionButton, list, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
+		e.focusables = []tview.Primitive{status, sessionButton, list, clearButton, copyButton, pasteButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
 	} else {
-		e.focusables = []tview.Primitive{status, sessionButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton}
+		e.focusables = []tview.Primitive{status, sessionButton, clearButton, copyButton, pasteButton, textArea, savePauseButton, saveButton, cancelButton}
 	}
 
-	buttonWidth := max(tview.TaggedStringWidth("Clear"), tview.TaggedStringWidth("Copy")) + 4
+	buttonWidth := max(tview.TaggedStringWidth("Clear"), tview.TaggedStringWidth("Copy"), tview.TaggedStringWidth("Paste")) + 4
 	side := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(label, 1, 0, false).
-		AddItem(nil, e.fieldHeight-4, 0, false).
+		AddItem(nil, e.fieldHeight-6, 0, false).
 		AddItem(clearButton, 1, 0, false).
 		AddItem(nil, 1, 0, false).
-		AddItem(copyButton, 1, 0, false)
+		AddItem(copyButton, 1, 0, false).
+		AddItem(nil, 1, 0, false).
+		AddItem(pasteButton, 1, 0, false)
 
 	editorRow := tview.NewFlex().
 		AddItem(side, buttonWidth, 0, false).
@@ -260,6 +265,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 
 	clearButton.SetSelectedFunc(e.clear)
 	copyButton.SetSelectedFunc(e.copy)
+	pasteButton.SetSelectedFunc(e.paste)
 	sessionButton.SetSelectedFunc(e.openSession)
 	savePauseButton.SetSelectedFunc(e.saveAndPause)
 	saveButton.SetSelectedFunc(e.save)
@@ -271,7 +277,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 	e.installList()
 	e.rebuildList()
 	e.textArea.SetChangedFunc(e.syncDraft)
-	e.textArea.SetText(state.text, true)
+	e.textArea.SetText(state.text, false)
 	return e
 }
 
@@ -320,7 +326,7 @@ func (e *promptEditor) installInputCapture() {
 	for _, p := range e.focusables {
 		switch v := p.(type) {
 		case *tview.TextArea:
-			v.SetInputCapture(capture)
+			installTextAreaClipboard(e.app, v, capture)
 		case *tview.Button:
 			v.SetInputCapture(capture)
 		case *tview.Checkbox:
@@ -348,7 +354,7 @@ func (e *promptEditor) installList() {
 	})
 	e.list.SetBlurFunc(func() {
 		e.list.SetBorderColor(tview.Styles.BorderColor)
-		e.app.SetHints(views.HintsFormSpecific, views.HintsFormCommon)
+		e.app.SetHints(views.HintsFormSpecific, views.HintsTextFormCommon)
 	})
 	views.WireListDoubleClick(e.list, func() {
 		e.app.SetFocus(e.textArea)
@@ -628,16 +634,16 @@ func (e *promptEditor) modalHeight() int {
 }
 
 func (e *promptEditor) clear() {
-	e.textArea.SetText("", true)
+	e.textArea.SetText("", false)
 	e.app.SetFocus(e.textArea)
 }
 
 func (e *promptEditor) copy() {
-	if err := e.app.CopyToClipboard(e.textArea.GetText()); err != nil {
-		e.app.SetError("copy failed: " + err.Error())
-		return
-	}
-	e.app.SetStatus("copied")
+	copyTextArea(e.app, e.textArea)
+}
+
+func (e *promptEditor) paste() {
+	pasteFromClipboard(e.app, e.textArea)
 }
 
 func (e *promptEditor) openSession() {
@@ -672,7 +678,7 @@ func (e *promptEditor) openSession() {
 		Values:      values,
 		OnSubmit:    onSubmit,
 		OnCancel:    e.app.HideModal,
-	}), views.HintsFormSpecific, views.HintsFormCommon)
+	}), views.HintsFormSpecific, views.HintsTextFormCommon)
 }
 
 func (e *promptEditor) save() {

@@ -13,7 +13,7 @@ import (
 )
 
 type notesFixture struct {
-	app *mockApp
+	app *fakeApp
 	acc *model.Account
 	n1  *model.Note
 	n2  *model.Note
@@ -23,7 +23,7 @@ type notesFixture struct {
 
 func newNotesFixture(t *testing.T) notesFixture {
 	t.Helper()
-	app := newMockApp(t)
+	app := newFakeApp(t)
 	acc, err := app.Svc.Account("alice@example.com", "claude")
 	must(t, err)
 	n1, err := app.Svc.AddNote("one", "Alpha", "", "")
@@ -173,8 +173,7 @@ func TestNotesPanel_Keys(t *testing.T) {
 		p := f.panel(t)
 		p.SetCurrentItem(0)
 		p.GetInputCapture()(specialKey(views.KeyEdit))
-		form := formFromCenteredModal(t, f.app.Modal)
-		if got := form.GetTitle(); got != " Edit Note " {
+		if got := centeredModalTitle(t, f.app.Modal); got != " Edit Note " {
 			t.Errorf("title = %q, want Edit Note", got)
 		}
 	})
@@ -184,8 +183,7 @@ func TestNotesPanel_Keys(t *testing.T) {
 		f := newNotesFixture(t)
 		p := f.panel(t)
 		p.GetInputCapture()(specialKey(views.KeyInsert))
-		form := formFromCenteredModal(t, f.app.Modal)
-		if got := form.GetTitle(); got != " New Note " {
+		if got := centeredModalTitle(t, f.app.Modal); got != " New Note " {
 			t.Errorf("title = %q, want New Note", got)
 		}
 	})
@@ -266,7 +264,7 @@ func TestNoteRows_ColumnRemoval(t *testing.T) {
 	if _, addErr := reg.AddNote("note", reg.Project("Alpha"), acc); addErr != nil {
 		t.Fatal(addErr)
 	}
-	svc := newTestService(t, reg)
+	svc := newService(t, reg)
 	notes := reg.Notes()
 
 	wide := panels.NoteRows(notes, svc, 100)
@@ -310,8 +308,7 @@ func TestNotesPanel_DoubleClickOpensEditForm(t *testing.T) {
 
 	doubleClickList(t, p.List)
 
-	form := formFromCenteredModal(t, f.app.Modal)
-	if got := form.GetTitle(); got != " Edit Note " {
+	if got := centeredModalTitle(t, f.app.Modal); got != " Edit Note " {
 		t.Errorf("title = %q, want Edit Note", got)
 	}
 }
