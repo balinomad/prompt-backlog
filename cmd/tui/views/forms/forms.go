@@ -410,7 +410,11 @@ func NewAccountForm(app views.Host, account *model.Account, onClose func()) tvie
 func accountEditForm(app views.Host, account *model.Account, onClose func()) tview.Primitive {
 	email := account.UserEmail()
 	vendor := account.VendorName()
-	userName := views.UserDisplayName(app.Service(), email)
+	userName, err := views.UserDisplayName(app.Service(), email)
+	if err != nil {
+		app.Fatal(err)
+		return views.ErrorModal("Internal error.", onClose)
+	}
 	var initPause string
 	if !account.PauseUntil().IsZero() {
 		initPause = model.FormatTime(account.PauseUntil())
@@ -624,10 +628,19 @@ func NewGrantForm(app views.Host, project *model.Project, onClose func()) tview.
 		return views.ErrorModal("No eligible accounts are available to grant.\nAccounts must support projects and not already have access.", onClose)
 	}
 
-	vendorWidth, nameWidth := views.ProjectAccountWidths(app.Service())
+	vendorWidth, nameWidth, err := views.ProjectAccountWidths(app.Service())
+	if err != nil {
+		app.Fatal(err)
+		return views.ErrorModal("Internal error.", onClose)
+	}
 	labels := make([]string, len(accounts))
 	for i, acc := range accounts {
-		labels[i] = views.ProjectAccountText(app.Service(), acc, vendorWidth, nameWidth)
+		label, err := views.ProjectAccountText(app.Service(), acc, vendorWidth, nameWidth)
+		if err != nil {
+			app.Fatal(err)
+			return views.ErrorModal("Internal error.", onClose)
+		}
+		labels[i] = label
 	}
 
 	form := newForm(fmt.Sprintf("Grant %q to Account", tview.Escape(project.Name())))
@@ -685,6 +698,8 @@ func grantCandidates(svc *service.Service, project *model.Project) ([]*model.Acc
 		}
 		candidates = append(candidates, acc)
 	}
-	views.SortProjectAccounts(svc, candidates)
+	if err := views.SortProjectAccounts(svc, candidates); err != nil {
+		return nil, fmt.Errorf("sort accounts: %w", err)
+	}
 	return candidates, nil
 }

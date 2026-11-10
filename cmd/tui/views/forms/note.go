@@ -93,7 +93,11 @@ func newNoteFormData(svc *service.Service, note *model.Note, account *model.Acco
 	data.accountLabels = make([]string, 0, len(data.accounts)+1)
 	data.accountLabels = append(data.accountLabels, "none")
 	for _, acc := range data.accounts {
-		data.accountLabels = append(data.accountLabels, accountDisplayName(svc, acc))
+		label, err := accountDisplayName(svc, acc)
+		if err != nil {
+			return nil, err
+		}
+		data.accountLabels = append(data.accountLabels, label)
 	}
 	if data.isEdit {
 		if key, ok := note.AccountKey(); ok {
@@ -363,7 +367,9 @@ func noteAccountOptions(svc *service.Service, account *model.Account, fixedProje
 		if err != nil {
 			return nil, fmt.Errorf("project accounts: %w", err)
 		}
-		views.SortProjectAccounts(svc, accounts)
+		if err := views.SortProjectAccounts(svc, accounts); err != nil {
+			return nil, fmt.Errorf("sort accounts: %w", err)
+		}
 		return accounts, nil
 	}
 	if account == nil {
@@ -373,6 +379,10 @@ func noteAccountOptions(svc *service.Service, account *model.Account, fixedProje
 }
 
 // accountDisplayName formats an account as vendor and user name.
-func accountDisplayName(svc *service.Service, acc *model.Account) string {
-	return acc.VendorName() + " · " + views.ProjectAccountUserName(svc, acc)
+func accountDisplayName(svc *service.Service, acc *model.Account) (string, error) {
+	name, err := views.ProjectAccountUserName(svc, acc)
+	if err != nil {
+		return "", fmt.Errorf("account user: %w", err)
+	}
+	return acc.VendorName() + " · " + name, nil
 }

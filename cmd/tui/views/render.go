@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
 
@@ -254,35 +255,41 @@ func DimText(s string) string {
 	return "[::d]" + s + "[-::-]"
 }
 
-// UserDisplayName returns the user's name for email, falling back to the
-// email when the user record is missing or the name is empty.
-func UserDisplayName(svc *service.Service, email string) string {
-	if u := svc.User(email); u != nil && u.Name() != "" {
-		return u.Name()
+// UserDisplayName returns the loaded user's name for email. A missing or
+// unnamed user indicates that the loaded registry is inconsistent.
+func UserDisplayName(svc *service.Service, email string) (string, error) {
+	u := svc.User(email)
+	if u == nil {
+		return "", apperr.Invariantf("loaded registry references missing user %q", email)
 	}
-	return email
+	if u.Name() == "" {
+		return "", apperr.Invariantf("loaded registry has empty name for user %q", email)
+	}
+	return u.Name(), nil
 }
 
-// ProjectAccountUserName returns the account's user display name, falling
-// back to the email when the user record is missing.
-func ProjectAccountUserName(svc *service.Service, acc *model.Account) string {
+// ProjectAccountUserName returns the account's user display name.
+func ProjectAccountUserName(svc *service.Service, acc *model.Account) (string, error) {
 	return UserDisplayName(svc, acc.UserEmail())
 }
 
 // ProjectAccountText formats one granted account as Vendor │ User for the
 // grant form. The vendor and user name are truncated to vendorWidth and
 // nameWidth; both widths are capped by the shared project-screen limits.
-func ProjectAccountText(svc *service.Service, acc *model.Account, vendorWidth, nameWidth int) string {
+func ProjectAccountText(svc *service.Service, acc *model.Account, vendorWidth, nameWidth int) (string, error) {
+	name, err := ProjectAccountUserName(svc, acc)
+	if err != nil {
+		return "", err
+	}
 	vendor := TruncateWidth(acc.VendorName(), vendorWidth)
-	name := TruncateWidth(ProjectAccountUserName(svc, acc), nameWidth)
-	return vendor + ColumnSeparator + name
+	return vendor + ColumnSeparator + TruncateWidth(name, nameWidth), nil
 }
 
 // ProjectAccountWidths returns the vendor and user-name widths used by the
 // Projects screen's granted-accounts list and grant form. They use store-wide
-// values, including the email fallback for accounts without a user record,
-// and the shared project-screen caps.
-func ProjectAccountWidths(svc *service.Service) (int, int) {
+// values and the shared project-screen caps. A missing user indicates that the
+// loaded registry is inconsistent.
+func ProjectAccountWidths(svc *service.Service) (int, int, error) {
 	var vendorWidth, nameWidth int
 	for _, vendor := range svc.Vendors() {
 		vendorWidth = max(vendorWidth, PlainWidth(vendor.Name()))
@@ -294,26 +301,30 @@ func ProjectAccountWidths(svc *service.Service) (int, int) {
 	}
 	for _, acc := range svc.Accounts() {
 		if svc.User(acc.UserEmail()) == nil {
-			nameWidth = max(nameWidth, PlainWidth(acc.UserEmail()))
+			return 0, 0, apperr.Invariantf("loaded registry has account %q|%q with a missing user", acc.UserEmail(), acc.VendorName())
 		}
 	}
 	nameWidth = min(nameWidth, NameColumnWidthCap)
-	return vendorWidth, nameWidth
+	return vendorWidth, nameWidth, nil
 }
 
 // SortProjectAccounts orders accounts alphabetically by vendor, then by
 // user name, using a case-insensitive comparison. Equal pairs keep their
 // incoming order.
-func SortProjectAccounts(svc *service.Service, accounts []*model.Account) {
+func SortProjectAccounts(svc *service.Service, accounts []*model.Account) error {
 	type key struct {
 		vendor string
 		user   string
 	}
 	keys := make(map[model.AccountKey]key, len(accounts))
 	for _, acc := range accounts {
+		user, err := ProjectAccountUserName(svc, acc)
+		if err != nil {
+			return err
+		}
 		keys[acc.Key()] = key{
 			vendor: strings.ToLower(acc.VendorName()),
-			user:   strings.ToLower(ProjectAccountUserName(svc, acc)),
+			user:   strings.ToLower(user),
 		}
 	}
 	slices.SortStableFunc(accounts, func(a, b *model.Account) int {
@@ -323,10 +334,10 @@ func SortProjectAccounts(svc *service.Service, accounts []*model.Account) {
 		}
 		return strings.Compare(ka.user, kb.user)
 	})
+	return nil
 }
 
-// ProjectAccountUserNameForKey returns the user display name for key, falling
-// back to the email when the user record is missing.
-func ProjectAccountUserNameForKey(svc *service.Service, key model.AccountKey) string {
+// ProjectAccountUserNameForKey returns the user display name for key.
+func ProjectAccountUserNameForKey(svc *service.Service, key model.AccountKey) (string, error) {
 	return UserDisplayName(svc, key.Email)
 }

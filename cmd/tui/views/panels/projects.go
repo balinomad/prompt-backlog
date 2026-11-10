@@ -132,7 +132,12 @@ func NewProjectsPanel(app views.Host) *ProjectsPanel {
 func (p *ProjectsPanel) Refresh() {
 	svc := p.app.Service()
 	all := svc.Projects() // already sorted by name
-	p.vendorWidth, p.nameWidth = views.ProjectAccountWidths(svc)
+	vendorWidth, nameWidth, err := views.ProjectAccountWidths(svc)
+	if err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
+	p.vendorWidth, p.nameWidth = vendorWidth, nameWidth
 
 	var prevID uint64
 	hasPrev := false
@@ -251,14 +256,20 @@ func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelectio
 			accounts = nil
 		}
 	}
-	views.SortProjectAccounts(p.app.Service(), accounts)
+	if err := views.SortProjectAccounts(p.app.Service(), accounts); err != nil {
+		return fmt.Errorf("sort project accounts: %w", err)
+	}
 	vendorWidth, nameWidth := p.vendorWidth, p.nameWidth
 
 	rows := make([][]string, len(accounts))
 	for i, acc := range accounts {
+		user, err := views.ProjectAccountUserName(p.app.Service(), acc)
+		if err != nil {
+			return fmt.Errorf("project account user: %w", err)
+		}
 		rows[i] = []string{
 			tview.Escape(views.TruncateWidth(acc.VendorName(), vendorWidth)),
-			tview.Escape(views.TruncateWidth(views.ProjectAccountUserName(p.app.Service(), acc), nameWidth)),
+			tview.Escape(views.TruncateWidth(user, nameWidth)),
 		}
 	}
 	lines, _ := views.FormatColumns(rows)
@@ -315,8 +326,12 @@ func (p *ProjectsPanel) refreshNoteList(proj *model.Project, preserveSelection b
 	for i, note := range notes {
 		vendor, user := "", ""
 		if key, ok := note.AccountKey(); ok {
+			name, err := views.ProjectAccountUserNameForKey(p.app.Service(), key)
+			if err != nil {
+				return fmt.Errorf("note account user: %w", err)
+			}
 			vendor = tview.Escape(views.TruncateWidth(key.Vendor, views.VendorColumnWidthCap))
-			user = tview.Escape(views.TruncateWidth(views.ProjectAccountUserNameForKey(p.app.Service(), key), views.NameColumnWidthCap))
+			user = tview.Escape(views.TruncateWidth(name, views.NameColumnWidthCap))
 		}
 		rows[i] = []string{vendor, user, tview.Escape(firstLine(note.Text()))}
 	}

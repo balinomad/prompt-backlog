@@ -279,7 +279,10 @@ func accountRows(svc *service.Service, accounts []*model.Account, now time.Time)
 	hasPause := false
 	hasProject := false
 	for i, a := range accounts {
-		userName := views.UserDisplayName(svc, a.UserEmail())
+		userName, err := views.UserDisplayName(svc, a.UserEmail())
+		if err != nil {
+			return nil, false, false, fmt.Errorf("account user: %w", err)
+		}
 		pause := pauseStatusText(a.PauseUntil(), now)
 		project, err := latestGrantedProject(svc, grantedProjects, a)
 		if err != nil {
@@ -409,7 +412,11 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 	svc := p.app.Service()
 	email := acc.UserEmail()
 	vendor := acc.VendorName()
-	userName := views.UserDisplayName(svc, email)
+	userName, err := views.UserDisplayName(svc, email)
+	if err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
 
 	var sb strings.Builder
 

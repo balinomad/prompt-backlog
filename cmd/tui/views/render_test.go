@@ -5,9 +5,23 @@ import (
 	"testing"
 
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/internal/viewtest"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+	"github.com/balinomad/prompt-backlog/internal/model"
 
 	"github.com/rivo/tview"
 )
+
+func TestUserDisplayName_MissingUser(t *testing.T) {
+	t.Parallel()
+	svc := viewtest.NewService(t, model.NewRegistry())
+
+	_, err := views.UserDisplayName(svc, "missing@example.com")
+
+	if !apperr.IsInvariant(err) {
+		t.Errorf("UserDisplayName error = %v, want an invariant violation", err)
+	}
+}
 
 func TestFormatColumns_PadsBlankCells(t *testing.T) {
 	t.Parallel()

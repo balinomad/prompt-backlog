@@ -29,8 +29,14 @@ func NewSessionForm(app views.Host, options *SessionFormOptions) tview.Primitive
 		return views.ErrorModal("Internal error.", options.OnCancel)
 	}
 
+	accountLabel, err := accountDisplayName(app.Service(), options.Account)
+	if err != nil {
+		app.Fatal(err)
+		return views.ErrorModal("Internal error.", options.OnCancel)
+	}
+
 	form := newForm(options.Title)
-	form.AddFormItem(newCenteredFormLabel(accountDisplayName(app.Service(), options.Account)))
+	form.AddFormItem(newCenteredFormLabel(accountLabel))
 
 	projectNames, err := sessionFormProjectNames(app, options.Account.UserEmail(), options.Account.VendorName())
 	if err != nil {

@@ -110,15 +110,15 @@ func (p *NotesPanel) Refresh() {
 
 	var notes []*model.Note
 	if acc != nil {
-		visible, err := svc.VisibleNotes(acc.UserEmail(), acc.VendorName(), p.filter.Value())
-		if err != nil {
-			if !isMissingRead(err) {
-				reportPanelError(p.app, err)
+		visible, readErr := svc.VisibleNotes(acc.UserEmail(), acc.VendorName(), p.filter.Value())
+		if readErr != nil {
+			if !isMissingRead(readErr) {
+				reportPanelError(p.app, readErr)
 				return
 			}
 			p.account = nil
-			if err := p.filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
-				reportPanelError(p.app, err)
+			if clearErr := p.filter.SetAccount(model.AccountKey{}, false, nil); clearErr != nil {
+				reportPanelError(p.app, clearErr)
 				return
 			}
 		} else {
@@ -127,9 +127,14 @@ func (p *NotesPanel) Refresh() {
 	}
 	p.notes = notes
 
+	lines, err := noteRows(notes, svc, p.width)
+	if err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
 	p.refreshing = true
 	p.Clear()
-	for _, line := range noteRows(notes, svc, p.width) {
+	for _, line := range lines {
 		p.AddItem(line, "", 0, nil)
 	}
 	p.refreshing = false
@@ -253,15 +258,15 @@ func deleteNoteMessage(text string) string {
 	return fmt.Sprintf("Delete note\n%q?", label)
 }
 
-func noteRows(notes []*model.Note, svc *service.Service, width int) []string {
+func noteRows(notes []*model.Note, svc *service.Service, width int) ([]string, error) {
 	raw := make([][]string, len(notes))
 	hasProject := false
 	hasAccount := false
 	for i, note := range notes {
 		project := tview.Escape(views.TruncateWidth(note.ProjectName(), views.ProjectColumnWidth))
-		account := ""
-		if key, ok := note.AccountKey(); ok {
-			account = tview.Escape(views.TruncateWidth(views.UserDisplayName(svc, key.Email), views.NameColumnWidthCap))
+		account, err := noteAccountLabel(svc, note)
+		if err != nil {
+			return nil, fmt.Errorf("note account label: %w", err)
 		}
 		raw[i] = []string{project, account, tview.Escape(firstLine(note.Text()))}
 		hasProject = hasProject || project != ""
@@ -306,7 +311,19 @@ func noteRows(notes []*model.Note, svc *service.Service, width int) []string {
 		}
 	}
 	lines, _ := views.FormatColumns(views.DropEmptyColumns(rows))
-	return lines
+	return lines, nil
+}
+
+func noteAccountLabel(svc *service.Service, note *model.Note) (string, error) {
+	key, ok := note.AccountKey()
+	if !ok {
+		return "", nil
+	}
+	name, err := views.UserDisplayName(svc, key.Email)
+	if err != nil {
+		return "", fmt.Errorf("user display name: %w", err)
+	}
+	return tview.Escape(views.TruncateWidth(name, views.NameColumnWidthCap)), nil
 }
 
 func noteTextRemaining(raw [][]string, columns []noteColumn, width int) int {

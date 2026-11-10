@@ -267,22 +267,26 @@ func TestNoteRows_ColumnRemoval(t *testing.T) {
 	svc := newService(t, reg)
 	notes := reg.Notes()
 
-	wide := panels.NoteRows(notes, svc, 100)
+	wide, err := panels.NoteRows(notes, svc, 100)
+	must(t, err)
 	if len(wide) != 1 || !strings.Contains(wide[0], "Alpha") || !strings.Contains(wide[0], "Alice") || !strings.Contains(wide[0], "note") {
 		t.Errorf("wide row = %v", wide)
 	}
 
-	medium := panels.NoteRows(notes, svc, 29)
+	medium, err := panels.NoteRows(notes, svc, 29)
+	must(t, err)
 	if len(medium) != 1 || strings.Contains(medium[0], "Alice") || !strings.Contains(medium[0], "Alpha") || !strings.Contains(medium[0], "note") {
 		t.Errorf("medium row = %v, want account removed and project kept", medium)
 	}
 
-	narrow := panels.NoteRows(notes, svc, 20)
+	narrow, err := panels.NoteRows(notes, svc, 20)
+	must(t, err)
 	if len(narrow) != 1 || strings.Contains(narrow[0], "Alpha") || strings.Contains(narrow[0], "Alice") || !strings.Contains(narrow[0], "note") {
 		t.Errorf("narrow row = %v, want only the text", narrow)
 	}
 
-	unbounded := panels.NoteRows(notes, svc, 0)
+	unbounded, err := panels.NoteRows(notes, svc, 0)
+	must(t, err)
 	if len(unbounded) != 1 || !strings.Contains(unbounded[0], "Alpha") || !strings.Contains(unbounded[0], "Alice") {
 		t.Errorf("unbounded row = %v, want every column", unbounded)
 	}
