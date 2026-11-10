@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
@@ -124,8 +125,9 @@ func InsetListRow(s string) string {
 }
 
 // TruncateWidth shortens plain text to maxWidth display cells, appending an
-// ellipsis when truncated. A maxWidth of zero or less means no limit. Brackets
-// are measured as literal characters; callers escape the result afterwards.
+// ellipsis when truncated. Whitespace at the cut is removed. A maxWidth of zero
+// or less means no limit. Brackets are measured as literal characters; callers
+// escape the result afterwards.
 func TruncateWidth(s string, maxWidth int) string {
 	if maxWidth <= 0 || PlainWidth(s) <= maxWidth {
 		return s
@@ -145,7 +147,7 @@ func TruncateWidth(s string, maxWidth int) string {
 		b.WriteRune(r)
 		width += runeWidth
 	}
-	return b.String() + "…"
+	return strings.TrimRightFunc(b.String(), unicode.IsSpace) + "…"
 }
 
 // PlainWidth returns the display width of s when tview tags are treated as

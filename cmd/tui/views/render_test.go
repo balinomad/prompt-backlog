@@ -58,6 +58,7 @@ func TestTruncateWidth(t *testing.T) {
 		{"no limit", "abcdef", 0, "abcdef"},
 		{"fits", "abc", 3, "abc"},
 		{"ascii truncation", "abcdef", 4, "abc…"},
+		{"trailing whitespace before ellipsis", "hello  world", 8, "hello…"},
 		{"wide rune boundary", "a界b", 3, "a…"},
 		{"brackets are literal", "Alice[red]", 8, "Alice[r…"},
 		{"single cell", "abcdef", 1, "…"},

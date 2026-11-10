@@ -39,6 +39,7 @@ const (
 	promptModalTotalHeight = 22
 	promptListMaxRows      = 5
 	promptListChrome       = 2
+	promptListLineWidth    = promptModalWidth - 6 // Outer and list borders plus padding
 	promptMinFieldHeight   = 6
 	promptAddFieldHeight   = 14
 )
@@ -603,7 +604,9 @@ func promptListItem(index int, text string) string {
 	text = strings.ReplaceAll(text, "\r\n", " ")
 	text = strings.ReplaceAll(text, "\n", " ")
 	text = strings.ReplaceAll(text, "\r", " ")
-	return fmt.Sprintf("%d. %s", index+1, tview.Escape(text))
+	prefix := fmt.Sprintf("%d. ", index+1)
+	text = views.TruncateWidth(text, promptListLineWidth-views.PlainWidth(prefix))
+	return prefix + tview.Escape(text)
 }
 
 func deletePromptMessage(index, total int, text string) string {

@@ -2,6 +2,7 @@ package forms_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
@@ -1133,6 +1134,26 @@ func TestPromptPreview(t *testing.T) {
 				t.Errorf("Preview(%q) = %q, want %q", tc.text, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPromptForm_LongListItemEllipsis(t *testing.T) {
+	t.Parallel()
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt(strings.Repeat("x", 100))})
+	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	drawPromptForm(t, pf)
+
+	list := pf.PromptList()
+	if list == nil {
+		t.Fatal("edit form has no prompt list")
+	}
+	got, _ := list.GetItemText(0)
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("long list item = %q, want an ellipsis", got)
+	}
+	_, _, width, _ := list.GetInnerRect()
+	if gotWidth := tview.TaggedStringWidth(got); gotWidth > width {
+		t.Errorf("list item width = %d, want at most %d", gotWidth, width)
 	}
 }
 
