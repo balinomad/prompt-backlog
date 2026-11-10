@@ -68,7 +68,7 @@ func installInputFieldClipboard(app views.Host, field *InputField) {
 			return nil
 		case tcell.KeyCtrlX:
 			if copyInputField(app, field) {
-				field.InputField.SetText("")
+				field.SetText("")
 			}
 			return nil
 		case tcell.KeyCtrlV:
