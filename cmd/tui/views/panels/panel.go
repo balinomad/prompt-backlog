@@ -24,28 +24,19 @@ var errPanelAccountGone = errors.New("panel account unavailable")
 // list.
 func resolvePanelAccount(svc *service.Service, account *model.Account, filter *views.ProjectFilterState) (*model.Account, error) {
 	if account == nil {
-		if err := filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
-			return nil, fmt.Errorf("clear project filter: %w", err)
-		}
-		return nil, errPanelAccountGone
+		return nil, clearFilterForGoneAccount(filter)
 	}
 	acc, err := svc.Account(account.UserEmail(), account.VendorName())
 	if err != nil {
 		if isMissingRead(err) {
-			if err = filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
-				return nil, fmt.Errorf("clear project filter: %w", err)
-			}
-			return nil, errPanelAccountGone
+			return nil, clearFilterForGoneAccount(filter)
 		}
 		return nil, fmt.Errorf("resolve account: %w", err)
 	}
 	projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
 	if err != nil {
 		if isMissingRead(err) {
-			if err = filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
-				return nil, fmt.Errorf("clear project filter: %w", err)
-			}
-			return nil, errPanelAccountGone
+			return nil, clearFilterForGoneAccount(filter)
 		}
 		return nil, fmt.Errorf("resolve account projects: %w", err)
 	}
@@ -53,6 +44,15 @@ func resolvePanelAccount(svc *service.Service, account *model.Account, filter *v
 		return nil, fmt.Errorf("set project filter: %w", err)
 	}
 	return acc, nil
+}
+
+// clearFilterForGoneAccount clears the project filter and returns the
+// missing-account sentinel, or the clear error.
+func clearFilterForGoneAccount(filter *views.ProjectFilterState) error {
+	if err := filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
+		return fmt.Errorf("clear project filter: %w", err)
+	}
+	return errPanelAccountGone
 }
 
 // isPanelAccountGone reports whether err is the expected missing-account

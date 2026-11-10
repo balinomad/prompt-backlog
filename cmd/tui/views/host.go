@@ -87,9 +87,10 @@ type Host interface {
 	// until another message replaces them or an empty string clears them.
 	SetError(msg string)
 
-	// Fatal stops the application with err. It is reserved for programmer
-	// errors, typically invariant violations, and does not return to the
-	// caller. The host restores the terminal before exiting.
+	// Fatal records err and stops the event loop. It is reserved for
+	// programmer errors, typically invariant violations. It returns
+	// immediately; callers must return without further UI work. Run returns
+	// err after the terminal is restored.
 	Fatal(err error)
 
 	// SetHints replaces the keyboard-hint lines in the status bar. Use the
