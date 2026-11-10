@@ -1,6 +1,8 @@
 package forms
 
 import (
+	"fmt"
+
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
 
 	"github.com/balinomad/prompt-backlog/internal/model"
@@ -51,7 +53,10 @@ func NewNoteForm(app views.Host, note *model.Note, account *model.Account, fixed
 		note = live
 	}
 
-	data := newNoteFormData(svc, note, account, fixedProject)
+	data, err := newNoteFormData(svc, note, account, fixedProject)
+	if err != nil {
+		return views.ErrorModal("Unable to load note form: "+err.Error(), onClose)
+	}
 	return newNoteEditor(app, data, fixedProject, onClose).primitive()
 }
 
@@ -69,7 +74,7 @@ type noteFormData struct {
 }
 
 // newNoteFormData resolves the note editor's initial field values.
-func newNoteFormData(svc *service.Service, note *model.Note, account *model.Account, fixedProject *model.Project) *noteFormData {
+func newNoteFormData(svc *service.Service, note *model.Note, account *model.Account, fixedProject *model.Project) (*noteFormData, error) {
 	data := noteFormData{title: "New Note"}
 	if note != nil {
 		data.title = "Edit Note"
@@ -78,25 +83,13 @@ func newNoteFormData(svc *service.Service, note *model.Note, account *model.Acco
 		data.noteID = note.ID()
 	}
 
-	data.projectNames = []string{"none"}
-	if fixedProject != nil {
-		data.projectNames = []string{fixedProject.Name()}
-	} else {
-		projects := svc.Projects()
-		for _, p := range projects {
-			data.projectNames = append(data.projectNames, p.Name())
-		}
-		if data.isEdit && note.ProjectID() != 0 {
-			for i, p := range projects {
-				if p.ID() == note.ProjectID() {
-					data.projectIndex = i + 1
-					break
-				}
-			}
-		}
-	}
+	data.projectNames, data.projectIndex = noteProjectState(svc, note, fixedProject)
 
-	data.accounts = noteAccountOptions(svc, account, fixedProject)
+	accounts, err := noteAccountOptions(svc, account, fixedProject)
+	if err != nil {
+		return nil, err
+	}
+	data.accounts = accounts
 	data.accountLabels = make([]string, 0, len(data.accounts)+1)
 	data.accountLabels = append(data.accountLabels, "none")
 	for _, acc := range data.accounts {
@@ -114,7 +107,25 @@ func newNoteFormData(svc *service.Service, note *model.Note, account *model.Acco
 	} else if fixedProject == nil && account != nil {
 		data.accountIndex = 1
 	}
-	return &data
+	return &data, nil
+}
+
+// noteProjectState returns the project options and selected index.
+func noteProjectState(svc *service.Service, note *model.Note, fixedProject *model.Project) ([]string, int) {
+	if fixedProject != nil {
+		return []string{fixedProject.Name()}, 0
+	}
+	projects := svc.Projects()
+	names := make([]string, 0, len(projects)+1)
+	names = append(names, "none")
+	index := 0
+	for i, p := range projects {
+		names = append(names, p.Name())
+		if note != nil && p.ID() == note.ProjectID() {
+			index = i + 1
+		}
+	}
+	return names, index
 }
 
 // newNoteEditor builds the note editor from resolved form data.
@@ -346,19 +357,19 @@ func (e *noteEditor) save() {
 // noteAccountOptions returns the accounts selectable in a note form. On the
 // Projects screen they are the project's granted accounts; on the main screen
 // they are the account in view, if any.
-func noteAccountOptions(svc *service.Service, account *model.Account, fixedProject *model.Project) []*model.Account {
+func noteAccountOptions(svc *service.Service, account *model.Account, fixedProject *model.Project) ([]*model.Account, error) {
 	if fixedProject != nil {
 		accounts, err := svc.ProjectAccounts(fixedProject.Name())
 		if err != nil {
-			return nil
+			return nil, fmt.Errorf("project accounts: %w", err)
 		}
 		views.SortProjectAccounts(svc, accounts)
-		return accounts
+		return accounts, nil
 	}
 	if account == nil {
-		return nil
+		return nil, nil
 	}
-	return []*model.Account{account}
+	return []*model.Account{account}, nil
 }
 
 // accountDisplayName formats an account as vendor and user name.

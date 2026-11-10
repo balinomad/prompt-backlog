@@ -132,24 +132,10 @@ func (p *AccountsPanel) Refresh() {
 	// project values are capped with an ellipsis, while pause status keeps its
 	// full rendered text, including day offsets such as "12:34 -5". Optional
 	// columns are included only when at least one rendered row has a value.
-	now := time.Now()
-	grantedProjects := grantedProjectIDs(svc, all)
-	rawRows := make([]accountRow, len(all))
-	hasPause := false
-	hasProject := false
-	for i, a := range all {
-		userName := views.UserDisplayName(svc, a.UserEmail())
-		pause := pauseStatusText(a.PauseUntil(), now)
-		project := latestGrantedProject(svc, grantedProjects, a)
-		hasPause = hasPause || pause != ""
-		hasProject = hasProject || project != ""
-
-		rawRows[i] = accountRow{
-			vendor:  tview.Escape(views.TruncateWidth(a.VendorName(), views.VendorColumnWidthCap)),
-			name:    tview.Escape(views.TruncateWidth(userName, views.NameColumnWidthCap)),
-			pause:   pause,
-			project: tview.Escape(views.TruncateWidth(project, views.ProjectColumnWidth)),
-		}
+	rawRows, hasPause, hasProject, err := accountRows(svc, all, time.Now())
+	if err != nil {
+		p.app.SetError(err.Error())
+		return
 	}
 
 	rows := make([][]string, len(rawRows))
@@ -279,29 +265,58 @@ func (p *AccountsPanel) handleDelete() *tcell.EventKey {
 
 // ── Package-level helpers ─────────────────────────────────────────────────────
 
-// latestGrantedProject returns the account's latest session project when that
-// project is still granted to the account, or "" otherwise.
-func latestGrantedProject(svc *service.Service, granted map[model.AccountKey]map[uint64]struct{}, acc *model.Account) string {
-	latest, ok, err := svc.LatestSession(acc.UserEmail(), acc.VendorName())
-	if err != nil || !ok {
-		return ""
+// accountRows renders the account list cells and reports whether the optional
+// pause and project columns are needed.
+func accountRows(svc *service.Service, accounts []*model.Account, now time.Time) ([]accountRow, bool, bool, error) {
+	grantedProjects, err := grantedProjectIDs(svc, accounts)
+	if err != nil {
+		return nil, false, false, err
 	}
-	if latest.ProjectID() == 0 {
-		return ""
+	rows := make([]accountRow, len(accounts))
+	hasPause := false
+	hasProject := false
+	for i, a := range accounts {
+		userName := views.UserDisplayName(svc, a.UserEmail())
+		pause := pauseStatusText(a.PauseUntil(), now)
+		project, err := latestGrantedProject(svc, grantedProjects, a)
+		if err != nil {
+			return nil, false, false, err
+		}
+		hasPause = hasPause || pause != ""
+		hasProject = hasProject || project != ""
+		rows[i] = accountRow{
+			vendor:  tview.Escape(views.TruncateWidth(a.VendorName(), views.VendorColumnWidthCap)),
+			name:    tview.Escape(views.TruncateWidth(userName, views.NameColumnWidthCap)),
+			pause:   pause,
+			project: tview.Escape(views.TruncateWidth(project, views.ProjectColumnWidth)),
+		}
 	}
-	if _, ok := granted[acc.Key()][latest.ProjectID()]; !ok {
-		return ""
-	}
-	return latest.ProjectName()
+	return rows, hasPause, hasProject, nil
 }
 
-// grantedProjectNames returns the granted project names per account.
-func grantedProjectIDs(svc *service.Service, accounts []*model.Account) map[model.AccountKey]map[uint64]struct{} {
+// latestGrantedProject returns the account's latest session project when that
+// project is still granted to the account, or "" otherwise.
+func latestGrantedProject(svc *service.Service, granted map[model.AccountKey]map[uint64]struct{}, acc *model.Account) (string, error) {
+	latest, ok, err := svc.LatestSession(acc.UserEmail(), acc.VendorName())
+	if err != nil {
+		return "", fmt.Errorf("latest session for %q/%q: %w", acc.UserEmail(), acc.VendorName(), err)
+	}
+	if !ok || latest.ProjectID() == 0 {
+		return "", nil
+	}
+	if _, ok := granted[acc.Key()][latest.ProjectID()]; !ok {
+		return "", nil
+	}
+	return latest.ProjectName(), nil
+}
+
+// grantedProjectIDs returns the granted projects per account.
+func grantedProjectIDs(svc *service.Service, accounts []*model.Account) (map[model.AccountKey]map[uint64]struct{}, error) {
 	granted := make(map[model.AccountKey]map[uint64]struct{}, len(accounts))
 	for _, a := range accounts {
 		projects, err := svc.AccountProjects(a.UserEmail(), a.VendorName())
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("account projects for %q/%q: %w", a.UserEmail(), a.VendorName(), err)
 		}
 		set := make(map[uint64]struct{}, len(projects))
 		for _, p := range projects {
@@ -309,7 +324,7 @@ func grantedProjectIDs(svc *service.Service, accounts []*model.Account) map[mode
 		}
 		granted[a.Key()] = set
 	}
-	return granted
+	return granted, nil
 }
 
 // pauseStatusText renders an account's pause status in local time: "" for a
@@ -396,16 +411,15 @@ func (p *AccountInfoPanel) renderInfo(acc *model.Account) {
 	var sb strings.Builder
 
 	projects, err := svc.AccountProjects(email, vendor)
-	if err != nil {
-		// The account was resolved by the accounts panel; a resolution error
-		// here would indicate a concurrent deletion. Render with no projects
-		// rather than surfacing a status message from a passive read.
-		projects = nil
-	}
 	projectsText := views.DimText("none")
-	if len(projects) > 0 {
+	if err != nil {
+		p.app.SetError("Account projects: " + err.Error())
+		projectsText = views.DimText("unavailable")
+	} else if len(projects) > 0 {
 		latestProjectName := ""
-		if latest, ok, err := svc.LatestSession(email, vendor); err == nil && ok {
+		if latest, ok, err := svc.LatestSession(email, vendor); err != nil {
+			p.app.SetError("Account details: " + err.Error())
+		} else if ok {
 			latestProjectName = latest.ProjectName()
 		}
 

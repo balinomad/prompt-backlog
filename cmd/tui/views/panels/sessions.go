@@ -88,13 +88,24 @@ func (p *SessionsPanel) SetWidth(width int) {
 func (p *SessionsPanel) Refresh() {
 	svc := p.app.Service()
 
-	acc := resolvePanelAccount(svc, p.account, p.filter)
+	acc, err := resolvePanelAccount(svc, p.account, p.filter)
+	if err != nil && !isPanelAccountGone(err) {
+		p.app.SetError(err.Error())
+		return
+	}
 	p.account = acc
 
 	var sessions []*model.Session
 	if acc != nil {
 		all, err := svc.AccountSessionsActivityOrder(acc.UserEmail(), acc.VendorName())
-		if err == nil {
+		if err != nil {
+			if !isMissingRead(err) {
+				p.app.SetError(err.Error())
+				return
+			}
+			p.account = nil
+			p.filter.SetAccount(model.AccountKey{}, false, nil)
+		} else {
 			for _, s := range all {
 				if p.filter.Value().Matches(s.ProjectID()) {
 					sessions = append(sessions, s)

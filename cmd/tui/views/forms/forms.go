@@ -216,21 +216,18 @@ func dropDownWidth(options []string) int {
 // ── Session form ──────────────────────────────────────────────────────────────
 
 // sessionFormProjectNames returns NewSessionForm's Project dropdown
-// options: "none" followed by the account's granted projects. A
-// resolution error degrades to "no granted projects" rather than
-// blocking form construction, matching the read-degrades pattern already
-// used in projects.go's renderInfo — account is already known valid.
-func sessionFormProjectNames(app views.Host, email, vendor string) []string {
+// options: "none" followed by the account's granted projects.
+func sessionFormProjectNames(app views.Host, email, vendor string) ([]string, error) {
 	granted, err := app.Service().AccountProjects(email, vendor)
 	if err != nil {
-		granted = nil
+		return nil, fmt.Errorf("account projects: %w", err)
 	}
 	names := make([]string, 0, len(granted)+1)
 	names = append(names, "none")
 	for _, p := range granted {
 		names = append(names, p.Name())
 	}
-	return names
+	return names, nil
 }
 
 // ── Project form ──────────────────────────────────────────────────────────────

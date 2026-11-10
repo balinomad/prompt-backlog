@@ -1,8 +1,10 @@
 package forms_test
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
 	"github.com/balinomad/prompt-backlog/cmd/tui/views/forms"
 	"github.com/balinomad/prompt-backlog/internal/model"
 
@@ -33,6 +35,25 @@ func noteFormButton(t *testing.T, form *forms.NoteForm, label string) *tview.But
 		t.Fatalf("button %q not found", label)
 	}
 	return button
+}
+
+func TestNewNoteForm_ProjectReadFailure(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	acc := noteFormAccount(t, app)
+	fixedProject := app.Svc.Project("Orphan")
+	if fixedProject == nil {
+		t.Fatal("project Orphan not found")
+	}
+	must(t, app.Svc.DeleteProject("Orphan"))
+
+	modal, ok := views.UnwrapModal(forms.NewNoteForm(app, nil, acc, fixedProject, func() {})).(*tview.Modal)
+	if !ok {
+		t.Fatal("expected an error modal")
+	}
+	if got := modalText(t, modal); !strings.Contains(got, "Unable to load note form") {
+		t.Errorf("modal text = %q, want a project read error", got)
+	}
 }
 
 func TestNewNoteForm_MainAdd(t *testing.T) {

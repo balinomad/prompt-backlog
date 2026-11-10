@@ -1,10 +1,12 @@
 package panels
 
 import (
-	"github.com/balinomad/prompt-backlog/cmd/tui/views"
-
+	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
 
@@ -12,26 +14,49 @@ import (
 	"github.com/rivo/tview"
 )
 
+// errPanelAccountGone reports that the panel account is nil, stale, or
+// deleted, so callers should clear the pane rather than surface an error.
+var errPanelAccountGone = errors.New("panel account unavailable")
+
 // resolvePanelAccount resolves account and synchronises filter with its
-// granted projects. A stale or deleted account resolves to nil.
-func resolvePanelAccount(svc *service.Service, account *model.Account, filter *views.ProjectFilterState) *model.Account {
-	var acc *model.Account
-	if account != nil {
-		resolved, err := svc.Account(account.UserEmail(), account.VendorName())
-		if err == nil {
-			acc = resolved
-		}
-	}
-	if acc != nil {
-		projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
-		if err != nil {
-			projects = nil
-		}
-		filter.SetAccount(acc.Key(), true, projects)
-	} else {
+// granted projects. A stale or deleted account resolves to
+// errPanelAccountGone because the parent panel has already refreshed its own
+// list.
+func resolvePanelAccount(svc *service.Service, account *model.Account, filter *views.ProjectFilterState) (*model.Account, error) {
+	if account == nil {
 		filter.SetAccount(model.AccountKey{}, false, nil)
+		return nil, errPanelAccountGone
 	}
-	return acc
+	acc, err := svc.Account(account.UserEmail(), account.VendorName())
+	if err != nil {
+		if isMissingRead(err) {
+			filter.SetAccount(model.AccountKey{}, false, nil)
+			return nil, errPanelAccountGone
+		}
+		return nil, fmt.Errorf("resolve account: %w", err)
+	}
+	projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
+	if err != nil {
+		if isMissingRead(err) {
+			filter.SetAccount(model.AccountKey{}, false, nil)
+			return nil, errPanelAccountGone
+		}
+		return nil, fmt.Errorf("resolve account projects: %w", err)
+	}
+	filter.SetAccount(acc.Key(), true, projects)
+	return acc, nil
+}
+
+// isPanelAccountGone reports whether err is the expected missing-account
+// sentinel.
+func isPanelAccountGone(err error) bool {
+	return errors.Is(err, errPanelAccountGone)
+}
+
+// isMissingRead reports whether err means the entity is gone rather than the
+// read itself failed.
+func isMissingRead(err error) bool {
+	return errors.Is(err, apperr.ErrNotFound) || errors.Is(err, apperr.ErrStale)
 }
 
 // panelSpec configures a single-pane list and detail panel.

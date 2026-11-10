@@ -95,7 +95,11 @@ func (p *NotesPanel) SetWidth(width int) {
 func (p *NotesPanel) Refresh() {
 	svc := p.app.Service()
 
-	acc := resolvePanelAccount(svc, p.account, p.filter)
+	acc, err := resolvePanelAccount(svc, p.account, p.filter)
+	if err != nil && !isPanelAccountGone(err) {
+		p.app.SetError(err.Error())
+		return
+	}
 	p.account = acc
 
 	prevID := uint64(0)
@@ -107,7 +111,14 @@ func (p *NotesPanel) Refresh() {
 	var notes []*model.Note
 	if acc != nil {
 		visible, err := svc.VisibleNotes(acc.UserEmail(), acc.VendorName(), p.filter.Value())
-		if err == nil {
+		if err != nil {
+			if !isMissingRead(err) {
+				p.app.SetError(err.Error())
+				return
+			}
+			p.account = nil
+			p.filter.SetAccount(model.AccountKey{}, false, nil)
+		} else {
 			notes = visible
 		}
 	}

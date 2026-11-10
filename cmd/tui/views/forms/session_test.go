@@ -1,8 +1,10 @@
 package forms_test
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/balinomad/prompt-backlog/cmd/tui/views"
 	"github.com/balinomad/prompt-backlog/cmd/tui/views/forms"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
@@ -48,6 +50,25 @@ func sessionFormOptions(t *testing.T, app *fakeApp, sess *model.Session, onClose
 			return nil
 		},
 		OnCancel: onClose,
+	}
+}
+
+func TestNewSessionForm_ProjectReadFailure(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	acc, err := app.Svc.Account("bob@example.com", "chatgpt")
+	must(t, err)
+	must(t, app.Svc.DeleteAccount("bob@example.com", "chatgpt"))
+
+	modal, ok := views.UnwrapModal(forms.NewSessionForm(app, &forms.SessionFormOptions{
+		Account:  acc,
+		OnCancel: func() {},
+	})).(*tview.Modal)
+	if !ok {
+		t.Fatal("expected an error modal")
+	}
+	if got := modalText(t, modal); !strings.Contains(got, "Unable to load projects") {
+		t.Errorf("modal text = %q, want a project read error", got)
 	}
 }
 

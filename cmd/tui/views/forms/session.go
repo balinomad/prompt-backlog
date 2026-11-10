@@ -30,7 +30,10 @@ func NewSessionForm(app views.Host, options *SessionFormOptions) tview.Primitive
 	form := newForm(options.Title)
 	form.AddFormItem(newCenteredFormLabel(accountDisplayName(app.Service(), options.Account)))
 
-	projectNames := sessionFormProjectNames(app, options.Account.UserEmail(), options.Account.VendorName())
+	projectNames, err := sessionFormProjectNames(app, options.Account.UserEmail(), options.Account.VendorName())
+	if err != nil {
+		return views.ErrorModal("Unable to load projects: "+err.Error(), options.OnCancel)
+	}
 	projectIndex := 0
 	for i, name := range projectNames {
 		if name == options.Values.ProjectName {

@@ -984,6 +984,30 @@ func TestAccountInfoPanel_HighlightsLatestProject(t *testing.T) {
 	}
 }
 
+func TestGrantedProjectIDs_ReturnsReadError(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	bob, err := app.Svc.Account("bob@example.com", "chatgpt")
+	must(t, err)
+	must(t, app.Svc.DeleteAccount("bob@example.com", "chatgpt"))
+
+	if _, err := panels.GrantedProjectIDs(app.Svc, []*model.Account{bob}); err == nil {
+		t.Fatal("expected a read error for the deleted account")
+	}
+}
+
+func TestLatestGrantedProject_ReturnsReadError(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	bob, err := app.Svc.Account("bob@example.com", "chatgpt")
+	must(t, err)
+	must(t, app.Svc.DeleteAccount("bob@example.com", "chatgpt"))
+
+	if _, err := panels.LatestGrantedProject(app.Svc, nil, bob); err == nil {
+		t.Fatal("expected a read error for the deleted account")
+	}
+}
+
 func TestAccountInfoPanel_NoHighlightWhenLatestHasNoProject(t *testing.T) {
 	t.Parallel()
 	app, reg, acc := newProjectAccountsTestApp(t)

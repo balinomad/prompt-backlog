@@ -89,8 +89,14 @@ func NewProjectsPanel(app views.Host) *ProjectsPanel {
 		// tview invokes the changed callback before updating currentItem, so
 		// use the callback's index rather than selectedProject here.
 		proj := p.projectAt(index)
-		p.refreshAccountList(proj, false)
-		p.refreshNoteList(proj, false)
+		if err := p.refreshAccountList(proj, false); err != nil {
+			p.app.SetError(err.Error())
+			return
+		}
+		if err := p.refreshNoteList(proj, false); err != nil {
+			p.app.SetError(err.Error())
+			return
+		}
 		p.renderInfo(proj)
 	})
 
@@ -161,8 +167,14 @@ func (p *ProjectsPanel) Refresh() {
 	views.SetListTitle(p.list, projectsListTitle, p.list.GetCurrentItem(), len(p.projects))
 
 	proj := p.selectedProject()
-	p.refreshAccountList(proj, true)
-	p.refreshNoteList(proj, true)
+	if err := p.refreshAccountList(proj, true); err != nil {
+		p.app.SetError(err.Error())
+		return
+	}
+	if err := p.refreshNoteList(proj, true); err != nil {
+		p.app.SetError(err.Error())
+		return
+	}
 	p.renderInfo(proj)
 }
 
@@ -218,7 +230,7 @@ func (p *ProjectsPanel) selectedAccount() *model.Account {
 // preserveSelection keeps the selected account by key when it still exists;
 // otherwise the nearest row is selected. Without preservation the first row
 // is selected, which is the expected behaviour after a project change.
-func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelection bool) {
+func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelection bool) error {
 	prevKey := model.AccountKey{}
 	prevIdx := 0
 	if preserveSelection {
@@ -233,6 +245,9 @@ func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelectio
 		var err error
 		accounts, err = p.app.Service().ProjectAccounts(proj.Name())
 		if err != nil {
+			if !isMissingRead(err) {
+				return fmt.Errorf("project accounts: %w", err)
+			}
 			accounts = nil
 		}
 	}
@@ -270,10 +285,11 @@ func (p *ProjectsPanel) refreshAccountList(proj *model.Project, preserveSelectio
 	}
 
 	views.SetListTitle(p.accountList, projectAccountsListTitle, p.accountList.GetCurrentItem(), len(p.accounts))
+	return nil
 }
 
 // refreshNoteList repopulates the project notes list for proj.
-func (p *ProjectsPanel) refreshNoteList(proj *model.Project, preserveSelection bool) {
+func (p *ProjectsPanel) refreshNoteList(proj *model.Project, preserveSelection bool) error {
 	prevID := uint64(0)
 	prevIndex := 0
 	if preserveSelection {
@@ -286,9 +302,13 @@ func (p *ProjectsPanel) refreshNoteList(proj *model.Project, preserveSelection b
 	var notes []*model.Note
 	if proj != nil {
 		got, err := p.app.Service().ProjectNotes(proj.Name())
-		if err == nil {
-			notes = got
+		if err != nil {
+			if !isMissingRead(err) {
+				return fmt.Errorf("project notes: %w", err)
+			}
+			got = nil
 		}
+		notes = got
 	}
 
 	rows := make([][]string, len(notes))
@@ -323,6 +343,7 @@ func (p *ProjectsPanel) refreshNoteList(proj *model.Project, preserveSelection b
 		p.noteList.SetCurrentItem(prevIndex)
 	}
 	views.SetListTitle(p.noteList, projectNotesListTitle, p.noteList.GetCurrentItem(), len(p.notes))
+	return nil
 }
 
 // SelectedNote returns the selected project note, or nil.

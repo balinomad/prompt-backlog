@@ -28,6 +28,31 @@ var (
 
 // ── Dropdown helper ───────────────────────────────────────────────────────────
 
+// modalText renders p and returns its visible cells.
+func modalText(t *testing.T, p tview.Primitive) string {
+	t.Helper()
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatalf("screen.Init: %v", err)
+	}
+	t.Cleanup(screen.Fini)
+	screen.SetSize(80, 24)
+	p.SetRect(0, 0, 80, 24)
+	p.Draw(screen)
+
+	var text strings.Builder
+	for y := range 24 {
+		for x := range 80 {
+			mainc, _, _ := screen.Get(x, y)
+			if mainc == "" {
+				mainc = " "
+			}
+			text.WriteString(mainc)
+		}
+	}
+	return text.String()
+}
+
 func TestNewDropDown_ArrowAndWidth(t *testing.T) {
 	t.Parallel()
 	dropDown := forms.NewDropDown("Project", []string{"none", "Alpha"}, 1)

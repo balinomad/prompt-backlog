@@ -5,6 +5,12 @@ import "github.com/balinomad/prompt-backlog/internal/model"
 // FormatPauseUntil exposes formatPauseUntil for black-box tests.
 var FormatPauseUntil = formatPauseUntil
 
+// GrantedProjectIDs exposes grantedProjectIDs for black-box tests.
+var GrantedProjectIDs = grantedProjectIDs
+
+// LatestGrantedProject exposes latestGrantedProject for black-box tests.
+var LatestGrantedProject = latestGrantedProject
+
 // NoteRows exposes noteRows for black-box tests.
 var NoteRows = noteRows
 
