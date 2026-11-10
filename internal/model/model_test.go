@@ -672,6 +672,11 @@ func TestSessionStatus(t *testing.T) {
 			if got := tc.status.String(); got != tc.text {
 				t.Errorf("String() = %q, want %q", got, tc.text)
 			}
+			name, err := tc.status.Name()
+			must(t, err)
+			if name != tc.text {
+				t.Errorf("Name() = %q, want %q", name, tc.text)
+			}
 			if !tc.status.Valid() {
 				t.Error("Valid() = false, want true")
 			}
@@ -691,6 +696,12 @@ func TestSessionStatus(t *testing.T) {
 	}
 	if model.SessionStatus(99).Valid() {
 		t.Error("out-of-range status is valid")
+	}
+	if _, err := model.SessionStatus(99).Name(); err == nil {
+		t.Error("out-of-range status Name() returned nil error")
+	}
+	if got := model.SessionStatus(99).String(); got != "SessionStatus(99)" {
+		t.Errorf("out-of-range status String() = %q, want diagnostic", got)
 	}
 }
 

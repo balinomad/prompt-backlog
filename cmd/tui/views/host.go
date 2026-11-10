@@ -87,6 +87,11 @@ type Host interface {
 	// until another message replaces them or an empty string clears them.
 	SetError(msg string)
 
+	// Fatal stops the application with err. It is reserved for programmer
+	// errors, typically invariant violations, and does not return to the
+	// caller. The host restores the terminal before exiting.
+	Fatal(err error)
+
 	// SetHints replaces the keyboard-hint lines in the status bar. Use the
 	// pre-defined Hints*Specific/Hints*Common pairs from chrome.go.
 	SetHints(specific, common string)

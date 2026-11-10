@@ -2649,7 +2649,9 @@ func TestProjectFilter(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := tc.filter.Matches(tc.value); got != tc.want {
+			got, err := tc.filter.Matches(tc.value)
+			must(t, err)
+			if got != tc.want {
 				t.Errorf("Matches(%d) = %v, want %v", tc.value, got, tc.want)
 			}
 		})

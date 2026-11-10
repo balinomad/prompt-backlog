@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
 
@@ -194,12 +195,12 @@ func addDropDown(form *tview.Form, label string, options []string, current int) 
 	form.AddFormItem(newDropDown(label, options, current))
 }
 
-// formField returns the form item with label as type T. It reports a missing
-// item through app and returns false so the caller can abort the save.
+// formField returns the form item with label as type T. A missing item is a
+// programmer error and stops the application.
 func formField[T tview.FormItem](app views.Host, form *tview.Form, label, missing string) (T, bool) {
 	field, ok := form.GetFormItemByLabel(label).(T)
 	if !ok {
-		app.SetError("internal error: " + missing + " missing")
+		app.Fatal(apperr.Invariantf("form field %q: %s is missing", label, missing))
 		return field, false
 	}
 	return field, true
@@ -523,7 +524,7 @@ func saveAccountCreate(app views.Host, form *tview.Form, users []*model.User, ve
 	}
 	vendorIdx, _ := vendorDropDown.GetCurrentOption()
 	if vendorIdx < 0 || vendorIdx >= len(vendorNames) {
-		app.SetError("internal error: invalid vendor selection")
+		app.Fatal(apperr.Invariantf("account form: vendor option %d is out of range", vendorIdx))
 		return
 	}
 
@@ -640,7 +641,7 @@ func NewGrantForm(app views.Host, project *model.Project, onClose func()) tview.
 		}
 		idx, _ := dropDown.GetCurrentOption()
 		if idx < 0 || idx >= len(accounts) {
-			app.SetError("internal error: invalid account selection")
+			app.Fatal(apperr.Invariantf("project grant form: account option %d is out of range", idx))
 			return
 		}
 		email := accounts[idx].UserEmail()

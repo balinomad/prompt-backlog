@@ -204,7 +204,10 @@ func (p *AccountsPanel) handleKey(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	if event.Rune() == views.KeyFilter {
-		p.filter.Cycle()
+		if err := p.filter.Cycle(); err != nil {
+			reportPanelError(p.app, err)
+			return nil
+		}
 		if p.onFilterChange != nil {
 			p.onFilterChange()
 		}

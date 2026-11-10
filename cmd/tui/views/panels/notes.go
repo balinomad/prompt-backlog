@@ -97,7 +97,7 @@ func (p *NotesPanel) Refresh() {
 
 	acc, err := resolvePanelAccount(svc, p.account, p.filter)
 	if err != nil && !isPanelAccountGone(err) {
-		p.app.SetError(err.Error())
+		reportPanelError(p.app, err)
 		return
 	}
 	p.account = acc
@@ -113,11 +113,14 @@ func (p *NotesPanel) Refresh() {
 		visible, err := svc.VisibleNotes(acc.UserEmail(), acc.VendorName(), p.filter.Value())
 		if err != nil {
 			if !isMissingRead(err) {
-				p.app.SetError(err.Error())
+				reportPanelError(p.app, err)
 				return
 			}
 			p.account = nil
-			p.filter.SetAccount(model.AccountKey{}, false, nil)
+			if err := p.filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
+				reportPanelError(p.app, err)
+				return
+			}
 		} else {
 			notes = visible
 		}
@@ -159,7 +162,12 @@ func (p *NotesPanel) SelectedNote() *model.Note {
 }
 
 func (p *NotesPanel) setTitle(index int) {
-	base := notesListTitle + p.filter.TitleSuffix() + " "
+	suffix, err := p.filter.TitleSuffix()
+	if err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
+	base := notesListTitle + suffix + " "
 	views.SetListTitle(p.List, base, index, len(p.notes))
 }
 
@@ -224,7 +232,10 @@ func (p *NotesPanel) handleDelete() *tcell.EventKey {
 }
 
 func (p *NotesPanel) advanceFilter() {
-	p.filter.Cycle()
+	if err := p.filter.Cycle(); err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
 	if p.onFilterChange != nil {
 		p.onFilterChange()
 		return

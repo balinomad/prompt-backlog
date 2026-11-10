@@ -548,8 +548,8 @@ func TestPromptForm_ListDelete(t *testing.T) {
 	if got := list.GetItemCount(); got != 1 {
 		t.Errorf("list items = %d, want 1", got)
 	}
-	if text, _, ok := forms.PromptStateFromPrimitive(app.Modal); !ok || text != "second" {
-		t.Errorf("prompt after delete = %q, want second", text)
+	if text, _, ok, err := forms.PromptStateFromPrimitive(app.Modal); err != nil || !ok || text != "second" {
+		t.Errorf("prompt after delete = %q, want second (err %v)", text, err)
 	}
 	if app.Focused != list {
 		t.Errorf("focus after delete = %T, want prompt list", app.Focused)
@@ -579,8 +579,8 @@ func TestPromptForm_ListDeleteCancel(t *testing.T) {
 	if got := list.GetItemCount(); got != 2 {
 		t.Errorf("list items = %d, want 2", got)
 	}
-	if text, _, ok := forms.PromptStateFromPrimitive(app.Modal); !ok || text != "first" {
-		t.Errorf("prompt after cancel = %q, want first", text)
+	if text, _, ok, err := forms.PromptStateFromPrimitive(app.Modal); err != nil || !ok || text != "first" {
+		t.Errorf("prompt after cancel = %q, want first (err %v)", text, err)
 	}
 }
 
@@ -600,8 +600,8 @@ func TestPromptForm_ListDeleteLast(t *testing.T) {
 	if got := list.GetItemCount(); got != 0 {
 		t.Errorf("list items = %d, want 0", got)
 	}
-	if text, _, ok := forms.PromptStateFromPrimitive(app.Modal); !ok || text != "" {
-		t.Errorf("prompt after delete = %q, want empty", text)
+	if text, _, ok, err := forms.PromptStateFromPrimitive(app.Modal); err != nil || !ok || text != "" {
+		t.Errorf("prompt after delete = %q, want empty (err %v)", text, err)
 	}
 	forms.SavePromptFromPrimitive(app.Modal)
 
@@ -684,8 +684,8 @@ func TestPromptForm_DeleteButtonSavesImmediately(t *testing.T) {
 	if got := list.GetItemCount(); got != 1 {
 		t.Errorf("list items = %d, want 1", got)
 	}
-	if text, _, ok := forms.PromptStateFromPrimitive(app.Modal); !ok || text != "changed second" {
-		t.Errorf("prompt after delete = %q, want changed second", text)
+	if text, _, ok, err := forms.PromptStateFromPrimitive(app.Modal); err != nil || !ok || text != "changed second" {
+		t.Errorf("prompt after delete = %q, want changed second (err %v)", text, err)
 	}
 	if app.Focused != list {
 		t.Errorf("focus after delete = %T, want prompt list", app.Focused)
@@ -880,7 +880,8 @@ func TestPromptForm_SessionModal(t *testing.T) {
 	}
 
 	pressButton(t, form.GetButton(1)) // Cancel
-	text, status, ok := forms.PromptStateFromPrimitive(app.Modal)
+	text, status, ok, err := forms.PromptStateFromPrimitive(app.Modal)
+	must(t, err)
 	if !ok {
 		t.Fatal("session form did not return to the prompt form")
 	}

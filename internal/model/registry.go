@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 )
 
 // compareFold compares a and b case-insensitively, for name-based sorting.
@@ -751,9 +753,7 @@ func (r *Registry) AddProjectToAccount(acc *Account, p *Project) error {
 	}
 	prov := r.vendors[acc.key.Vendor]
 	if prov == nil {
-		// Unreachable in practice: DeleteVendor refuses while any account
-		// still references it.
-		return fmt.Errorf("add project to account: vendor %q %w", acc.key.Vendor, ErrVendorNotFound)
+		return fmt.Errorf("add project to account: vendor %q: %w", acc.key.Vendor, apperr.Invariantf("account references a missing vendor"))
 	}
 	if !prov.hasProjects {
 		return fmt.Errorf("add project to account: vendor %q %w", acc.key.Vendor, ErrProjectsUnsupported)
@@ -1550,9 +1550,19 @@ func (r *Registry) VisibleNotes(acc *Account, filter ProjectFilter) ([]*Note, er
 		return nil, fmt.Errorf("visible notes: %w", err)
 	}
 
+	if err := filter.Validate(); err != nil {
+		r.mu.RUnlock()
+		return nil, fmt.Errorf("visible notes: %w", err)
+	}
+
 	result := make([]*Note, 0)
 	for _, n := range r.notes {
-		if !filter.Matches(n.projectID) {
+		matches, err := filter.Matches(n.projectID)
+		if err != nil {
+			r.mu.RUnlock()
+			return nil, fmt.Errorf("visible notes: %w", err)
+		}
+		if !matches {
 			continue
 		}
 		if !r.noteVisibleForAccount(n, acc) {

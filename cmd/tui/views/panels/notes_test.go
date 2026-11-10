@@ -102,7 +102,7 @@ func TestNotesPanel_Filter(t *testing.T) {
 	p.SetAccount(f.acc)
 	p.SetWidth(80)
 
-	filter.Cycle() // Alpha
+	must(t, filter.Cycle()) // Alpha
 	p.Refresh()
 	if got := p.GetItemCount(); got != 2 {
 		t.Fatalf("Alpha rows = %d, want 2", got)
@@ -111,13 +111,13 @@ func TestNotesPanel_Filter(t *testing.T) {
 		t.Errorf("Alpha rows = %q, %q", noteItemText(t, p, 0), noteItemText(t, p, 1))
 	}
 
-	filter.Cycle() // Beta
+	must(t, filter.Cycle()) // Beta
 	p.Refresh()
 	if got := p.GetItemCount(); got != 0 {
 		t.Errorf("Beta rows = %d, want 0", got)
 	}
 
-	filter.Cycle() // None
+	must(t, filter.Cycle()) // None
 	p.Refresh()
 	if got := p.GetItemCount(); got != 2 {
 		t.Fatalf("None rows = %d, want 2", got)

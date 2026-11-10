@@ -106,6 +106,9 @@ type App struct {
 	statusGeneration uint64
 	statusTimeout    time.Duration
 	statusQueue      func(func())
+
+	fatalMu  sync.Mutex
+	fatalErr error
 }
 
 // New constructs the fully wired application around svc. The caller is
@@ -226,10 +229,21 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}()
 
-	if err := a.tv.Run(); err != nil {
-		return fmt.Errorf("run tview: %w", err)
+	runErr := a.tv.Run()
+	if err := a.fatalError(); err != nil {
+		return err
+	}
+	if runErr != nil {
+		return fmt.Errorf("run tview: %w", runErr)
 	}
 	return nil
+}
+
+// fatalError returns the error passed to Fatal, if any.
+func (a *App) fatalError() error {
+	a.fatalMu.Lock()
+	defer a.fatalMu.Unlock()
+	return a.fatalErr
 }
 
 // ── views.Host implementation ──────────────────────────────────────────────────
@@ -508,6 +522,20 @@ func (a *App) SetNotice(msg string) {
 func (a *App) SetError(msg string) {
 	a.cancelStatusTimer()
 	a.statusBar.SetError(msg)
+}
+
+// Fatal stops the application with err. It is reserved for programmer errors.
+// The error is returned by Run after the terminal is restored.
+func (a *App) Fatal(err error) {
+	if err == nil {
+		return
+	}
+	a.fatalMu.Lock()
+	if a.fatalErr == nil {
+		a.fatalErr = err
+	}
+	a.fatalMu.Unlock()
+	a.tv.Stop()
 }
 
 // SetHints replaces the keyboard-hint lines in the status bar.

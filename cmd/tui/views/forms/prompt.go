@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
 
@@ -24,6 +25,12 @@ const (
 )
 
 var sessionStatusLabels = []string{"Active", "Needs closing", "Closed"}
+
+var sessionStatusValues = []model.SessionStatus{
+	model.SessionStatusActive,
+	model.SessionStatusNeedsClosing,
+	model.SessionStatusClosed,
+}
 
 const (
 	promptTextWidth        = 60
@@ -296,12 +303,12 @@ func (e *promptEditor) HasFocus() bool {
 	return false
 }
 
-func (e *promptEditor) statusValue() model.SessionStatus {
+func (e *promptEditor) statusValue() (model.SessionStatus, error) {
 	index, _ := e.status.GetCurrentOption()
-	if index < 0 || index >= len(sessionStatusLabels) {
-		return model.SessionStatusActive
+	if index < 0 || index >= len(sessionStatusValues) {
+		return 0, apperr.Invariantf("prompt editor: status option %d is out of range", index)
 	}
-	return model.SessionStatus(index)
+	return sessionStatusValues[index], nil
 }
 
 func (e *promptEditor) installInputCapture() {
@@ -563,11 +570,16 @@ func (e *promptEditor) showState(state *promptEditorState) {
 }
 
 func (e *promptEditor) snapshot(focusList bool) promptEditorState {
+	status, err := e.statusValue()
+	if err != nil {
+		e.app.Fatal(err)
+		return promptEditorState{}
+	}
 	return promptEditorState{
 		mode:           e.mode,
 		index:          e.index,
 		text:           e.textArea.GetText(),
-		status:         e.statusValue(),
+		status:         status,
 		queue:          slices.Clone(e.queue),
 		focusList:      focusList,
 		onSaved:        e.onSaved,
@@ -747,15 +759,20 @@ func (e *promptEditor) mutateQueue(change func([]model.Prompt) ([]model.Prompt, 
 		if err != nil {
 			return err
 		}
-		if err := svc.UpdateSessionPrompts(e.email, e.vendor, e.sessionID, next); err != nil {
-			return err
+		updateErr := svc.UpdateSessionPrompts(e.email, e.vendor, e.sessionID, next)
+		if updateErr != nil {
+			return updateErr
 		}
 		live = svc.Session(e.sessionID)
 		if live == nil {
 			return model.ErrSessionNotFound
 		}
-		if live.Status() != e.statusValue() {
-			return svc.UpdateSessionStatus(e.email, e.vendor, e.sessionID, e.statusValue())
+		status, err := e.statusValue()
+		if err != nil {
+			return err
+		}
+		if live.Status() != status {
+			return svc.UpdateSessionStatus(e.email, e.vendor, e.sessionID, status)
 		}
 		return nil
 	}); err != nil {

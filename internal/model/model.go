@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 )
 
 // TimeFormat is the canonical display and parse layout for all timestamps.
@@ -220,18 +222,28 @@ const (
 	SessionStatusClosed
 )
 
-// String returns the canonical persistence value of s.
-func (s SessionStatus) String() string {
+// Name returns the canonical persistence value of s.
+func (s SessionStatus) Name() (string, error) {
 	switch s {
 	case SessionStatusActive:
-		return "active"
+		return "active", nil
 	case SessionStatusNeedsClosing:
-		return "needs_closing"
+		return "needs_closing", nil
 	case SessionStatusClosed:
-		return "closed"
+		return "closed", nil
 	default:
-		return "unknown"
+		return "", apperr.Invariantf("session status %d is not valid", s)
 	}
+}
+
+// String returns the canonical persistence value of s. Invalid values render
+// as a diagnostic rather than a plausible status.
+func (s SessionStatus) String() string {
+	name, err := s.Name()
+	if err != nil {
+		return fmt.Sprintf("SessionStatus(%d)", s)
+	}
+	return name
 }
 
 // Valid reports whether s is a known session status.
@@ -396,60 +408,82 @@ func (n *Note) AccountKey() (AccountKey, bool) {
 // ProjectFilter selects items by project name. The zero value selects every
 // item.
 type ProjectFilter struct {
-	kind projectFilterKind
+	kind ProjectFilterKind
 	id   uint64
 }
 
-type projectFilterKind uint8
+// ProjectFilterKind identifies the kind of project filter.
+type ProjectFilterKind uint8
 
 const (
-	projectFilterAll projectFilterKind = iota
-	projectFilterNone
-	projectFilterNamed
+	// ProjectFilterAll accepts every project.
+	ProjectFilterAll ProjectFilterKind = iota
+	// ProjectFilterNone accepts only an empty project name.
+	ProjectFilterNone
+	// ProjectFilterNamed accepts only one project ID.
+	ProjectFilterNamed
 )
 
 // AllProjectFilter returns a filter that accepts every project name.
 func AllProjectFilter() ProjectFilter {
-	return ProjectFilter{kind: projectFilterAll}
+	return ProjectFilter{kind: ProjectFilterAll}
 }
 
 // NoneProjectFilter returns a filter that accepts only an empty project name.
 func NoneProjectFilter() ProjectFilter {
-	return ProjectFilter{kind: projectFilterNone}
+	return ProjectFilter{kind: ProjectFilterNone}
 }
 
 // NamedProjectFilter returns a filter that accepts only projectID.
 func NamedProjectFilter(projectID uint64) ProjectFilter {
-	return ProjectFilter{kind: projectFilterNamed, id: projectID}
+	return ProjectFilter{kind: ProjectFilterNamed, id: projectID}
+}
+
+// Kind returns the filter's kind.
+func (f ProjectFilter) Kind() ProjectFilterKind {
+	return f.kind
+}
+
+// Validate returns an invariant error when the filter holds an unknown kind.
+func (f ProjectFilter) Validate() error {
+	switch f.kind {
+	case ProjectFilterAll, ProjectFilterNone, ProjectFilterNamed:
+		return nil
+	default:
+		return apperr.Invariantf("project filter kind %d is not valid", f.kind)
+	}
 }
 
 // Matches reports whether projectID satisfies the filter.
-func (f ProjectFilter) Matches(projectID uint64) bool {
+func (f ProjectFilter) Matches(projectID uint64) (bool, error) {
+	if err := f.Validate(); err != nil {
+		return false, err
+	}
 	switch f.kind {
-	case projectFilterAll:
-		return true
-	case projectFilterNone:
-		return projectID == 0
-	case projectFilterNamed:
-		return projectID == f.id
+	case ProjectFilterAll:
+		return true, nil
+	case ProjectFilterNone:
+		return projectID == 0, nil
+	case ProjectFilterNamed:
+		return projectID == f.id, nil
 	default:
-		return false
+		return false, apperr.Invariantf("project filter kind %d is not valid", f.kind)
 	}
 }
 
 // IsAll reports whether the filter accepts every project name.
 func (f ProjectFilter) IsAll() bool {
-	return f.kind == projectFilterAll
+	return f.kind == ProjectFilterAll
 }
 
 // IsNone reports whether the filter accepts only an empty project name.
 func (f ProjectFilter) IsNone() bool {
-	return f.kind == projectFilterNone
+	return f.kind == ProjectFilterNone
 }
 
 // ProjectID returns the filter's project ID and whether the filter names one.
 func (f ProjectFilter) ProjectID() (uint64, bool) {
-	if f.kind != projectFilterNamed {
+	if f.kind != ProjectFilterNamed {
 		return 0, false
 	}
 	return f.id, true

@@ -182,9 +182,9 @@ func TestSessionsPanel_ProjectColumnHidden(t *testing.T) {
 	p.SetFilter(filter)
 	p.SetAccount(f.acc)
 
-	filter.Cycle() // Alpha
-	filter.Cycle() // Beta
-	filter.Cycle() // None
+	must(t, filter.Cycle()) // Alpha
+	must(t, filter.Cycle()) // Beta
+	must(t, filter.Cycle()) // None
 	p.Refresh()
 
 	row := itemText(t, p, 0)
@@ -221,19 +221,19 @@ func TestSessionsPanel_Filter(t *testing.T) {
 	p.SetFilter(filter)
 	p.SetAccount(f.acc)
 
-	filter.Cycle() // Alpha
+	must(t, filter.Cycle()) // Alpha
 	p.Refresh()
 	if got := p.GetItemCount(); got != 1 || !strings.Contains(itemText(t, p, 0), "Alpha session") {
 		t.Errorf("Alpha filter rows = %d first = %q", got, itemText(t, p, 0))
 	}
 
-	filter.Cycle() // Beta
+	must(t, filter.Cycle()) // Beta
 	p.Refresh()
 	if got := p.GetItemCount(); got != 1 || !strings.Contains(itemText(t, p, 0), "Beta session") {
 		t.Errorf("Beta filter rows = %d first = %q", got, itemText(t, p, 0))
 	}
 
-	filter.Cycle() // None
+	must(t, filter.Cycle()) // None
 	p.Refresh()
 	if got := p.GetItemCount(); got != 1 || !strings.Contains(itemText(t, p, 0), "(untitled)") {
 		t.Errorf("None filter rows = %d first = %q", got, itemText(t, p, 0))

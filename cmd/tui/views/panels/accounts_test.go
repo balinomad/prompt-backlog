@@ -721,7 +721,7 @@ func TestAccountsPanel_FilterKey(t *testing.T) {
 	app, _, acc := newProjectAccountsTestApp(t)
 	must(t, app.Svc.AddProject("Alpha", "", ""))
 	filter := views.NewProjectFilterState()
-	filter.SetAccount(acc.Key(), true, []*model.Project{app.Svc.Project("Alpha")})
+	must(t, filter.SetAccount(acc.Key(), true, []*model.Project{app.Svc.Project("Alpha")}))
 	p := panels.NewAccountsPanel(app)
 	p.SetFilter(filter)
 	called := false
@@ -732,8 +732,10 @@ func TestAccountsPanel_FilterKey(t *testing.T) {
 	if !called {
 		t.Error("filter callback was not called")
 	}
-	if got := filter.TitleSuffix(); got != " (Alpha)" {
-		t.Errorf("TitleSuffix() = %q, want (Alpha)", got)
+	suffix, err := filter.TitleSuffix()
+	must(t, err)
+	if suffix != " (Alpha)" {
+		t.Errorf("TitleSuffix() = %q, want (Alpha)", suffix)
 	}
 }
 

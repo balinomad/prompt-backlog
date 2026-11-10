@@ -24,13 +24,17 @@ var errPanelAccountGone = errors.New("panel account unavailable")
 // list.
 func resolvePanelAccount(svc *service.Service, account *model.Account, filter *views.ProjectFilterState) (*model.Account, error) {
 	if account == nil {
-		filter.SetAccount(model.AccountKey{}, false, nil)
+		if err := filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
+			return nil, fmt.Errorf("clear project filter: %w", err)
+		}
 		return nil, errPanelAccountGone
 	}
 	acc, err := svc.Account(account.UserEmail(), account.VendorName())
 	if err != nil {
 		if isMissingRead(err) {
-			filter.SetAccount(model.AccountKey{}, false, nil)
+			if err = filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
+				return nil, fmt.Errorf("clear project filter: %w", err)
+			}
 			return nil, errPanelAccountGone
 		}
 		return nil, fmt.Errorf("resolve account: %w", err)
@@ -38,12 +42,16 @@ func resolvePanelAccount(svc *service.Service, account *model.Account, filter *v
 	projects, err := svc.AccountProjects(acc.UserEmail(), acc.VendorName())
 	if err != nil {
 		if isMissingRead(err) {
-			filter.SetAccount(model.AccountKey{}, false, nil)
+			if err = filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
+				return nil, fmt.Errorf("clear project filter: %w", err)
+			}
 			return nil, errPanelAccountGone
 		}
 		return nil, fmt.Errorf("resolve account projects: %w", err)
 	}
-	filter.SetAccount(acc.Key(), true, projects)
+	if err = filter.SetAccount(acc.Key(), true, projects); err != nil {
+		return nil, fmt.Errorf("set project filter: %w", err)
+	}
 	return acc, nil
 }
 
@@ -51,6 +59,16 @@ func resolvePanelAccount(svc *service.Service, account *model.Account, filter *v
 // sentinel.
 func isPanelAccountGone(err error) bool {
 	return errors.Is(err, errPanelAccountGone)
+}
+
+// reportPanelError sends err to the host, stopping the application for
+// invariant violations.
+func reportPanelError(app views.Host, err error) {
+	if apperr.IsInvariant(err) {
+		app.Fatal(err)
+		return
+	}
+	app.SetError(err.Error())
 }
 
 // isMissingRead reports whether err means the entity is gone rather than the

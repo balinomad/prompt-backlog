@@ -3,12 +3,19 @@ package views
 import (
 	"strings"
 
+	"github.com/balinomad/prompt-backlog/internal/apperr"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-// SetErrorStatus displays err in the separate error area.
+// SetErrorStatus displays err in the separate error area. Invariant
+// violations stop the application instead.
 func SetErrorStatus(app Host, err error) {
+	if apperr.IsInvariant(err) {
+		app.Fatal(err)
+		return
+	}
 	app.SetError(err.Error())
 }
 

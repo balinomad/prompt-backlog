@@ -418,13 +418,17 @@ func buildDTO(reg *model.Registry) (registryDTO, error) {
 	sessions := reg.Sessions()
 	dto.Sessions = make([]sessionDTO, 0, len(sessions))
 	for _, s := range sessions {
+		status, err := s.Status().Name()
+		if err != nil {
+			return registryDTO{}, fmt.Errorf("store: session %d: %w", s.ID(), err)
+		}
 		sdto := sessionDTO{
 			ID:        s.ID(),
 			AccountID: s.AccountID(),
 			ProjectID: s.ProjectID(),
 			Name:      s.Name(),
 			URL:       s.URL(),
-			Status:    s.Status().String(),
+			Status:    status,
 		}
 		if !s.UpdatedAt().IsZero() {
 			updatedAt := s.UpdatedAt()

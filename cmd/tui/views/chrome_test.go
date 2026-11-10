@@ -1,16 +1,53 @@
 package views_test
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/cmd/tui/views/internal/viewtest"
 	"github.com/balinomad/prompt-backlog/cmd/tui/views/panels"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
+
+func TestSetErrorStatus(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ordinary error", func(t *testing.T) {
+		t.Parallel()
+		app := viewtest.NewFakeApp(t)
+		err := errors.New("boom")
+
+		views.SetErrorStatus(app, err)
+
+		if app.ErrorStatus != "boom" {
+			t.Errorf("ErrorStatus = %q, want boom", app.ErrorStatus)
+		}
+		if app.FatalErr != nil {
+			t.Errorf("FatalErr = %v, want nil", app.FatalErr)
+		}
+	})
+
+	t.Run("invariant violation", func(t *testing.T) {
+		t.Parallel()
+		app := viewtest.NewFakeApp(t)
+		err := apperr.Invariantf("boom")
+
+		views.SetErrorStatus(app, err)
+
+		if !errors.Is(app.FatalErr, err) {
+			t.Errorf("FatalErr = %v, want %v", app.FatalErr, err)
+		}
+		if app.ErrorStatus != "" {
+			t.Errorf("ErrorStatus = %q, want empty", app.ErrorStatus)
+		}
+	})
+}
 
 // statusBarParts returns sb's text views: the upper specific hints, the lower
 // common hints and inline message, and the separate message area.

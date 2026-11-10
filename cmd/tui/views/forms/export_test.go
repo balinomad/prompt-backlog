@@ -240,12 +240,16 @@ func promptEditorFromPrimitive(p tview.Primitive) (*promptEditor, bool) {
 
 // PromptStateFromPrimitive returns the prompt text and status from a prompt
 // editor modal primitive.
-func PromptStateFromPrimitive(p tview.Primitive) (string, model.SessionStatus, bool) {
+func PromptStateFromPrimitive(p tview.Primitive) (string, model.SessionStatus, bool, error) {
 	editor, ok := promptEditorFromPrimitive(p)
 	if !ok {
-		return "", model.SessionStatusActive, false
+		return "", model.SessionStatusActive, false, nil
 	}
-	return editor.textArea.GetText(), editor.statusValue(), true
+	status, err := editor.statusValue()
+	if err != nil {
+		return "", 0, false, err
+	}
+	return editor.textArea.GetText(), status, true, nil
 }
 
 // PromptListFromPrimitive returns the prompt list from an Edit modal primitive.

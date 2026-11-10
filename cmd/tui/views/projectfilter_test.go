@@ -20,13 +20,29 @@ func filterProjects(t *testing.T, names ...string) []*model.Project {
 	return reg.Projects()
 }
 
+func mustNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func titleSuffix(t *testing.T, f *views.ProjectFilterState) string {
+	t.Helper()
+	suffix, err := f.TitleSuffix()
+	if err != nil {
+		t.Fatalf("TitleSuffix: %v", err)
+	}
+	return suffix
+}
+
 func TestProjectFilterState_Initial(t *testing.T) {
 	t.Parallel()
 	f := views.NewProjectFilterState()
 	if !f.Value().IsAll() {
 		t.Error("initial filter is not All")
 	}
-	if got := f.TitleSuffix(); got != "" {
+	if got := titleSuffix(t, f); got != "" {
 		t.Errorf("TitleSuffix() = %q, want empty", got)
 	}
 }
@@ -37,28 +53,28 @@ func TestProjectFilterState_Cycle(t *testing.T) {
 	t.Run("with granted projects", func(t *testing.T) {
 		t.Parallel()
 		f := views.NewProjectFilterState()
-		f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "Beta", "Alpha"))
+		mustNoError(t, f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "Beta", "Alpha")))
 
 		want := []string{"", " (Alpha)", " (Beta)", " (no project)", ""}
 		for i, suffix := range want {
-			if got := f.TitleSuffix(); got != suffix {
+			if got := titleSuffix(t, f); got != suffix {
 				t.Errorf("step %d suffix = %q, want %q", i, got, suffix)
 			}
-			f.Cycle()
+			mustNoError(t, f.Cycle())
 		}
 	})
 
 	t.Run("without an account", func(t *testing.T) {
 		t.Parallel()
 		f := views.NewProjectFilterState()
-		f.SetAccount(model.AccountKey{}, false, nil)
+		mustNoError(t, f.SetAccount(model.AccountKey{}, false, nil))
 
 		want := []string{"", " (no project)", ""}
 		for i, suffix := range want {
-			if got := f.TitleSuffix(); got != suffix {
+			if got := titleSuffix(t, f); got != suffix {
 				t.Errorf("step %d suffix = %q, want %q", i, got, suffix)
 			}
-			f.Cycle()
+			mustNoError(t, f.Cycle())
 		}
 	})
 
@@ -66,13 +82,13 @@ func TestProjectFilterState_Cycle(t *testing.T) {
 		t.Parallel()
 		projects := filterProjects(t, "Alpha", "Beta")
 		f := views.NewProjectFilterState()
-		f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, append(projects, projects[0]))
-		f.Cycle() // Alpha
-		if got := f.TitleSuffix(); got != " (Alpha)" {
+		mustNoError(t, f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, append(projects, projects[0])))
+		mustNoError(t, f.Cycle()) // Alpha
+		if got := titleSuffix(t, f); got != " (Alpha)" {
 			t.Errorf("first project suffix = %q, want (Alpha)", got)
 		}
-		f.Cycle() // Beta
-		if got := f.TitleSuffix(); got != " (Beta)" {
+		mustNoError(t, f.Cycle()) // Beta
+		if got := titleSuffix(t, f); got != " (Beta)" {
 			t.Errorf("second project suffix = %q, want (Beta)", got)
 		}
 	})
@@ -84,9 +100,9 @@ func TestProjectFilterState_Resets(t *testing.T) {
 	t.Run("account change resets to All", func(t *testing.T) {
 		t.Parallel()
 		f := views.NewProjectFilterState()
-		f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "Alpha"))
-		f.Cycle() // Alpha
-		f.SetAccount(model.AccountKey{Email: "bob@example.com", Vendor: "chatgpt"}, true, filterProjects(t, "Alpha"))
+		mustNoError(t, f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "Alpha")))
+		mustNoError(t, f.Cycle()) // Alpha
+		mustNoError(t, f.SetAccount(model.AccountKey{Email: "bob@example.com", Vendor: "chatgpt"}, true, filterProjects(t, "Alpha")))
 		if !f.Value().IsAll() {
 			t.Error("filter did not reset to All after an account change")
 		}
@@ -97,9 +113,9 @@ func TestProjectFilterState_Resets(t *testing.T) {
 		projects := filterProjects(t, "Alpha", "Beta")
 		f := views.NewProjectFilterState()
 		key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
-		f.SetAccount(key, true, projects)
-		f.Cycle() // Alpha
-		f.SetAccount(key, true, projects[1:])
+		mustNoError(t, f.SetAccount(key, true, projects))
+		mustNoError(t, f.Cycle()) // Alpha
+		mustNoError(t, f.SetAccount(key, true, projects[1:]))
 		if !f.Value().IsAll() {
 			t.Error("filter did not reset to All after the project grant was lost")
 		}
@@ -110,9 +126,9 @@ func TestProjectFilterState_Resets(t *testing.T) {
 		projects := filterProjects(t, "Alpha", "Beta", "Gamma")
 		f := views.NewProjectFilterState()
 		key := model.AccountKey{Email: "alice@example.com", Vendor: "claude"}
-		f.SetAccount(key, true, projects[:2])
-		f.Cycle() // Alpha
-		f.SetAccount(key, true, projects)
+		mustNoError(t, f.SetAccount(key, true, projects[:2]))
+		mustNoError(t, f.Cycle()) // Alpha
+		mustNoError(t, f.SetAccount(key, true, projects))
 		if id, ok := f.Value().ProjectID(); !ok || id != projects[0].ID() {
 			t.Errorf("filter = %v, want project %d", f.Value(), projects[0].ID())
 		}
@@ -121,9 +137,9 @@ func TestProjectFilterState_Resets(t *testing.T) {
 	t.Run("no account resets to All", func(t *testing.T) {
 		t.Parallel()
 		f := views.NewProjectFilterState()
-		f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "Alpha"))
-		f.Cycle()
-		f.SetAccount(model.AccountKey{}, false, nil)
+		mustNoError(t, f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "Alpha")))
+		mustNoError(t, f.Cycle())
+		mustNoError(t, f.SetAccount(model.AccountKey{}, false, nil))
 		if !f.Value().IsAll() {
 			t.Error("filter did not reset to All without an account")
 		}
@@ -133,13 +149,13 @@ func TestProjectFilterState_Resets(t *testing.T) {
 func TestProjectFilterState_TitleSuffix(t *testing.T) {
 	t.Parallel()
 	f := views.NewProjectFilterState()
-	f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "[Alpha]"))
-	f.Cycle()
-	if got := f.TitleSuffix(); got != " ("+tview.Escape("[Alpha]")+")" {
+	mustNoError(t, f.SetAccount(model.AccountKey{Email: "alice@example.com", Vendor: "claude"}, true, filterProjects(t, "[Alpha]")))
+	mustNoError(t, f.Cycle())
+	if got := titleSuffix(t, f); got != " ("+tview.Escape("[Alpha]")+")" {
 		t.Errorf("TitleSuffix() = %q, want escaped brackets", got)
 	}
-	f.Cycle() // None
-	if got := f.TitleSuffix(); got != " (no project)" {
+	mustNoError(t, f.Cycle()) // None
+	if got := titleSuffix(t, f); got != " (no project)" {
 		t.Errorf("TitleSuffix() = %q, want (no project)", got)
 	}
 }

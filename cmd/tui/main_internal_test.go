@@ -106,6 +106,20 @@ func newLayoutApp(t *testing.T) *App {
 	return app
 }
 
+func TestApp_FatalStoresFirstError(t *testing.T) {
+	t.Parallel()
+	app := newLayoutApp(t)
+	first := apperr.Invariantf("first")
+	second := apperr.Invariantf("second")
+
+	app.Fatal(first)
+	app.Fatal(second)
+
+	if got := app.fatalError(); !errors.Is(got, first) {
+		t.Errorf("fatalError() = %v, want the first error", got)
+	}
+}
+
 func TestApp_HandleGlobalKeys_SwitchScreens(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

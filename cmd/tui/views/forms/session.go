@@ -2,6 +2,7 @@ package forms
 
 import (
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
 
@@ -24,7 +25,8 @@ type SessionFormOptions struct {
 // It does not create prompts, consume notes, or create projects.
 func NewSessionForm(app views.Host, options *SessionFormOptions) tview.Primitive {
 	if options.Account == nil {
-		return views.ErrorModal("No account selected.", options.OnCancel)
+		app.Fatal(apperr.Invariantf("new session form: account is nil"))
+		return views.ErrorModal("Internal error.", options.OnCancel)
 	}
 
 	form := newForm(options.Title)

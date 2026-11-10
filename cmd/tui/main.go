@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/service"
 	"github.com/balinomad/prompt-backlog/internal/store"
 	"github.com/balinomad/prompt-backlog/internal/store/json"
@@ -41,6 +42,11 @@ func run(args []string, stderr io.Writer) int {
 	}
 	if errors.Is(err, errUsage) {
 		return exitUsage
+	}
+	if invariant, ok := errors.AsType[*apperr.InvariantError](err); ok {
+		//nolint:errcheck // A stderr write failure cannot change the exit code.
+		fmt.Fprintf(stderr, "%s: %v\n%s", AppName, err, invariant.Stack())
+		return exitFailure
 	}
 	//nolint:errcheck // A stderr write failure cannot change the exit code.
 	fmt.Fprintf(stderr, "%s: %v\n", AppName, err)

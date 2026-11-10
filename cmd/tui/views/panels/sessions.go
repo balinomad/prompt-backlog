@@ -7,7 +7,7 @@ import (
 
 	"github.com/balinomad/prompt-backlog/cmd/tui/views"
 	"github.com/balinomad/prompt-backlog/cmd/tui/views/forms"
-
+	"github.com/balinomad/prompt-backlog/internal/apperr"
 	"github.com/balinomad/prompt-backlog/internal/model"
 	"github.com/balinomad/prompt-backlog/internal/service"
 
@@ -90,7 +90,7 @@ func (p *SessionsPanel) Refresh() {
 
 	acc, err := resolvePanelAccount(svc, p.account, p.filter)
 	if err != nil && !isPanelAccountGone(err) {
-		p.app.SetError(err.Error())
+		reportPanelError(p.app, err)
 		return
 	}
 	p.account = acc
@@ -100,14 +100,22 @@ func (p *SessionsPanel) Refresh() {
 		all, err := svc.AccountSessionsActivityOrder(acc.UserEmail(), acc.VendorName())
 		if err != nil {
 			if !isMissingRead(err) {
-				p.app.SetError(err.Error())
+				reportPanelError(p.app, err)
 				return
 			}
 			p.account = nil
-			p.filter.SetAccount(model.AccountKey{}, false, nil)
+			if err := p.filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
+				reportPanelError(p.app, err)
+				return
+			}
 		} else {
 			for _, s := range all {
-				if p.filter.Value().Matches(s.ProjectID()) {
+				matches, err := p.filter.Value().Matches(s.ProjectID())
+				if err != nil {
+					reportPanelError(p.app, err)
+					return
+				}
+				if matches {
 					sessions = append(sessions, s)
 				}
 			}
@@ -238,7 +246,10 @@ func (p *SessionsPanel) handleStart() *tcell.EventKey {
 }
 
 func (p *SessionsPanel) advanceFilter() {
-	p.filter.Cycle()
+	if err := p.filter.Cycle(); err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
 	if p.onFilterChange != nil {
 		p.onFilterChange()
 		return
@@ -290,7 +301,12 @@ func (p *SessionsPanel) rebuild(sessions []*model.Session, prevID uint64) {
 	nameWidth := sessionNameWidth(p.width, sessions)
 	cells := make([][]string, len(sessions))
 	for i, s := range sessions {
-		cells[i] = sessionRowCells(s, nameWidth)
+		row, err := sessionRowCells(s, nameWidth)
+		if err != nil {
+			reportPanelError(p.app, err)
+			return
+		}
+		cells[i] = row
 	}
 	lines, _ := views.FormatColumns(views.DropEmptyColumns(cells))
 	for i, line := range lines {
@@ -325,11 +341,32 @@ func (p *SessionsPanel) selectedSession() *model.Session {
 }
 
 func (p *SessionsPanel) setTitle(index int) {
-	base := sessionsListTitle + p.filter.TitleSuffix() + " "
+	suffix, err := p.filter.TitleSuffix()
+	if err != nil {
+		reportPanelError(p.app, err)
+		return
+	}
+	base := sessionsListTitle + suffix + " "
 	views.SetListTitle(p.List, base, index, len(p.sessions))
 }
 
 const minSessionNameWidth = 8
+
+func sessionStatusMarker(status model.SessionStatus) (string, error) {
+	if _, err := status.Name(); err != nil {
+		return "", err
+	}
+	switch status {
+	case model.SessionStatusActive:
+		return "", nil
+	case model.SessionStatusNeedsClosing:
+		return "[yellow]▲[-]", nil
+	case model.SessionStatusClosed:
+		return "✓", nil
+	default:
+		return "", apperr.Invariantf("session status %d has no marker", status)
+	}
+}
 
 func sessionNameWidth(available int, sessions []*model.Session) int {
 	if available <= 0 {
@@ -365,7 +402,7 @@ func sessionNameWidth(available int, sessions []*model.Session) int {
 	return max(minSessionNameWidth, available-fixed)
 }
 
-func sessionRowCells(s *model.Session, nameWidth int) []string {
+func sessionRowCells(s *model.Session, nameWidth int) ([]string, error) {
 	project := ""
 	if s.ProjectName() != "" {
 		project = tview.Escape(views.TruncateWidth(s.ProjectName(), views.ProjectColumnWidth))
@@ -382,13 +419,9 @@ func sessionRowCells(s *model.Session, nameWidth int) []string {
 	}
 	name = views.PadWidth(name, nameWidth)
 
-	marker := ""
-	switch s.Status() {
-	case model.SessionStatusActive:
-	case model.SessionStatusNeedsClosing:
-		marker = "[yellow]▲[-]"
-	case model.SessionStatusClosed:
-		marker = "✓"
+	marker, err := sessionStatusMarker(s.Status())
+	if err != nil {
+		return nil, err
 	}
 
 	return []string{
@@ -396,7 +429,7 @@ func sessionRowCells(s *model.Session, nameWidth int) []string {
 		name,
 		strconv.Itoa(len(s.Queue())),
 		marker,
-	}
+	}, nil
 }
 
 func firstLine(text string) string {

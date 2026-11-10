@@ -72,6 +72,7 @@ type FakeApp struct {
 	ClipboardText string
 	ReadErr       error
 	Quitted       bool
+	FatalErr      error
 }
 
 var _ views.Host = (*FakeApp)(nil)
@@ -165,6 +166,11 @@ func (m *FakeApp) SetError(msg string) {
 	m.Status = msg
 	m.Notice = ""
 	m.ErrorStatus = msg
+}
+
+// Fatal records err as the terminal application error.
+func (m *FakeApp) Fatal(err error) {
+	m.FatalErr = err
 }
 
 // SetHints records the hint lines.
