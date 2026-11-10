@@ -120,8 +120,8 @@ func TestNewSessionForm_Save(t *testing.T) {
 	app, sess := newSessionFormFixture(t)
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() {})))
 
-	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("  New Name  ", false)
-	form.GetFormItemByLabel("URL").(*forms.InputField).SetText("  https://example.com/chat/2  ", false)
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("  New Name  ")
+	form.GetFormItemByLabel("URL").(*forms.InputField).SetText("  https://example.com/chat/2  ")
 	form.GetFormItemByLabel("Project").(*tview.DropDown).SetCurrentOption(2) // Beta
 	pressButton(t, form.GetButton(0))
 
@@ -143,7 +143,7 @@ func TestNewSessionForm_ProjectFailureStopsLaterChanges(t *testing.T) {
 	app, sess := newSessionFormFixture(t)
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() {})))
 
-	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("should not apply", false)
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("should not apply")
 	form.GetFormItemByLabel("Project").(*tview.DropDown).SetCurrentOption(2) // Beta
 	must(t, app.Svc.RevokeProject("alice@example.com", "claude", "Beta"))
 	pressButton(t, form.GetButton(0))
@@ -163,7 +163,7 @@ func TestNewSessionForm_CtrlSAndCancel(t *testing.T) {
 	closed := false
 	form := formFromCenteredModal(t, forms.NewSessionForm(app, sessionFormOptions(t, app, sess, func() { closed = true })))
 
-	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("via ctrl-s", false)
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("via ctrl-s")
 	form.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlS, 0, tcell.ModNone), func(tview.Primitive) {})
 	if !closed {
 		t.Error("Ctrl+S did not close the form")

@@ -25,12 +25,6 @@ func newInputField(label, text string, width int) *InputField {
 	return &InputField{InputField: field}
 }
 
-// SetText sets the field text. The unused argument preserves the TextArea
-// signature used by existing callers.
-func (f *InputField) SetText(text string, _ bool) {
-	f.InputField.SetText(text)
-}
-
 // addInputField appends a single-line field to form.
 func addInputField(form *tview.Form, label, text string, width int) {
 	form.AddFormItem(newInputField(label, text, width))

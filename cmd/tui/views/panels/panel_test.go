@@ -350,7 +350,7 @@ func setInputField(t *testing.T, form *tview.Form, label, text string) {
 	if !ok {
 		t.Fatalf("expected %q to be *forms.InputField, got %T", label, item)
 	}
-	field.SetText(text, false)
+	field.SetText(text)
 }
 
 // setTextArea sets a text area's text.

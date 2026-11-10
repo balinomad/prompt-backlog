@@ -48,14 +48,14 @@ func TestInputFieldUsesOSClipboard(t *testing.T) {
 		t.Fatalf("Name is %T, want *forms.InputField", form.GetFormItemByLabel("Name"))
 	}
 
-	field.SetText("first", false)
+	field.SetText("first")
 	field.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlQ, 0, tcell.ModNone), func(tview.Primitive) {})
 	if app.CopiedText != "first" {
 		t.Errorf("copied = %q, want first", app.CopiedText)
 	}
 
 	app.ClipboardText = "second"
-	field.SetText("", false)
+	field.SetText("")
 	field.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlV, 0, tcell.ModNone), func(tview.Primitive) {})
 	if got := field.GetText(); got != "second" {
 		t.Errorf("text = %q, want second", got)

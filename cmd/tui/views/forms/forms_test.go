@@ -212,7 +212,7 @@ func TestNewProjectForm_Rename(t *testing.T) {
 	project := app.Svc.Project("Alpha")
 	form := formFromCenteredModal(t, forms.NewProjectForm(app, project, func() {}))
 
-	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("Renamed", false) //nolint:errcheck // The item type is known.
+	form.GetFormItemByLabel("Name").(*forms.InputField).SetText("Renamed") //nolint:errcheck // The item type is known.
 	pressButton(t, form.GetButton(0))
 
 	if app.Svc.Project("Alpha") != nil {
@@ -1245,7 +1245,7 @@ func setInputField(t *testing.T, form *tview.Form, label, text string) {
 	if !ok {
 		t.Fatalf("expected %q to be *forms.InputField, got %T", label, item)
 	}
-	field.SetText(text, false)
+	field.SetText(text)
 }
 
 // setTextArea sets a text area's text.
