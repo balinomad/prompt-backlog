@@ -132,8 +132,13 @@ func New(svc *service.Service) (*App, error) {
 
 // useNumericKeypadScreen replaces the default screen with one whose terminfo
 // enters numeric keypad mode (DECKPNM) instead of application keypad mode
-// (DECKPAM). tcell cannot decode the SS3 keypad sequences that DECKPAM
-// produces, so without this the numeric keypad is silently ignored.
+// (DECKPAM).
+//
+// Platform workaround: override the terminal's keypad entry sequence.
+// Root cause: tcell cannot decode the SS3 keypad sequences that DECKPAM
+// produces, so the numeric keypad is silently ignored.
+// Exit condition: remove when the project's tcell version decodes DECKPAM
+// keypad input.
 //
 // The call is best effort: an unknown terminal keeps the default screen.
 func (a *App) useNumericKeypadScreen() {
@@ -154,6 +159,12 @@ func (a *App) useNumericKeypadScreen() {
 // disableWin32InputMode turns off win32-input-mode after tcell enables its
 // advanced keyboard protocols. It is skipped on Windows, where win32-input-mode
 // is the preferred protocol.
+//
+// Platform workaround: disable win32-input-mode on non-Windows terminals.
+// Root cause: tcell enables the protocol on xterm-like terminals, but Konsole
+// reports keypad keys through it in a form that tcell does not decode.
+// Exit condition: remove when tcell decodes Konsole's win32-input-mode keypad
+// reports, or stops enabling the protocol where it is not useful.
 func (a *App) disableWin32InputMode(screen tcell.Screen) {
 	sequence := win32InputModeDisable(runtime.GOOS)
 	if sequence == "" {
