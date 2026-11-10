@@ -593,6 +593,50 @@ func TestAccountEditForm_Layout(t *testing.T) {
 	}
 }
 
+// TestAccountEditForm_PauseFieldCursorDoesNotScroll verifies the timestamp
+// stays fully visible when the cursor moves inside the field.
+func TestAccountEditForm_PauseFieldCursorDoesNotScroll(t *testing.T) {
+	t.Parallel()
+	app := newFakeApp(t)
+	pause := time.Date(2026, 12, 31, 23, 59, 0, 0, time.Local)
+	must(t, app.Svc.PauseAccount("alice@example.com", "claude", pause))
+	acc, err := app.Svc.Account("alice@example.com", "claude")
+	must(t, err)
+	modal := forms.NewAccountForm(app, acc, func() {})
+
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	defer screen.Fini()
+	screen.SetSize(80, 24)
+	modal.SetRect(0, 0, 80, 24)
+	modal.Draw(screen)
+
+	form := formFromCenteredModal(t, modal)
+	field, ok := form.GetFormItemByLabel("Pause until").(*forms.InputField)
+	if !ok {
+		t.Fatalf("Pause until is %T, want *forms.InputField", form.GetFormItemByLabel("Pause until"))
+	}
+	stamp := field.GetText()
+	field.Focus(func(tview.Primitive) {})
+	field.InputHandler()(tcell.NewEventKey(tcell.KeyLeft, 0, tcell.ModNone), func(tview.Primitive) {})
+	modal.Draw(screen)
+
+	x, y, width, _ := field.GetRect()
+	var row strings.Builder
+	for i := range width {
+		r, _, _ := screen.Get(x+i, y)
+		if r == "" {
+			r = " "
+		}
+		row.WriteString(r)
+	}
+	if !strings.Contains(row.String(), stamp) {
+		t.Errorf("pause field row = %q, want it to contain %q", row.String(), stamp)
+	}
+}
+
 // TestAccountEditForm_Save covers accountEditForm's save(): the parsed
 // pause-time success path, the empty-clears-pause path, the invalid
 // format path (fails before any Mutate), and PauseAccount's own failure

@@ -137,11 +137,11 @@ func TestPromptForm_Layout(t *testing.T) {
 			if py != cy+ch+1 {
 				t.Errorf("Clear bottom = %d, Copy top = %d, want one blank row", cy+ch, py)
 			}
-			if ay != py+ph+1 {
-				t.Errorf("Copy bottom = %d, Paste top = %d, want one blank row", py+ph, ay)
+			if cy != ay+ah+1 {
+				t.Errorf("Paste bottom = %d, Clear top = %d, want one blank row", ay+ah, cy)
 			}
-			if ay+ah != ty+th {
-				t.Errorf("Paste bottom = %d, Text bottom = %d, want aligned", ay+ah, ty+th)
+			if py+ph != ty+th {
+				t.Errorf("Copy bottom = %d, Text bottom = %d, want aligned", py+ph, ty+th)
 			}
 			if sy >= ty {
 				t.Errorf("Session row y = %d, want above the prompt field y = %d", sy, ty)
@@ -274,9 +274,9 @@ func TestPromptForm_Focus(t *testing.T) {
 	step(pf.Status())
 	step(pf.SessionButton())
 	step(pf.PromptList())
+	step(pf.PasteButton())
 	step(pf.ClearButton())
 	step(pf.CopyButton())
-	step(pf.PasteButton())
 	step(pf.TextArea())
 }
 
@@ -1086,8 +1086,8 @@ func TestPromptForm_TextAreaCaptureKeys(t *testing.T) {
 		if got := capture(tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)); got != nil {
 			t.Error("Backtab was not consumed")
 		}
-		if app.Focused != pf.PasteButton() {
-			t.Errorf("focus = %T, want Paste button", app.Focused)
+		if app.Focused != pf.CopyButton() {
+			t.Errorf("focus = %T, want Copy button", app.Focused)
 		}
 	})
 

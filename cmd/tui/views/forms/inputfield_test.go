@@ -20,26 +20,21 @@ func TestInputFieldFinishedFunc(t *testing.T) {
 
 	var got tcell.Key
 	field.SetFinishedFunc(func(key tcell.Key) { got = key })
-	event := field.GetInputCapture()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
-	if event != nil {
-		t.Errorf("Enter returned %v, want nil", event)
-	}
+	field.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 	if got != tcell.KeyEnter {
 		t.Errorf("finished key = %v, want Enter", got)
 	}
 
 	got = 0
 	field.SetFinishedFunc(nil)
-	event = field.GetInputCapture()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone))
-	if event != nil {
-		t.Errorf("Enter with nil handler returned %v, want nil", event)
-	}
+	field.InputHandler()(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModNone), func(tview.Primitive) {})
 	if got != 0 {
 		t.Errorf("finished key = %v, want no callback", got)
 	}
 
-	event = field.GetInputCapture()(tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone))
-	if event == nil {
+	before := field.GetText()
+	field.InputHandler()(tcell.NewEventKey(tcell.KeyRune, 'x', tcell.ModNone), func(tview.Primitive) {})
+	if field.GetText() == before {
 		t.Error("printable key was consumed")
 	}
 }
@@ -54,14 +49,13 @@ func TestInputFieldUsesOSClipboard(t *testing.T) {
 	}
 
 	field.SetText("first", false)
-	field.Select(0, 5)
 	field.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlQ, 0, tcell.ModNone), func(tview.Primitive) {})
 	if app.CopiedText != "first" {
 		t.Errorf("copied = %q, want first", app.CopiedText)
 	}
 
 	app.ClipboardText = "second"
-	field.Select(0, 5)
+	field.SetText("", false)
 	field.InputHandler()(tcell.NewEventKey(tcell.KeyCtrlV, 0, tcell.ModNone), func(tview.Primitive) {})
 	if got := field.GetText(); got != "second" {
 		t.Errorf("text = %q, want second", got)

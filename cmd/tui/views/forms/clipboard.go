@@ -50,11 +50,56 @@ func installFormClipboard(app views.Host, form *tview.Form) {
 	for i := range form.GetFormItemCount() {
 		switch item := form.GetFormItem(i).(type) {
 		case *InputField:
-			installTextAreaClipboard(app, item.TextArea, nil)
+			installInputFieldClipboard(app, item)
 		case *tview.TextArea:
 			installTextAreaClipboard(app, item, nil)
 		}
 	}
+}
+
+// installInputFieldClipboard wires a single-line field to the system clipboard.
+// Copy and cut take the whole value because InputField exposes no selection.
+func installInputFieldClipboard(app views.Host, field *InputField) {
+	field.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		event = normalizeClipboardKey(event)
+		switch event.Key() {
+		case tcell.KeyCtrlQ:
+			copyInputField(app, field)
+			return nil
+		case tcell.KeyCtrlX:
+			if copyInputField(app, field) {
+				field.InputField.SetText("")
+			}
+			return nil
+		case tcell.KeyCtrlV:
+			pasteInputField(app, field)
+			return nil
+		default:
+			return event
+		}
+	})
+}
+
+// copyInputField copies the field value to the system clipboard.
+func copyInputField(app views.Host, field *InputField) bool {
+	if err := app.CopyToClipboard(field.GetText()); err != nil {
+		app.SetError("copy: " + err.Error())
+		return false
+	}
+	return true
+}
+
+// pasteInputField inserts the system clipboard text at the cursor.
+func pasteInputField(app views.Host, field *InputField) {
+	text, err := app.ReadFromClipboard()
+	if err != nil {
+		app.SetError("paste: " + err.Error())
+		return
+	}
+	if text == "" {
+		return
+	}
+	field.PasteHandler()(text, func(tview.Primitive) {})
 }
 
 // copyTextArea copies the full text area contents to the system clipboard.

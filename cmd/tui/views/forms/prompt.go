@@ -208,20 +208,20 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		fieldHeight:     fieldHeight,
 	}
 	if list != nil {
-		e.focusables = []tview.Primitive{status, sessionButton, list, clearButton, copyButton, pasteButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
+		e.focusables = []tview.Primitive{status, sessionButton, list, pasteButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
 	} else {
-		e.focusables = []tview.Primitive{status, sessionButton, clearButton, copyButton, pasteButton, textArea, savePauseButton, saveButton, cancelButton}
+		e.focusables = []tview.Primitive{status, sessionButton, pasteButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton}
 	}
 
 	buttonWidth := max(tview.TaggedStringWidth("Clear"), tview.TaggedStringWidth("Copy"), tview.TaggedStringWidth("Paste")) + 4
 	side := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(label, 1, 0, false).
 		AddItem(nil, e.fieldHeight-6, 0, false).
+		AddItem(pasteButton, 1, 0, false).
+		AddItem(nil, 1, 0, false).
 		AddItem(clearButton, 1, 0, false).
 		AddItem(nil, 1, 0, false).
-		AddItem(copyButton, 1, 0, false).
-		AddItem(nil, 1, 0, false).
-		AddItem(pasteButton, 1, 0, false)
+		AddItem(copyButton, 1, 0, false)
 
 	editorRow := tview.NewFlex().
 		AddItem(side, buttonWidth, 0, false).

@@ -164,11 +164,11 @@ func TestNewNoteForm_ClipboardActionsLayout(t *testing.T) {
 	if py != cy+ch+1 {
 		t.Errorf("Clear bottom = %d, Copy top = %d, want one blank row", cy+ch, py)
 	}
-	if ay != py+ph+1 {
-		t.Errorf("Copy bottom = %d, Paste top = %d, want one blank row", py+ph, ay)
+	if cy != ay+ah+1 {
+		t.Errorf("Paste bottom = %d, Clear top = %d, want one blank row", ay+ah, cy)
 	}
-	if ay+ah != ty+th {
-		t.Errorf("Paste bottom = %d, Text bottom = %d, want aligned", ay+ah, ty+th)
+	if py+ph != ty+th {
+		t.Errorf("Copy bottom = %d, Text bottom = %d, want aligned", py+ph, ty+th)
 	}
 }
 

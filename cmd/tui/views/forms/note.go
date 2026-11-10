@@ -178,11 +178,11 @@ func (e *noteEditor) editorRow() tview.Primitive {
 	side := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(label, 1, 0, false).
 		AddItem(nil, noteTextHeight-6, 0, false).
+		AddItem(e.pasteButton, 1, 0, false).
+		AddItem(nil, 1, 0, false).
 		AddItem(e.clearButton, 1, 0, false).
 		AddItem(nil, 1, 0, false).
-		AddItem(e.copyButton, 1, 0, false).
-		AddItem(nil, 1, 0, false).
-		AddItem(e.pasteButton, 1, 0, false)
+		AddItem(e.copyButton, 1, 0, false)
 
 	return tview.NewFlex().
 		AddItem(side, buttonWidth, 0, false).
@@ -221,7 +221,7 @@ func (e *noteEditor) wire() {
 	if e.fixedProject == nil {
 		e.focusables = append(e.focusables, e.project)
 	}
-	e.focusables = append(e.focusables, e.account, e.clearButton, e.copyButton, e.pasteButton, e.textArea, e.saveButton, e.cancelButton)
+	e.focusables = append(e.focusables, e.account, e.pasteButton, e.clearButton, e.copyButton, e.textArea, e.saveButton, e.cancelButton)
 
 	e.clearButton.SetSelectedFunc(e.clear)
 	e.copyButton.SetSelectedFunc(e.copy)
