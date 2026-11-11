@@ -24,3 +24,9 @@ var DeleteSessionMessage = deleteSessionMessage
 func OpenPauseForSession(p *SessionsPanel, session *model.Session) {
 	p.openPauseForSession(session)
 }
+
+// ResolvePanelAccount exposes resolvePanelAccount for black-box tests.
+var ResolvePanelAccount = resolvePanelAccount
+
+// IsPanelAccountGone exposes isPanelAccountGone for black-box tests.
+var IsPanelAccountGone = isPanelAccountGone

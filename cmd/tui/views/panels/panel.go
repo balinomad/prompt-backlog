@@ -18,11 +18,22 @@ import (
 // deleted, so callers should clear the pane rather than surface an error.
 var errPanelAccountGone = errors.New("panel account unavailable")
 
+// panelAccountReader resolves an account and its granted projects.
+type panelAccountReader interface {
+	Account(userEmail, vendorName string) (*model.Account, error)
+	AccountProjects(userEmail, vendorName string) ([]*model.Project, error)
+}
+
+// accountFilterSetter replaces the granted project list of a filter.
+type accountFilterSetter interface {
+	SetAccount(key model.AccountKey, hasAccount bool, projects []*model.Project) error
+}
+
 // resolvePanelAccount resolves account and synchronises filter with its
 // granted projects. A stale or deleted account resolves to
 // errPanelAccountGone because the parent panel has already refreshed its own
 // list.
-func resolvePanelAccount(svc *service.Service, account *model.Account, filter *views.ProjectFilterState) (*model.Account, error) {
+func resolvePanelAccount(svc panelAccountReader, account *model.Account, filter accountFilterSetter) (*model.Account, error) {
 	if account == nil {
 		return nil, clearFilterForGoneAccount(filter)
 	}
@@ -48,7 +59,7 @@ func resolvePanelAccount(svc *service.Service, account *model.Account, filter *v
 
 // clearFilterForGoneAccount clears the project filter and returns the
 // missing-account sentinel, or the clear error.
-func clearFilterForGoneAccount(filter *views.ProjectFilterState) error {
+func clearFilterForGoneAccount(filter accountFilterSetter) error {
 	if err := filter.SetAccount(model.AccountKey{}, false, nil); err != nil {
 		return fmt.Errorf("clear project filter: %w", err)
 	}

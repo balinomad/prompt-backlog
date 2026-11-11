@@ -1,6 +1,7 @@
 package panels_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -416,5 +417,152 @@ func doubleClickList(t *testing.T, list *tview.List) {
 	action, gotEvent := capture(tview.MouseLeftDoubleClick, event)
 	if action != tview.MouseConsumed || gotEvent != nil {
 		t.Fatalf("mouse capture = (%v, %v), want (%v, nil)", action, gotEvent, tview.MouseConsumed)
+	}
+}
+
+// fakeAccountReader stubs the account lookups used by resolvePanelAccount.
+type fakeAccountReader struct {
+	account     *model.Account
+	accountErr  error
+	projects    []*model.Project
+	projectsErr error
+}
+
+func (f *fakeAccountReader) Account(string, string) (*model.Account, error) {
+	return f.account, f.accountErr
+}
+
+func (f *fakeAccountReader) AccountProjects(string, string) ([]*model.Project, error) {
+	return f.projects, f.projectsErr
+}
+
+// setAccountCall records one filter update.
+type setAccountCall struct {
+	key        model.AccountKey
+	hasAccount bool
+	projects   []*model.Project
+}
+
+// fakeFilterSetter stubs the project filter update.
+type fakeFilterSetter struct {
+	err   error
+	calls []setAccountCall
+}
+
+func (f *fakeFilterSetter) SetAccount(key model.AccountKey, hasAccount bool, projects []*model.Project) error {
+	f.calls = append(f.calls, setAccountCall{key: key, hasAccount: hasAccount, projects: projects})
+	return f.err
+}
+
+func TestResolvePanelAccount(t *testing.T) {
+	t.Parallel()
+
+	acc := model.NewAccount("user@example.com", "vendor")
+	errSetAccount := errors.New("set account failed")
+
+	tests := []struct {
+		name        string
+		account     *model.Account
+		reader      *fakeAccountReader
+		setter      *fakeFilterSetter
+		wantGone    bool
+		wantErr     error
+		wantFilter  bool
+		wantAccount bool
+	}{
+		{
+			name:     "nil account clears filter",
+			reader:   &fakeAccountReader{},
+			setter:   &fakeFilterSetter{},
+			wantGone: true,
+		},
+		{
+			name:     "missing account clears filter",
+			account:  acc,
+			reader:   &fakeAccountReader{accountErr: model.ErrUserNotFound},
+			setter:   &fakeFilterSetter{},
+			wantGone: true,
+		},
+		{
+			name:     "missing projects clear filter",
+			account:  acc,
+			reader:   &fakeAccountReader{account: acc, projectsErr: model.ErrProjectNotFound},
+			setter:   &fakeFilterSetter{},
+			wantGone: true,
+		},
+		{
+			name:    "clear filter failure",
+			account: acc,
+			reader:  &fakeAccountReader{accountErr: model.ErrUserNotFound},
+			setter:  &fakeFilterSetter{err: errSetAccount},
+			wantErr: errSetAccount,
+		},
+		{
+			name:       "set filter failure",
+			account:    acc,
+			reader:     &fakeAccountReader{account: acc},
+			setter:     &fakeFilterSetter{err: errSetAccount},
+			wantErr:    errSetAccount,
+			wantFilter: true,
+		},
+		{
+			name:        "success",
+			account:     acc,
+			reader:      &fakeAccountReader{account: acc},
+			setter:      &fakeFilterSetter{},
+			wantFilter:  true,
+			wantAccount: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := panels.ResolvePanelAccount(tt.reader, tt.account, tt.setter)
+
+			assertResolveError(t, err, tt.wantGone, tt.wantErr)
+			assertResolveAccount(t, got, tt.wantAccount, acc)
+			assertFilterCall(t, tt.setter.calls, tt.wantFilter, acc.Key())
+		})
+	}
+}
+
+// assertResolveError checks the expected resolvePanelAccount error class.
+func assertResolveError(t *testing.T, err error, wantGone bool, wantErr error) {
+	t.Helper()
+	switch {
+	case wantGone && !panels.IsPanelAccountGone(err):
+		t.Fatalf("err = %v, want gone-account sentinel", err)
+	case !wantGone && wantErr != nil && !errors.Is(err, wantErr):
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	case !wantGone && wantErr == nil && err != nil:
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// assertResolveAccount checks the returned account.
+func assertResolveAccount(t *testing.T, got *model.Account, wantAccount bool, want *model.Account) {
+	t.Helper()
+	switch {
+	case wantAccount && got != want:
+		t.Errorf("account = %v, want %v", got, want)
+	case !wantAccount && got != nil:
+		t.Errorf("account = %v, want nil", got)
+	}
+}
+
+// assertFilterCall checks the single filter update made by the resolver.
+func assertFilterCall(t *testing.T, calls []setAccountCall, wantFilter bool, wantKey model.AccountKey) {
+	t.Helper()
+	if len(calls) != 1 {
+		t.Fatalf("SetAccount calls = %d, want 1", len(calls))
+	}
+	call := calls[0]
+	switch {
+	case wantFilter && (!call.hasAccount || call.key != wantKey):
+		t.Errorf("filter = (%v, %v), want (%v, true)", call.key, call.hasAccount, wantKey)
+	case !wantFilter && (call.hasAccount || call.key != (model.AccountKey{})):
+		t.Errorf("filter = (%v, %v), want (zero, false)", call.key, call.hasAccount)
 	}
 }
