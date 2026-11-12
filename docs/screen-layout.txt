@@ -99,7 +99,7 @@ prompt field:
 │ [Save & Pause] [Save] [Cancel] [Delete]         │
 └─────────────────────────────────────────────────┘
 
-- The prompt list is shown in Edit mode. It is omitted in Add mode.
+- The prompt list is always shown. It is empty when the session has no prompts.
 - The list shows at most five rows and scrolls beyond that.
 - Focus order: Status, Session, list, Clear, Copy, Prompt, Save & Pause, Save, Cancel, Delete.
 - When the list has focus, normal list keys navigate it, `Enter` focuses the
@@ -108,7 +108,7 @@ prompt field:
 - The list highlights only when it has focus.
 - Save writes the whole prompt list atomically. Cancel discards unsaved edits.
 - Save & Pause saves the prompt, closes the editor, and opens the Pause Account modal. If the pause is cancelled, the prompt remains saved.
-- Add mode appends one prompt and closes on Save.
+- Save creates the first prompt when the queue is empty and the prompt field is not blank.
 - The `Delete` button removes the current prompt after confirmation and saves
   immediately. If prompts remain, the next prompt is selected and the editor
   stays open. If the list becomes empty, the editor closes.

@@ -14,16 +14,6 @@ import (
 	"github.com/rivo/tview"
 )
 
-// PromptFormMode selects the prompt form's title, initial text and buttons.
-type PromptFormMode int
-
-const (
-	// PromptFormAdd appends a new prompt to the queue.
-	PromptFormAdd PromptFormMode = iota
-	// PromptFormEdit edits the session's prompt queue.
-	PromptFormEdit
-)
-
 var sessionStatusLabels = []string{"Active", "Needs closing", "Closed"}
 
 var sessionStatusValues = []model.SessionStatus{
@@ -41,12 +31,10 @@ const (
 	promptListChrome       = 2
 	promptListLineWidth    = promptModalWidth - 6 // Outer and list borders plus padding
 	promptMinFieldHeight   = 6
-	promptAddFieldHeight   = 14
 )
 
 // promptEditorState preserves the prompt editor across the session modal.
 type promptEditorState struct {
-	mode           PromptFormMode
 	index          int
 	text           string
 	status         model.SessionStatus
@@ -57,7 +45,7 @@ type promptEditorState struct {
 	onSaveAndPause func()
 }
 
-// promptEditor is the Add/Edit prompt modal. It uses standard widgets and a
+// promptEditor is the session editor modal. It uses standard widgets and a
 // custom layout rather than a custom tview FormItem.
 type promptEditor struct {
 	*tview.Flex
@@ -77,7 +65,6 @@ type promptEditor struct {
 	email           string
 	vendor          string
 	sessionID       uint64
-	mode            PromptFormMode
 	index           int
 	queue           []model.Prompt
 	onSaved         func()
@@ -91,15 +78,14 @@ type promptEditor struct {
 
 // PromptFormOptions configures the prompt form.
 type PromptFormOptions struct {
-	Mode           PromptFormMode
 	Index          int
 	OnClose        func()
 	OnSaved        func()
 	OnSaveAndPause func()
 }
 
-// NewPromptForm returns a prompt form for session. mode selects add or edit;
-// index is the queue index for edit mode.
+// NewPromptForm returns the session editor for session. index selects the
+// prompt to edit; an out-of-range index leaves no prompt selected.
 func NewPromptForm(app views.Host, session *model.Session, options PromptFormOptions) tview.Primitive {
 	if session == nil {
 		return views.ErrorModal("No session selected.", options.OnClose)
@@ -108,24 +94,21 @@ func NewPromptForm(app views.Host, session *model.Session, options PromptFormOpt
 	if live == nil {
 		return views.ErrorModal("Session no longer exists.", options.OnClose)
 	}
-	if options.Mode == PromptFormEdit && (options.Index < 0 || options.Index >= len(live.Queue())) {
-		return views.ErrorModal("Prompt no longer exists.", options.OnClose)
-	}
 	return newPromptEditor(app, live, options).primitive()
 }
 
 func newPromptEditor(app views.Host, session *model.Session, options PromptFormOptions) *promptEditor {
-	queue := session.Queue()
-	initialText := ""
-	if options.Mode == PromptFormEdit {
-		initialText = queue[options.Index].Text()
+	queue := slices.Clone(session.Queue())
+	index := options.Index
+	text := ""
+	if index < 0 || index >= len(queue) {
+		index = -1
 	} else {
-		queue = nil
+		text = queue[index].Text()
 	}
 	state := promptEditorState{
-		mode:           options.Mode,
-		index:          options.Index,
-		text:           initialText,
+		index:          index,
+		text:           text,
 		status:         session.Status(),
 		queue:          queue,
 		onSaved:        options.OnSaved,
@@ -137,21 +120,12 @@ func newPromptEditor(app views.Host, session *model.Session, options PromptFormO
 
 func newPromptEditorFromState(app views.Host, session *model.Session, state *promptEditorState) *promptEditor {
 	queue := slices.Clone(state.queue)
-	if state.mode != PromptFormEdit {
-		queue = nil
-	}
 	index := state.index
-	title := "New Prompt"
-	if state.mode == PromptFormEdit {
-		switch {
-		case len(queue) == 0:
+	if index < 0 || index >= len(queue) {
+		if len(queue) == 0 {
 			index = -1
-			title = "Edit Prompts"
-		case index < 0 || index >= len(queue):
+		} else {
 			index = 0
-			title = fmt.Sprintf("Edit Prompts %d/%d", index+1, len(queue))
-		default:
-			title = fmt.Sprintf("Edit Prompts %d/%d", index+1, len(queue))
 		}
 	}
 
@@ -174,20 +148,14 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 	savePauseButton := tview.NewButton("Save & Pause")
 	saveButton := tview.NewButton("Save")
 	cancelButton := tview.NewButton("Cancel")
-	var deleteButton *tview.Button
-	var list *tview.List
-	listHeight := 0
-	fieldHeight := promptAddFieldHeight
-	if state.mode == PromptFormEdit {
-		list = tview.NewList().ShowSecondaryText(false)
-		list.SetBorder(true)
-		list.SetTitle(" Prompts ")
-		list.SetSelectedFocusOnly(true)
-		deleteButton = tview.NewButton("Delete")
-		rows := min(len(queue), promptListMaxRows)
-		listHeight = max(rows, 1) + promptListChrome
-		fieldHeight = max(promptModalTotalHeight-9-listHeight, promptMinFieldHeight)
-	}
+	deleteButton := tview.NewButton("Delete")
+	list := tview.NewList().ShowSecondaryText(false)
+	list.SetBorder(true)
+	list.SetTitle(" Prompts ")
+	list.SetSelectedFocusOnly(true)
+	rows := min(len(queue), promptListMaxRows)
+	listHeight := max(rows, 1) + promptListChrome
+	fieldHeight := max(promptModalTotalHeight-9-listHeight, promptMinFieldHeight)
 
 	e := &promptEditor{
 		app:             app,
@@ -206,7 +174,6 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		email:           session.AccountKey().Email,
 		vendor:          session.AccountKey().Vendor,
 		sessionID:       session.ID(),
-		mode:            state.mode,
 		index:           index,
 		queue:           queue,
 		onSaved:         state.onSaved,
@@ -215,11 +182,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		listHeight:      listHeight,
 		fieldHeight:     fieldHeight,
 	}
-	if list != nil {
-		e.focusables = []tview.Primitive{status, sessionButton, list, pasteButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
-	} else {
-		e.focusables = []tview.Primitive{status, sessionButton, pasteButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton}
-	}
+	e.focusables = []tview.Primitive{status, sessionButton, list, pasteButton, clearButton, copyButton, textArea, savePauseButton, saveButton, cancelButton, deleteButton}
 
 	buttonWidth := max(tview.TaggedStringWidth("Clear"), tview.TaggedStringWidth("Copy"), tview.TaggedStringWidth("Paste")) + 4
 	side := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -250,24 +213,20 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 		AddItem(nil, 1, 0, false).
 		AddItem(saveButton, saveWidth, 0, false).
 		AddItem(nil, 1, 0, false).
-		AddItem(cancelButton, cancelWidth, 0, false)
-	if deleteButton != nil {
-		buttonRow.AddItem(nil, 1, 0, false).
-			AddItem(deleteButton, tview.TaggedStringWidth("Delete")+4, 0, false)
-	}
+		AddItem(cancelButton, cancelWidth, 0, false).
+		AddItem(nil, 1, 0, false).
+		AddItem(deleteButton, tview.TaggedStringWidth("Delete")+4, 0, false)
 	buttonRow.AddItem(nil, 0, 1, false)
 
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(sessionRow, 1, 0, false).
-		AddItem(nil, 1, 0, false)
-	if list != nil {
-		flex.AddItem(list, e.listHeight, 0, false).
-			AddItem(nil, 1, 0, false)
-	}
-	flex.AddItem(editorRow, e.fieldHeight, 0, true).
+		AddItem(nil, 1, 0, false).
+		AddItem(list, e.listHeight, 0, false).
+		AddItem(nil, 1, 0, false).
+		AddItem(editorRow, e.fieldHeight, 0, true).
 		AddItem(nil, 1, 0, false).
 		AddItem(buttonRow, 1, 0, false)
-	flex.SetBorder(true).SetBorderPadding(1, 1, 1, 1).SetTitle(" " + title + " ")
+	flex.SetBorder(true).SetBorderPadding(1, 1, 1, 1).SetTitle(" Edit Prompts ")
 	flex.SetBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
 	e.Flex = flex
 
@@ -278,9 +237,7 @@ func newPromptEditorFromState(app views.Host, session *model.Session, state *pro
 	savePauseButton.SetSelectedFunc(e.saveAndPause)
 	saveButton.SetSelectedFunc(e.save)
 	cancelButton.SetSelectedFunc(e.onClose)
-	if deleteButton != nil {
-		deleteButton.SetSelectedFunc(e.confirmDeleteCurrent)
-	}
+	deleteButton.SetSelectedFunc(e.confirmDeleteCurrent)
 	e.installInputCapture()
 	e.installList()
 	e.rebuildList()
@@ -346,9 +303,6 @@ func (e *promptEditor) installInputCapture() {
 }
 
 func (e *promptEditor) installList() {
-	if e.list == nil {
-		return
-	}
 	e.list.SetChangedFunc(func(index int, _, _ string, _ rune) {
 		if e.refreshing {
 			return
@@ -398,7 +352,7 @@ func (e *promptEditor) listCapture(event *tcell.EventKey) *tcell.EventKey {
 }
 
 func (e *promptEditor) selectPrompt(index int) {
-	if e.mode != PromptFormEdit || index < 0 || index >= len(e.queue) {
+	if index < 0 || index >= len(e.queue) {
 		return
 	}
 	e.syncDraft()
@@ -411,7 +365,7 @@ func (e *promptEditor) selectPrompt(index int) {
 }
 
 func (e *promptEditor) syncDraft() {
-	if e.mode != PromptFormEdit || e.index < 0 || e.index >= len(e.queue) {
+	if e.index < 0 || e.index >= len(e.queue) {
 		return
 	}
 	e.queue[e.index] = model.NewPrompt(e.textArea.GetText())
@@ -419,16 +373,13 @@ func (e *promptEditor) syncDraft() {
 }
 
 func (e *promptEditor) syncListItem() {
-	if e.list == nil || e.index < 0 || e.index >= len(e.queue) {
+	if e.index < 0 || e.index >= len(e.queue) {
 		return
 	}
 	e.list.SetItemText(e.index, promptListItem(e.index, e.queue[e.index].Text()), "")
 }
 
 func (e *promptEditor) rebuildList() {
-	if e.list == nil {
-		return
-	}
 	e.refreshing = true
 	e.list.Clear()
 	for i, p := range e.queue {
@@ -449,9 +400,6 @@ func (e *promptEditor) rebuildList() {
 }
 
 func (e *promptEditor) addPrompt() {
-	if e.mode != PromptFormEdit {
-		return
-	}
 	e.syncDraft()
 	index := e.index + 1
 	if e.index < 0 || e.index >= len(e.queue) {
@@ -465,14 +413,11 @@ func (e *promptEditor) addPrompt() {
 }
 
 func (e *promptEditor) updateDeleteButton() {
-	if e.deleteButton == nil {
-		return
-	}
 	e.deleteButton.SetDisabled(len(e.queue) == 0)
 }
 
 func (e *promptEditor) confirmDeleteCurrent() {
-	if e.mode != PromptFormEdit || e.index < 0 || e.index >= len(e.queue) {
+	if e.index < 0 || e.index >= len(e.queue) {
 		return
 	}
 	e.syncDraft()
@@ -512,18 +457,18 @@ func (e *promptEditor) deleteCurrentAndSave() {
 	if index >= len(next) {
 		index = len(next) - 1
 	}
-	nextEditor := newPromptEditor(e.app, live, PromptFormOptions{Mode: PromptFormEdit, Index: index, OnSaved: e.onSaved, OnClose: e.onClose, OnSaveAndPause: e.onSaveAndPause})
+	nextEditor := newPromptEditor(e.app, live, PromptFormOptions{Index: index, OnSaved: e.onSaved, OnClose: e.onClose, OnSaveAndPause: e.onSaveAndPause})
 	if err := e.app.ReplaceTopModal(nextEditor.primitive()); err != nil {
 		e.app.SetError(err.Error())
 		return
 	}
-	if nextEditor.list != nil {
+	if len(next) > 0 {
 		e.app.SetFocus(nextEditor.list)
 	}
 }
 
 func (e *promptEditor) deletePrompt() {
-	if e.mode != PromptFormEdit || e.index < 0 || e.index >= len(e.queue) {
+	if e.index < 0 || e.index >= len(e.queue) {
 		return
 	}
 	state := e.snapshot(true)
@@ -565,7 +510,7 @@ func (e *promptEditor) showState(state *promptEditorState) {
 		e.app.SetError(err.Error())
 		return
 	}
-	if state.focusList && next.list != nil {
+	if state.focusList && len(state.queue) > 0 {
 		e.app.SetFocus(next.list)
 	}
 }
@@ -577,7 +522,6 @@ func (e *promptEditor) snapshot(focusList bool) promptEditorState {
 		return promptEditorState{}
 	}
 	return promptEditorState{
-		mode:           e.mode,
 		index:          e.index,
 		text:           e.textArea.GetText(),
 		status:         status,
@@ -590,9 +534,6 @@ func (e *promptEditor) snapshot(focusList bool) promptEditorState {
 }
 
 func (e *promptEditor) updateTitle() {
-	if e.mode != PromptFormEdit {
-		return
-	}
 	title := "Edit Prompts"
 	if e.index >= 0 && e.index < len(e.queue) {
 		title = fmt.Sprintf("Edit Prompts %d/%d", e.index+1, len(e.queue))
@@ -713,22 +654,6 @@ func (e *promptEditor) saveAndPause() {
 }
 
 func (e *promptEditor) savePrompt() bool {
-	if e.mode == PromptFormAdd {
-		text := model.NormalizeText(e.textArea.GetText())
-		if text == "" {
-			e.app.SetError(model.ErrTextRequired.Error())
-			return false
-		}
-		if err := e.mutateQueue(func(queue []model.Prompt) ([]model.Prompt, error) {
-			return append(slices.Clone(queue), model.NewPrompt(text)), nil
-		}); err != nil {
-			views.SetErrorStatus(e.app, err)
-			return false
-		}
-		e.saved()
-		return true
-	}
-
 	e.syncDraft()
 	next := slices.Clone(e.queue)
 	if len(next) == 0 {

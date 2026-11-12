@@ -42,19 +42,18 @@ func NewCenteredFormLabel(text string) tview.FormItem {
 // NewDropDown exposes newDropDown for black-box tests.
 var NewDropDown = newDropDown
 
-// PromptForm wraps the Add/Edit editor for black-box tests.
+// PromptForm wraps the session editor for black-box tests.
 type PromptForm struct {
 	editor *promptEditor
 }
 
 // NewPromptFormForTest constructs a prompt form for black-box tests.
-func NewPromptFormForTest(app views.Host, session *model.Session, mode PromptFormMode, index int, onSaved, onClose func(), onSaveAndPause ...func()) *PromptForm {
+func NewPromptFormForTest(app views.Host, session *model.Session, index int, onSaved, onClose func(), onSaveAndPause ...func()) *PromptForm {
 	var pause func()
 	if len(onSaveAndPause) > 0 {
 		pause = onSaveAndPause[0]
 	}
 	return &PromptForm{editor: newPromptEditor(app, session, PromptFormOptions{
-		Mode:           mode,
 		Index:          index,
 		OnSaved:        onSaved,
 		OnClose:        onClose,
@@ -67,7 +66,7 @@ func (p *PromptForm) Primitive() tview.Primitive {
 	return p.editor.primitive()
 }
 
-// Editor returns the Add/Edit root Flex.
+// Editor returns the session editor root Flex.
 func (p *PromptForm) Editor() *tview.Flex {
 	return p.editor.Flex
 }
@@ -87,7 +86,7 @@ func (p *PromptForm) Status() *tview.DropDown {
 	return p.editor.status
 }
 
-// PromptList returns the prompt list, or nil for Add mode.
+// PromptList returns the prompt list.
 func (p *PromptForm) PromptList() *tview.List {
 	return p.editor.list
 }
@@ -137,7 +136,7 @@ func (p *PromptForm) CancelButton() *tview.Button {
 	return p.editor.cancelButton
 }
 
-// DeleteButton returns the Delete button, or nil for Add mode.
+// DeleteButton returns the Delete button.
 func (p *PromptForm) DeleteButton() *tview.Button {
 	return p.editor.deleteButton
 }

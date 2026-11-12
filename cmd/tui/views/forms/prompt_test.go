@@ -76,124 +76,112 @@ func pressCancel(t *testing.T, modal *tview.Modal) {
 func TestPromptForm_Layout(t *testing.T) {
 	t.Parallel()
 
-	for _, mode := range []forms.PromptFormMode{forms.PromptFormAdd, forms.PromptFormEdit} {
-		t.Run(modeName(mode), func(t *testing.T) {
-			t.Parallel()
-			app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-			pf := forms.NewPromptFormForTest(app, sess, mode, 0, nil, func() {})
-			drawPromptForm(t, pf)
+	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
+	drawPromptForm(t, pf)
 
-			if got := pf.Label().GetText(false); got != "Prompt" {
-				t.Errorf("label = %q, want Prompt", got)
-			}
-			if got := pf.Status().GetLabel(); got != "Status" {
-				t.Errorf("status label = %q, want Status", got)
-			}
-			wantTitle := " New Prompt "
-			if mode == forms.PromptFormEdit {
-				wantTitle = " Edit Prompts 1/2 "
-			}
-			if got := pf.Editor().GetTitle(); got != wantTitle {
-				t.Errorf("title = %q, want %q", got, wantTitle)
-			}
-			if got := pf.Status().GetOptionCount(); got != 3 {
-				t.Errorf("status options = %d, want 3", got)
-			}
+	if got := pf.Label().GetText(false); got != "Prompt" {
+		t.Errorf("label = %q, want Prompt", got)
+	}
+	if got := pf.Status().GetLabel(); got != "Status" {
+		t.Errorf("status label = %q, want Status", got)
+	}
+	if got, want := pf.Editor().GetTitle(), " Edit Prompts 1/2 "; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	if got := pf.Status().GetOptionCount(); got != 3 {
+		t.Errorf("status options = %d, want 3", got)
+	}
 
-			editorX, _, editorW, editorH := pf.Editor().GetRect()
-			if editorH > 24 {
-				t.Errorf("editor height = %d, want at most 24", editorH)
-			}
-			tx, ty, tw, th := pf.TextArea().GetRect()
-			cx, cy, cw, ch := pf.ClearButton().GetRect()
-			px, py, pw, ph := pf.CopyButton().GetRect()
-			ax, ay, aw, ah := pf.PasteButton().GetRect()
-			sx, sy, sw, sh := pf.SessionButton().GetRect()
-			fx, fy, fw, fh := pf.Status().GetRect()
-			ppx, _, ppw, _ := pf.SavePauseButton().GetRect()
-			vx, vy, vw, vh := pf.SaveButton().GetRect()
-			lx, ly, lw, lh := pf.CancelButton().GetRect()
-			rightButtonX, rightButtonW := lx, lw
-			if deleteButton := pf.DeleteButton(); deleteButton != nil {
-				rightButtonX, _, rightButtonW, _ = deleteButton.GetRect()
-			}
+	editorX, _, editorW, editorH := pf.Editor().GetRect()
+	if editorH > 24 {
+		t.Errorf("editor height = %d, want at most 24", editorH)
+	}
+	tx, ty, tw, th := pf.TextArea().GetRect()
+	cx, cy, cw, ch := pf.ClearButton().GetRect()
+	px, py, pw, ph := pf.CopyButton().GetRect()
+	ax, ay, aw, ah := pf.PasteButton().GetRect()
+	sx, sy, sw, sh := pf.SessionButton().GetRect()
+	fx, fy, fw, fh := pf.Status().GetRect()
+	ppx, _, ppw, _ := pf.SavePauseButton().GetRect()
+	vx, vy, vw, vh := pf.SaveButton().GetRect()
+	lx, ly, lw, lh := pf.CancelButton().GetRect()
+	deleteButton := pf.DeleteButton()
+	if deleteButton == nil {
+		t.Fatal("editor has no delete button")
+	}
+	rightButtonX, _, rightButtonW, _ := deleteButton.GetRect()
 
-			for name, r := range map[string][4]int{
-				"text":    {tx, ty, tw, th},
-				"clear":   {cx, cy, cw, ch},
-				"copy":    {px, py, pw, ph},
-				"paste":   {ax, ay, aw, ah},
-				"session": {sx, sy, sw, sh},
-				"status":  {fx, fy, fw, fh},
-				"save":    {vx, vy, vw, vh},
-				"cancel":  {lx, ly, lw, lh},
-			} {
-				if r[0] < editorX || r[0]+r[2] > editorX+editorW {
-					t.Errorf("%s rect %v is outside the editor width %d", name, r, editorW)
-				}
-			}
-			if cw != pw || cw != aw {
-				t.Errorf("Clear width = %d, Copy width = %d, Paste width = %d, want equal", cw, pw, aw)
-			}
-			if py != cy+ch+1 {
-				t.Errorf("Clear bottom = %d, Copy top = %d, want one blank row", cy+ch, py)
-			}
-			if cy != ay+ah+1 {
-				t.Errorf("Paste bottom = %d, Clear top = %d, want one blank row", ay+ah, cy)
-			}
-			if py+ph != ty+th {
-				t.Errorf("Copy bottom = %d, Text bottom = %d, want aligned", py+ph, ty+th)
-			}
-			if sy >= ty {
-				t.Errorf("Session row y = %d, want above the prompt field y = %d", sy, ty)
-			}
-			if mode == forms.PromptFormEdit {
-				list := pf.PromptList()
-				if list == nil {
-					t.Fatal("edit form has no prompt list")
-				}
-				if got := list.GetItemCount(); got != 2 {
-					t.Errorf("list items = %d, want 2", got)
-				}
-				if got, _ := list.GetItemText(0); got != "1. first" {
-					t.Errorf("first list item = %q, want 1. first", got)
-				}
-				listX, listY, listW, listH := list.GetRect()
-				if listH != 4 {
-					t.Errorf("list height = %d, want 4 for two prompts", listH)
-				}
-				if listY <= sy {
-					t.Errorf("list y = %d, want below the session row y = %d", listY, sy)
-				}
-				if listY+listH > ty {
-					t.Errorf("list bottom = %d, want above the prompt field y = %d", listY+listH, ty)
-				}
-				if listX < editorX || listX+listW > editorX+editorW {
-					t.Errorf("list rect %v is outside the editor width %d", []int{listX, listY, listW, listH}, editorW)
-				}
-			} else if pf.PromptList() != nil {
-				t.Error("add form must not have a prompt list")
-			}
-			if got, want := fx+forms.PromptSideWidth+1, tx; got != want {
-				t.Errorf("status field x = %d, want prompt text x = %d", got, want)
-			}
-			if got, want := fw, forms.PromptSideWidth+1+tview.TaggedStringWidth("Needs closing")+tview.TaggedStringWidth(forms.DropDownArrow); got != want {
-				t.Errorf("status width = %d, want %d", got, want)
-			}
-			if got := (ppx - editorX) - (editorX + editorW - (rightButtonX + rightButtonW)); got < -1 || got > 1 {
-				t.Errorf("button-row margins differ by %d", got)
-			}
-			if vx <= ppx+ppw {
-				t.Errorf("Save x = %d, want after Save & Pause", vx)
-			}
-		})
+	for name, r := range map[string][4]int{
+		"text":    {tx, ty, tw, th},
+		"clear":   {cx, cy, cw, ch},
+		"copy":    {px, py, pw, ph},
+		"paste":   {ax, ay, aw, ah},
+		"session": {sx, sy, sw, sh},
+		"status":  {fx, fy, fw, fh},
+		"save":    {vx, vy, vw, vh},
+		"cancel":  {lx, ly, lw, lh},
+	} {
+		if r[0] < editorX || r[0]+r[2] > editorX+editorW {
+			t.Errorf("%s rect %v is outside the editor width %d", name, r, editorW)
+		}
+	}
+	if cw != pw || cw != aw {
+		t.Errorf("Clear width = %d, Copy width = %d, Paste width = %d, want equal", cw, pw, aw)
+	}
+	if py != cy+ch+1 {
+		t.Errorf("Clear bottom = %d, Copy top = %d, want one blank row", cy+ch, py)
+	}
+	if cy != ay+ah+1 {
+		t.Errorf("Paste bottom = %d, Clear top = %d, want one blank row", ay+ah, cy)
+	}
+	if py+ph != ty+th {
+		t.Errorf("Copy bottom = %d, Text bottom = %d, want aligned", py+ph, ty+th)
+	}
+	if sy >= ty {
+		t.Errorf("Session row y = %d, want above the prompt field y = %d", sy, ty)
+	}
+	list := pf.PromptList()
+	if list == nil {
+		t.Fatal("editor has no prompt list")
+	}
+	if got := list.GetItemCount(); got != 2 {
+		t.Errorf("list items = %d, want 2", got)
+	}
+	if got, _ := list.GetItemText(0); got != "1. first" {
+		t.Errorf("first list item = %q, want 1. first", got)
+	}
+	listX, listY, listW, listH := list.GetRect()
+	if listH != 4 {
+		t.Errorf("list height = %d, want 4 for two prompts", listH)
+	}
+	if listY <= sy {
+		t.Errorf("list y = %d, want below the session row y = %d", listY, sy)
+	}
+	if listY+listH > ty {
+		t.Errorf("list bottom = %d, want above the prompt field y = %d", listY+listH, ty)
+	}
+	if listX < editorX || listX+listW > editorX+editorW {
+		t.Errorf("list rect %v is outside the editor width %d", []int{listX, listY, listW, listH}, editorW)
+	}
+	if got, want := fx+forms.PromptSideWidth+1, tx; got != want {
+		t.Errorf("status field x = %d, want prompt text x = %d", got, want)
+	}
+	if got, want := fw, forms.PromptSideWidth+1+tview.TaggedStringWidth("Needs closing")+tview.TaggedStringWidth(forms.DropDownArrow); got != want {
+		t.Errorf("status width = %d, want %d", got, want)
+	}
+	if got := (ppx - editorX) - (editorX + editorW - (rightButtonX + rightButtonW)); got < -1 || got > 1 {
+		t.Errorf("button-row margins differ by %d", got)
+	}
+	if vx <= ppx+ppw {
+		t.Errorf("Save x = %d, want after Save & Pause", vx)
 	}
 }
 
 func TestPromptForm_PromptFieldStyle(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	screen := tcell.NewSimulationScreen("UTF-8")
 	if err := screen.Init(); err != nil {
 		t.Fatal(err)
@@ -223,7 +211,7 @@ func TestPromptForm_EditStartsAtTop(t *testing.T) {
 	t.Parallel()
 	text := "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt(text)})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	drawPromptForm(t, pf)
 
 	row, column := pf.TextArea().GetOffset()
@@ -235,7 +223,7 @@ func TestPromptForm_EditStartsAtTop(t *testing.T) {
 func TestPromptForm_Focus(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 
 	pf.FocusEditor()
 	if !pf.TextArea().HasFocus() {
@@ -287,7 +275,7 @@ func TestPromptForm_Copy(t *testing.T) {
 	t.Run("success copies the exact text", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pf.TextArea().SetText("unsaved text", true)
 		pressButton(t, pf.CopyButton())
 		if app.CopiedText != "unsaved text" {
@@ -303,7 +291,7 @@ func TestPromptForm_Copy(t *testing.T) {
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		app.CopyErr = errors.New("no clipboard")
 		closed := false
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
 		pressButton(t, pf.CopyButton())
 		if app.ErrorStatus != "copy failed: no clipboard" {
 			t.Errorf("error = %q, want copy failed: no clipboard", app.ErrorStatus)
@@ -317,7 +305,7 @@ func TestPromptForm_Copy(t *testing.T) {
 func TestPromptForm_Clear(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	pf.TextArea().SetText("unsaved text", true)
 	pressButton(t, pf.ClearButton())
 	if got := pf.TextArea().GetText(); got != "" {
@@ -335,7 +323,7 @@ func TestPromptForm_Paste(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		app.ClipboardText = "second"
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pf.TextArea().Select(0, 5)
 		pressButton(t, pf.PasteButton())
 		if got := pf.TextArea().GetText(); got != "second" {
@@ -350,7 +338,7 @@ func TestPromptForm_Paste(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		app.ReadErr = errors.New("no clipboard")
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pressButton(t, pf.PasteButton())
 		if app.ErrorStatus != "paste failed: no clipboard" {
 			t.Errorf("error = %q, want paste failed: no clipboard", app.ErrorStatus)
@@ -360,7 +348,7 @@ func TestPromptForm_Paste(t *testing.T) {
 	t.Run("empty clipboard leaves the text unchanged", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pf.TextArea().Select(0, 5)
 		pressButton(t, pf.PasteButton())
 		if got := pf.TextArea().GetText(); got != "first" {
@@ -375,7 +363,7 @@ func TestPromptForm_Paste(t *testing.T) {
 func TestPromptForm_ClipboardHotkeys(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	textArea := pf.TextArea()
 	textArea.SetText("first", false)
 	textArea.Select(0, 5)
@@ -399,7 +387,7 @@ func TestPromptForm_ClipboardHotkeyErrors(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		app.CopyErr = errors.New("no clipboard")
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pf.TextArea().Select(0, 5)
 		pf.TextArea().InputHandler()(tcell.NewEventKey(tcell.KeyCtrlQ, 0, tcell.ModNone), func(tview.Primitive) {})
 		if app.ErrorStatus != "copy: no clipboard" {
@@ -411,7 +399,7 @@ func TestPromptForm_ClipboardHotkeyErrors(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		app.ReadErr = errors.New("no clipboard")
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pf.TextArea().Select(0, 5)
 		pf.TextArea().InputHandler()(tcell.NewEventKey(tcell.KeyCtrlV, 0, tcell.ModNone), func(tview.Primitive) {})
 		if app.ErrorStatus != "paste: no clipboard" {
@@ -458,26 +446,26 @@ func TestNormalizeClipboardKey(t *testing.T) {
 	}
 }
 
-func TestPromptForm_AddSave(t *testing.T) {
+func TestPromptForm_FirstPromptSave(t *testing.T) {
 	t.Parallel()
-	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+	app, sess := newPromptFormApp(t, nil)
 	closed := false
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() { closed = true })
-	pf.TextArea().SetText("  second  ", true)
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
+	pf.TextArea().SetText("  first  ", true)
 	pressButton(t, pf.SaveButton())
 	if !closed {
 		t.Error("form did not close after a successful save")
 	}
 	got := app.Svc.Session(sess.ID()).Queue()
-	if len(got) != 2 || got[0].Text() != "first" || got[1].Text() != "second" {
-		t.Errorf("queue = %v, want first, second", got)
+	if len(got) != 1 || got[0].Text() != "first" {
+		t.Errorf("queue = %v, want first", got)
 	}
 }
 
 func TestPromptForm_EditSave(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 1, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 1, nil, func() {})
 	pf.TextArea().SetText("changed", true)
 	pf.Status().SetCurrentOption(int(model.SessionStatusClosed))
 	pressButton(t, pf.SaveButton())
@@ -490,10 +478,51 @@ func TestPromptForm_EditSave(t *testing.T) {
 	}
 }
 
+func TestPromptForm_StatusOnlySave(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		queue []model.Prompt
+		want  []string
+	}{
+		{name: "empty queue", want: nil},
+		{name: "unchanged prompt", queue: []model.Prompt{model.NewPrompt("first")}, want: []string{"first"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			app, sess := newPromptFormApp(t, tt.queue)
+			closed := false
+			pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
+			pf.Status().SetCurrentOption(int(model.SessionStatusClosed))
+			pressButton(t, pf.SaveButton())
+
+			if !closed {
+				t.Error("form did not close after saving the status")
+			}
+			live := app.Svc.Session(sess.ID())
+			if got := live.Status(); got != model.SessionStatusClosed {
+				t.Errorf("status = %v, want Closed", got)
+			}
+			got := live.Queue()
+			if len(got) != len(tt.want) {
+				t.Fatalf("queue = %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i].Text() != tt.want[i] {
+					t.Errorf("prompt %d = %q, want %q", i, got[i].Text(), tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestPromptForm_ListSelectSync(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 
 	pf.TextArea().SetText("changed first", true)
 	pf.PromptList().SetCurrentItem(1)
@@ -512,7 +541,7 @@ func TestPromptForm_ListSelectSync(t *testing.T) {
 func TestPromptForm_ListAdd(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 
 	pf.AddPrompt()
 	if got := pf.TextArea().GetText(); got != "" {
@@ -533,7 +562,7 @@ func TestPromptForm_ListAdd(t *testing.T) {
 func TestPromptForm_ListDelete(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 
 	pf.DeletePrompt()
 	if got := pf.PromptList().GetItemCount(); got != 2 {
@@ -566,7 +595,7 @@ func TestPromptForm_ListDelete(t *testing.T) {
 func TestPromptForm_ListDeleteCancel(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 
 	pf.DeletePrompt()
@@ -588,7 +617,7 @@ func TestPromptForm_ListDeleteCancel(t *testing.T) {
 func TestPromptForm_ListDeleteLast(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 
 	pf.DeletePrompt()
 	modal := confirmModalFrom(t, app)
@@ -615,7 +644,7 @@ func TestPromptForm_SaveAndPause(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 	closed, paused := false, false
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {
 		closed = true
 	}, func() {
 		paused = true
@@ -639,7 +668,7 @@ func TestPromptForm_SaveAndPauseFailureDoesNotPause(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 	closed, paused := false, false
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {
 		closed = true
 	}, func() {
 		paused = true
@@ -662,7 +691,7 @@ func TestPromptForm_SaveAndPauseFailureDoesNotPause(t *testing.T) {
 func TestPromptForm_DeleteButtonSavesImmediately(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 
 	pf.TextArea().SetText("changed first", true)
@@ -697,7 +726,7 @@ func TestPromptForm_DeleteButtonLastPromptCloses(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 	closed := false
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {
 		closed = true
 		app.HideModal()
 	})
@@ -721,7 +750,7 @@ func TestPromptForm_DeleteButtonLastPromptCloses(t *testing.T) {
 func TestPromptForm_DeleteButtonCancel(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 
 	pressButton(t, pf.DeleteButton())
@@ -744,7 +773,7 @@ func TestPromptForm_DeleteButtonCancel(t *testing.T) {
 func TestPromptForm_ListFocusHints(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 
 	app.SetFocus(pf.PromptList())
 	if got := app.HintsSpecific; got != views.HintsPromptListSpecific {
@@ -758,7 +787,7 @@ func TestPromptForm_ListFocusHints(t *testing.T) {
 func TestPromptForm_ListHotkeys(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	capture := pf.PromptList().GetInputCapture()
 	if capture == nil {
 		t.Fatal("prompt list has no input capture")
@@ -790,7 +819,7 @@ func TestPromptForm_ListHotkeys(t *testing.T) {
 func TestPromptForm_ListClickFocusesAndInsertWorks(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	root := pf.Primitive()
 	root.SetRect(0, 0, 80, 24)
 	screen := tcell.NewSimulationScreen("UTF-8")
@@ -819,7 +848,7 @@ func TestPromptForm_ListClickFocusesAndInsertWorks(t *testing.T) {
 func TestPromptForm_ListInputHandlerInsert(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	list := pf.PromptList()
 	list.SetRect(0, 0, 40, 10)
 	list.InputHandler()(tcell.NewEventKey(tcell.KeyInsert, 0, tcell.ModNone), app.SetFocus)
@@ -831,7 +860,7 @@ func TestPromptForm_ListInputHandlerInsert(t *testing.T) {
 func TestPromptForm_ListDoubleClickFocusesPrompt(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	list := pf.PromptList()
 	list.SetRect(0, 0, 40, 10)
 	capture := list.GetMouseCapture()
@@ -852,7 +881,7 @@ func TestPromptForm_ListDoubleClickFocusesPrompt(t *testing.T) {
 func TestPromptForm_EmptyText(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	pf.TextArea().SetText("   ", true)
 	pressButton(t, pf.SaveButton())
 	if app.ErrorStatus == "" {
@@ -866,7 +895,7 @@ func TestPromptForm_EmptyText(t *testing.T) {
 func TestPromptForm_SessionModal(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 	pf.TextArea().SetText("unsaved prompt", true)
 	pf.Status().SetCurrentOption(int(model.SessionStatusNeedsClosing))
@@ -900,7 +929,7 @@ func TestNewPromptForm_Guards(t *testing.T) {
 	t.Run("nil session", func(t *testing.T) {
 		t.Parallel()
 		app, _ := newPromptFormApp(t, nil)
-		prim := forms.NewPromptForm(app, nil, forms.PromptFormOptions{Mode: forms.PromptFormAdd})
+		prim := forms.NewPromptForm(app, nil, forms.PromptFormOptions{})
 		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
 			t.Errorf("got %T, want error modal", views.UnwrapModal(prim))
 		}
@@ -910,58 +939,91 @@ func TestNewPromptForm_Guards(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, nil)
 		must(t, app.Svc.DeleteSession("alice@example.com", "claude", sess.ID()))
-		prim := forms.NewPromptForm(app, sess, forms.PromptFormOptions{Mode: forms.PromptFormAdd})
+		prim := forms.NewPromptForm(app, sess, forms.PromptFormOptions{})
 		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
 			t.Errorf("got %T, want error modal", views.UnwrapModal(prim))
 		}
 	})
 
-	t.Run("invalid edit index", func(t *testing.T) {
+	t.Run("out of range index leaves no selection", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		prim := forms.NewPromptForm(app, sess, forms.PromptFormOptions{Mode: forms.PromptFormEdit, Index: -1})
-		if _, ok := views.UnwrapModal(prim).(*tview.Modal); !ok {
-			t.Errorf("got %T, want error modal", views.UnwrapModal(prim))
+		prim := forms.NewPromptForm(app, sess, forms.PromptFormOptions{Index: 5})
+		text, _, ok, err := forms.PromptStateFromPrimitive(prim)
+		must(t, err)
+		if !ok {
+			t.Fatal("got an error modal, want the session editor")
+		}
+		if text != "" {
+			t.Errorf("prompt = %q, want no selection", text)
+		}
+		list := forms.PromptListFromPrimitive(prim)
+		if list == nil || list.GetItemCount() != 1 {
+			t.Errorf("list = %v, want one prompt", list)
 		}
 	})
 }
 
-func TestPromptForm_AddModeGuards(t *testing.T) {
+func TestPromptForm_EmptyQueue(t *testing.T) {
 	t.Parallel()
-	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() {})
+	app, sess := newPromptFormApp(t, nil)
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
+
+	list := pf.PromptList()
+	if list == nil {
+		t.Fatal("session editor has no prompt list")
+	}
+	if got := list.GetItemCount(); got != 0 {
+		t.Errorf("list items = %d, want 0", got)
+	}
+	if !pf.DeleteButton().IsDisabled() {
+		t.Error("Delete must be disabled with no prompts")
+	}
 
 	pf.AddPrompt()
-	pf.DeletePrompt()
-
-	if pf.PromptList() != nil {
-		t.Error("Add form gained a prompt list")
+	if got := list.GetItemCount(); got != 1 {
+		t.Errorf("list items after add = %d, want 1", got)
 	}
-	if app.Modal != nil {
-		t.Error("Add form opened a modal")
+	if got := pf.TextArea().GetText(); got != "" {
+		t.Errorf("new prompt = %q, want empty", got)
+	}
+	if app.Focused != pf.TextArea() {
+		t.Errorf("focus = %T, want the prompt field", app.Focused)
+	}
+
+	pf.DeletePrompt()
+	if app.Modal == nil {
+		t.Error("Delete on a prompt must open a confirmation modal")
 	}
 }
 
 func TestPromptForm_SaveFailures(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add empty text", func(t *testing.T) {
+	t.Run("empty text saves nothing", func(t *testing.T) {
 		t.Parallel()
-		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() {})
+		app, sess := newPromptFormApp(t, nil)
+		closed := false
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
 		pf.TextArea().SetText("   ", true)
 		pressButton(t, pf.SaveButton())
-		if app.ErrorStatus == "" {
-			t.Error("expected a validation error")
+		if app.ErrorStatus != "" {
+			t.Errorf("error = %q, want none", app.ErrorStatus)
+		}
+		if !closed {
+			t.Error("form did not close")
+		}
+		if got := app.Svc.Session(sess.ID()).Queue(); len(got) != 0 {
+			t.Errorf("queue = %v, want empty", got)
 		}
 	})
 
 	t.Run("add mutation failure", func(t *testing.T) {
 		t.Parallel()
-		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
+		app, sess := newPromptFormApp(t, nil)
 		app.MutateErr = errors.New("save failed")
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormAdd, 0, nil, func() {})
-		pf.TextArea().SetText("second", true)
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
+		pf.TextArea().SetText("first", true)
 		pressButton(t, pf.SaveButton())
 		if app.ErrorStatus == "" {
 			t.Error("expected a status message reporting the save failure")
@@ -972,7 +1034,7 @@ func TestPromptForm_SaveFailures(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		app.MutateErr = errors.New("save failed")
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pressButton(t, pf.SaveButton())
 		if app.ErrorStatus == "" {
 			t.Error("expected a status message reporting the save failure")
@@ -982,7 +1044,7 @@ func TestPromptForm_SaveFailures(t *testing.T) {
 	t.Run("session deleted before save", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		must(t, app.Svc.DeleteSession("alice@example.com", "claude", sess.ID()))
 		pf.TextArea().SetText("changed", true)
 		pressButton(t, pf.SaveButton())
@@ -995,7 +1057,7 @@ func TestPromptForm_SaveFailures(t *testing.T) {
 func TestPromptForm_DeleteMutationFailure(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 
 	pressButton(t, pf.DeleteButton())
@@ -1014,7 +1076,7 @@ func TestPromptForm_DeleteMutationFailure(t *testing.T) {
 func TestPromptForm_StatusOutOfRange(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	pf.Status().SetCurrentOption(-1)
 
 	forms.SavePromptFromPrimitive(pf.Primitive())
@@ -1030,7 +1092,7 @@ func TestPromptForm_OpenSessionErrors(t *testing.T) {
 	t.Run("missing session", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 		must(t, app.Svc.DeleteSession("alice@example.com", "claude", sess.ID()))
 
@@ -1044,7 +1106,7 @@ func TestPromptForm_OpenSessionErrors(t *testing.T) {
 	t.Run("session save failure", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		app.ShowModal(pf.Primitive()) //nolint:errcheck // Test setup.
 
 		pressButton(t, pf.SessionButton())
@@ -1062,7 +1124,7 @@ func TestPromptForm_ListCaptureKeys(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first"), model.NewPrompt("second")})
 	closed := false
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
 	capture := pf.PromptList().GetInputCapture()
 
 	if got := capture(tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)); got != nil {
@@ -1082,7 +1144,7 @@ func TestPromptForm_TextAreaCaptureKeys(t *testing.T) {
 	t.Run("backtab moves focus", func(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 		pf.FocusEditor()
 		capture := pf.TextArea().GetInputCapture()
 		if got := capture(tcell.NewEventKey(tcell.KeyBacktab, 0, tcell.ModNone)); got != nil {
@@ -1097,7 +1159,7 @@ func TestPromptForm_TextAreaCaptureKeys(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		closed := false
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
 		pf.TextArea().GetInputCapture()(tcell.NewEventKey(views.KeySave, 0, tcell.ModNone))
 		if !closed {
 			t.Error("Save did not close the form")
@@ -1108,7 +1170,7 @@ func TestPromptForm_TextAreaCaptureKeys(t *testing.T) {
 		t.Parallel()
 		app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt("first")})
 		closed := false
-		pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() { closed = true })
+		pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() { closed = true })
 		pf.TextArea().GetInputCapture()(tcell.NewEventKey(views.KeyCancel, 0, tcell.ModNone))
 		if !closed {
 			t.Error("Cancel did not close the form")
@@ -1140,7 +1202,7 @@ func TestPromptPreview(t *testing.T) {
 func TestPromptForm_LongListItemEllipsis(t *testing.T) {
 	t.Parallel()
 	app, sess := newPromptFormApp(t, []model.Prompt{model.NewPrompt(strings.Repeat("x", 100))})
-	pf := forms.NewPromptFormForTest(app, sess, forms.PromptFormEdit, 0, nil, func() {})
+	pf := forms.NewPromptFormForTest(app, sess, 0, nil, func() {})
 	drawPromptForm(t, pf)
 
 	list := pf.PromptList()
@@ -1154,16 +1216,5 @@ func TestPromptForm_LongListItemEllipsis(t *testing.T) {
 	_, _, width, _ := list.GetInnerRect()
 	if gotWidth := tview.TaggedStringWidth(got); gotWidth > width {
 		t.Errorf("list item width = %d, want at most %d", gotWidth, width)
-	}
-}
-
-func modeName(mode forms.PromptFormMode) string {
-	switch mode {
-	case forms.PromptFormAdd:
-		return "add"
-	case forms.PromptFormEdit:
-		return "edit"
-	default:
-		return "unknown"
 	}
 }

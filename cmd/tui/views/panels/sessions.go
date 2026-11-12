@@ -164,12 +164,7 @@ func (p *SessionsPanel) handleEnter() *tcell.EventKey {
 	if session == nil {
 		return nil
 	}
-	mode := forms.PromptFormEdit
-	if len(session.Queue()) == 0 {
-		mode = forms.PromptFormAdd
-	}
 	views.ShowModal(p.app, forms.NewPromptForm(p.app, session, forms.PromptFormOptions{
-		Mode:    mode,
 		Index:   0,
 		OnClose: p.closeForm,
 		OnSaveAndPause: func() {
